@@ -1,17 +1,26 @@
-# MentorIA Math — PMV 1
+# MentorIA Math
 
 Plataforma educativa de matemáticas: un tutor que explica paso a paso, corrige
 con un motor determinista en servidor (sin depender de la IA para la
 matemática) y adapta cada lección al nivel real del estudiante.
 
 Este repositorio contiene la migración del prototipo Node.js/Express a la
-arquitectura del PMV 1: **Next.js (App Router) + TypeScript + PostgreSQL**.
+arquitectura del PMV 1 —**Next.js (App Router) + TypeScript + PostgreSQL**— y,
+sobre ella, el **MVP 2**.
 
-> **Estado: pasos 1 y 2 completados.** El Paso 1 entregó la fundación,
-> la persistencia, el control de roles y el diagnóstico inicial. El Paso 2
-> añade la lección interactiva: motor pedagógico LSG en cuatro fases, avatar 2D,
-> pizarra con KaTeX, voz en español y corrección determinista en servidor.
-> Queda el Paso 4 (panel docente y despliegue productivo), descrito al final.
+> **Estado: PMV 1 completo · MVP 2 HITO 1 completo.**
+>
+> El PMV 1 entregó la fundación, la persistencia, el control de roles, el
+> diagnóstico inicial y la lección interactiva (motor pedagógico LSG en cuatro
+> fases, avatar 2D, pizarra con KaTeX, voz en español y corrección determinista
+> en servidor).
+>
+> El **HITO 1 del MVP 2** convierte el currículo en dato: el profesorado crea sus
+> propios temas, reglas pedagógicas y ejercicios —incluidas plantillas
+> parametrizadas— y un **validador matemático en servidor** comprueba la
+> consistencia antes de guardar nada. Ver
+> [`ENTREGA_HITO1.md`](ENTREGA_HITO1.md). Quedan los hitos 2 (pizarra animada y
+> avatar), 3 (multi-tenancy y tareas) y 4 (reportes y QA final).
 
 ---
 
@@ -25,8 +34,9 @@ arquitectura del PMV 1: **Next.js (App Router) + TypeScript + PostgreSQL**.
 6. [Suite de validación (QA)](#suite-de-validación-qa)
 7. [Arquitectura](#arquitectura)
 8. [Modelo de datos](#modelo-de-datos)
-9. [El diagnóstico inicial](#el-diagnóstico-inicial)
-10. [Qué entra en el Paso 1 y qué no](#qué-entra-en-el-paso-1-y-qué-no)
+9. [Autoría docente (MVP 2 · HITO 1)](#autoría-docente-mvp-2--hito-1)
+10. [El diagnóstico inicial](#el-diagnóstico-inicial)
+11. [Qué entra en el Paso 1 y qué no](#qué-entra-en-el-paso-1-y-qué-no)
 
 ---
 
@@ -101,14 +111,15 @@ Crea la materia, el árbol de conocimiento de los cinco temas, el banco de
 preguntas del diagnóstico y dos usuarios que el registro público **no** puede
 crear:
 
-| Rol     | Correo                        | Contraseña     |
-| ------- | ----------------------------- | -------------- |
-| ADMIN   | `admin@mentoriamath.local`    | `Admin-2026`   |
-| DOCENTE | `docente@mentoriamath.local`  | `Docente-2026` |
+| Rol        | Correo                         | Contraseña      |
+| ---------- | ------------------------------ | --------------- |
+| SUPERADMIN | `admin@mentoriamath.local`     | `Admin-2026`    |
+| DIRECTOR   | `director@mentoriamath.local`  | `Director-2026` |
+| DOCENTE    | `docente@mentoriamath.local`   | `Docente-2026`  |
 
 > **Cámbialas antes de cualquier despliegue.** Se pueden fijar por entorno con
-> `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DOCENTE_EMAIL` y
-> `SEED_DOCENTE_PASSWORD`.
+> `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DIRECTOR_EMAIL`,
+> `SEED_DIRECTOR_PASSWORD`, `SEED_DOCENTE_EMAIL` y `SEED_DOCENTE_PASSWORD`.
 
 ### 5. Levantar la aplicación
 
@@ -288,6 +299,7 @@ Todas están documentadas con más detalle en [`.env.example`](.env.example).
 | `npm run db:studio`   | Abre Prisma Studio para inspeccionar la base.         |
 | `npm test`            | Ejecuta la suite de validación completa.              |
 | `npm run qa:diagnostico` | Valida el banco de preguntas (no necesita servidor).|
+| `npm run qa:hito1`    | Valida la autoría docente y el validador matemático.  |
 | `npm run legacy:start`| Arranca el prototipo Express original (puerto 3001).  |
 
 ---
@@ -396,10 +408,14 @@ Al compartir implementación no pueden divergir: la paridad algorítmica es
 ```
 app/                    Rutas y páginas (App Router)
   api/                    query · diagnostico · registro · health · auth
-  estudiante/             panel y evaluación diagnóstica
-  docente/  admin/        zonas protegidas por rol
+  api/docente/            MVP 2: materias · temas · ejercicios · validar
+  estudiante/             panel, evaluación diagnóstica y lección
+  docente/                panel, currículo, crear-tema y ejercicios
+  admin/                  zona del superadministrador
 components/             Componentes de UI (shadcn/ui) y KaTeX
+  docente/                MVP 2: gestor curricular, formularios y validación
 lib/                    prisma · rbac · diagnóstico · utilidades
+  docente/                MVP 2: validador matemático, parámetros, currículo
 prisma/                 schema.prisma · migraciones · semilla
 src/                    NÚCLEO HEREDADO: classifier · preLight · lsgPrompt ·
                         geminiClient · queryCore  (+ declaraciones .d.ts)
@@ -415,7 +431,8 @@ auth.ts / auth.config.ts / middleware.ts    Autenticación y RBAC
 14 tablas en cuatro bloques (ver [`prisma/schema.prisma`](prisma/schema.prisma)):
 
 **Usuarios y roles**
-`usuarios` con RBAC de tres perfiles: `ESTUDIANTE`, `DOCENTE`, `ADMIN`.
+`usuarios` con RBAC jerárquico de cuatro perfiles: `ESTUDIANTE`, `DOCENTE`,
+`DIRECTOR` y `SUPERADMIN` (el `ADMIN` del PMV 1, renombrado sin perder cuentas).
 
 **Perfil académico**
 `perfiles_estudiante` (ciclo, grado, nivel vigente y metadatos de contexto que
@@ -446,6 +463,58 @@ El registro público crea **siempre** usuarios `ESTUDIANTE`. El rol nunca se
 acepta desde el cuerpo de la petición: un registro abierto que permita elegir
 `ADMIN` es una escalada de privilegios servida en bandeja. Los perfiles docente
 y administrador los crea la semilla o un administrador.
+
+---
+
+## Autoría docente (MVP 2 · HITO 1)
+
+El currículo deja de estar escrito en el código y pasa a escribirlo el
+profesorado. Documento completo de entrega:
+[`ENTREGA_HITO1.md`](ENTREGA_HITO1.md).
+
+### Las tres vistas
+
+| Ruta | Para qué |
+| --- | --- |
+| `/docente/curriculo` | Asignaturas y árbol de temas: crear, categorizar, publicar y archivar. |
+| `/docente/crear-tema` | Formulario estructurado del tema y de sus **reglas pedagógicas**, con la notación compuesta en KaTeX mientras se escribe. La misma ruta edita, con `?id=`. |
+| `/docente/ejercicios` | Banco de ejercicios: sueltos o **plantillas parametrizadas**, con el informe del validador antes de guardar. |
+
+### Los endpoints
+
+```
+GET  POST            /api/docente/materias         asignaturas
+PATCH DELETE         /api/docente/materias/[id]
+GET  POST            /api/docente/temas            temas + sus reglas (transaccional)
+GET  PATCH DELETE    /api/docente/temas/[id]
+GET  POST            /api/docente/ejercicios       banco, con validación obligatoria
+PATCH DELETE         /api/docente/ejercicios/[id]
+POST                 /api/docente/ejercicios/validar   comprobar SIN guardar
+```
+
+### El validador matemático en servidor
+
+Nada entra al banco sin pasar por él. Enfrenta tres fuentes de verdad —la
+respuesta que escribe el docente, la fórmula de la plantilla evaluada con
+aritmética exacta y la solución que calcula el motor determinista— y **bloquea
+el guardado** cuando no coinciden, diciendo con qué números falla:
+
+```
+✗ 2x + 1 = 8 (a=2, b=1, c=8): El motor calcula 7/2 y la respuesta indicada es -7/2.
+```
+
+Con plantillas parametrizadas recorre **todas** las combinaciones cuando son 240
+o menos, y una muestra **reproducible** cuando son más. Si el tema no declara
+motor, el ejercicio se guarda **marcado como no verificado** y se explica por
+qué: nunca se inventa un veredicto. La IA no interviene en ningún punto.
+
+### El tema y su motor
+
+Un tema del docente puede declarar uno de los cinco motores deterministas
+(aritmética, fracciones, ecuaciones lineales, factorización, derivadas) y
+heredar la corrección automática, o no declarar ninguno. Sus reglas heredan el
+motor y el estado del tema, de modo que **lo que publica un profesor aparece en
+la lección del alumno** sin tocar código.
 
 ---
 

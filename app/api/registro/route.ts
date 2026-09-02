@@ -13,8 +13,8 @@ export const runtime = "nodejs";
  *
  * Decisión de seguridad: este endpoint es público y crea SIEMPRE usuarios con
  * rol ESTUDIANTE. El rol no se acepta desde el cuerpo de la petición, porque un
- * registro público que permita elegir "ADMIN" es una escalada de privilegios
- * servida en bandeja. Los perfiles DOCENTE y ADMIN los crea un administrador
+ * registro público que permita elegir "SUPERADMIN" es una escalada de privilegios
+ * servida en bandeja. Los perfiles DOCENTE, DIRECTOR y SUPERADMIN los crea un administrador
  * (y el primero de todos, la semilla: `npm run db:seed`).
  */
 const registroSchema = z.object({

@@ -27,7 +27,14 @@ export default async function PaginaLeccion() {
   let progreso: ProgresoTema[] = [];
 
   try {
-    reglas = await prisma.reglaMatematica.findMany({
+    // MVP 2. El catálogo ya no es sólo el de fábrica: también trae las reglas que
+    // escriben los docentes desde /docente/crear-tema. A la lección del alumno
+    // sólo suben las que cumplen las dos condiciones que la hacen utilizable:
+    //   · PUBLICADA — un borrador del profesor no se enseña a nadie.
+    //   · con MOTOR — la lección agrupa por motor determinista; una regla de un
+    //     tema sin motor no tiene lección en la que encajar todavía.
+    const catalogo = await prisma.reglaMatematica.findMany({
+      where: { estado: "PUBLICADO", tema: { not: null } },
       orderBy: [{ tema: "asc" }, { orden: "asc" }],
       select: {
         clave: true,
@@ -40,6 +47,9 @@ export default async function PaginaLeccion() {
         practicable: true,
       },
     });
+    // El filtro ya deja fuera las reglas sin motor; este `flatMap` es lo que se
+    // lo dice al compilador, que no puede deducirlo del `where`.
+    reglas = catalogo.flatMap((r) => (r.tema ? [{ ...r, tema: r.tema }] : []));
   } catch (e) {
     console.error("[leccion] no se pudo cargar el catálogo de reglas:", e);
   }

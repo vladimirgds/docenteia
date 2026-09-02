@@ -2,7 +2,7 @@
   "name": "docenteia",
   "version": "1.0.0",
   "private": true,
-  "description": "MentorIA Math — PMV 1. Migración del prototipo Node/Express a Next.js (App Router) + TypeScript + PostgreSQL/Prisma. Paso 1: fundación, arquitectura y diagnóstico base.",
+  "description": "MentorIA Math — MVP 2. HITO 1: autoría docente, catálogo curricular dinámico y validador matemático en servidor, sobre la base del PMV 1 (Next.js App Router + TypeScript + PostgreSQL/Prisma).",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -19,7 +19,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
-    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs",
+    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs",
     "qa:preflight": "node qa/preflight.mjs",
     "qa:diagnostico": "node qa/diagnostico.mjs",
     "qa:leccion": "node qa/leccion.mjs",
@@ -30,7 +30,8 @@
     "qa:barrido": "node qa/barrido.mjs",
     "qa:todo": "npm test",
     "legacy:start": "node server.js",
-    "qa:paso1": "node qa/paso1.mjs"
+    "qa:paso1": "node qa/paso1.mjs",
+    "qa:hito1": "node qa/hito1.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

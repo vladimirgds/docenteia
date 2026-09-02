@@ -63,6 +63,25 @@ export const TEMA_POR_CLAVE: Record<string, Tema> = Object.fromEntries(
   TEMAS_LECCION.map((t) => [t.clave, t.tema]),
 );
 
+/**
+ * La inversa: del enum de la base a la clave que entiende el motor.
+ *
+ * La necesita el validador del panel docente (MVP 2, HITO 1). Un tema creado
+ * por un profesor guarda el MOTOR como enum —`DERIVADAS`—, pero el corrector
+ * determinista selecciona el solver por clave —`derivadas`—, así que en algún
+ * punto hay que traducir. Se hace aquí, a partir de la misma tabla, y no con un
+ * segundo diccionario escrito a mano que se desincronizaría en la primera
+ * ampliación del temario.
+ */
+export const CLAVE_POR_TEMA = Object.fromEntries(
+  TEMAS_LECCION.map((t) => [t.tema, t.clave]),
+) as Record<Tema, string>;
+
 export function temaPorClave(clave: string): TemaLeccion | undefined {
   return TEMAS_LECCION.find((t) => t.clave === clave);
+}
+
+/** El tema de lección al que apunta un motor, para etiquetarlo en la interfaz. */
+export function temaPorMotor(motor: Tema): TemaLeccion | undefined {
+  return TEMAS_LECCION.find((t) => t.tema === motor);
 }

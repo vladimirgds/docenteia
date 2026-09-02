@@ -1,6 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// MentorIA Math — PMV 1 · Modelo de datos (Paso 1)
+// MentorIA Math — Modelo de datos
 //
+// MVP 2 · HITO 1 — Autoría docente y catálogo curricular DINÁMICO.
+//
+// El PMV 1 traía el currículo escrito en el código: cinco temas fijos en un
+// enum y un catálogo de reglas cargado por semilla. El HITO 1 invierte eso: el
+// currículo pasa a ser DATO que el docente crea, edita y publica desde la
+// aplicación, y el enum `Tema` deja de significar "los temas que existen" para
+// significar "los motores deterministas que saben calificar".
+//
+// Ese matiz es toda la arquitectura del hito: un tema creado por un docente
+// puede APOYARSE en un motor (y entonces sus ejercicios se corrigen solos, con
+// matemática garantizada) o no apoyarse en ninguno (y entonces se dice, en vez
+// de fingir una corrección que nadie puede respaldar).
+//
+// Del PMV 1 se conserva todo lo demás:
 // Cubre los tres bloques de persistencia acordados:
 //   a) Usuarios y roles (RBAC: ESTUDIANTE, DOCENTE, ADMIN)
 //   b) Perfil académico del estudiante (ciclo/grado, materias, historial de
@@ -15,7 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // "native" cubre el desarrollo local. El segundo objetivo es el runtime de
   // Vercel y de la mayoría de plataformas serverless (Amazon Linux 2023): sin
   // declararlo, el despliegue compila pero revienta en la primera consulta con
@@ -34,11 +48,21 @@ datasource db {
 
 // ── Enumeraciones ────────────────────────────────────────────────────────────
 
-/// Los tres perfiles independientes del sistema (RBAC).
+/// Perfiles del sistema (RBAC), de menor a mayor alcance.
+///
+/// El MVP 2 abre la plataforma a instituciones, y con ellas aparece un mando
+/// intermedio: el DIRECTOR, que supervisa el currículo y los resultados de SU
+/// colegio sin administrar la plataforma entera. Lo que en el PMV 1 era ADMIN
+/// pasa a llamarse SUPERADMIN, que es lo que siempre fue: el administrador de
+/// la plataforma, por encima de cualquier institución.
+///
+/// La migración renombra el valor en lugar de añadir uno nuevo, de modo que no
+/// quedan dos roles con el mismo significado ni cuentas huérfanas.
 enum Rol {
   ESTUDIANTE
   DOCENTE
-  ADMIN
+  DIRECTOR
+  SUPERADMIN
 }
 
 /// Nivel académico asignado por el diagnóstico inicial.
@@ -48,9 +72,18 @@ enum NivelAcademico {
   AVANZADO
 }
 
-/// Los cinco temas garantizados por el motor determinista (PRE Light).
-/// Confirmado por el cliente: el PMV 1 se limita a estos cinco; cualquier otro
-/// tema se rechaza de forma controlada.
+/// Los cinco MOTORES deterministas de PRE Light.
+///
+/// En el PMV 1 esto era la lista cerrada de temas que existían. En el MVP 2 el
+/// currículo lo escriben los docentes (`NodoConocimiento`) y este enum queda
+/// como lo que de verdad es: el catálogo de familias que el motor sabe RESOLVER
+/// y, por tanto, CALIFICAR sin intervención de la IA.
+///
+/// Un tema del docente puede declarar uno de estos motores —y hereda la
+/// corrección automática— o no declarar ninguno. Lo segundo es legítimo: el
+/// tema se enseña igual, pero sus ejercicios se guardan sin verificar y la
+/// aplicación lo dice. Inventar un veredicto sería justo lo que este diseño
+/// evita.
 enum Tema {
   ECUACIONES_LINEALES
   DERIVADAS
@@ -68,10 +101,42 @@ enum Intencion {
 }
 
 /// Quién produjo la lección o el ejercicio: el motor determinista (matemática
-/// garantizada, coste cero) o la IA generativa (mejor esfuerzo).
+/// garantizada, coste cero), la IA generativa (mejor esfuerzo) o —desde el
+/// MVP 2— el propio docente, que es el origen que da sentido al HITO 1.
+///
+/// La distinción no es decorativa: el panel filtra por ella para responder a
+/// "qué ha escrito mi claustro" frente a "qué venía de fábrica", y el informe
+/// de validación se interpreta distinto según quién haya escrito el ejercicio.
 enum OrigenContenido {
   DETERMINISTA
   IA
+  DOCENTE
+}
+
+/// Ciclo de vida del contenido de autoría docente.
+///
+/// El borrador es trabajo en curso y NO llega al alumno; publicado es lo que la
+/// lección puede usar; archivado se retira de la vista sin borrarse, porque el
+/// historial de quien ya practicó con ese contenido debe seguir teniendo
+/// sentido. Por eso no hay borrado real de contenido con historial: hay estado.
+enum EstadoContenido {
+  BORRADOR
+  PUBLICADO
+  ARCHIVADO
+}
+
+/// Qué clase de regla pedagógica se está registrando.
+///
+/// No todo lo que un docente quiere fijar de un tema es una regla formal: hay
+/// propiedades, hay estrategias de resolución y hay, sobre todo, errores
+/// frecuentes ("cambiar de signo sólo un término al despejar"). Distinguirlos
+/// permite que la lección los presente donde corresponde —la regla al explicar,
+/// el error al corregir— en vez de amontonarlos en una sola lista.
+enum TipoRegla {
+  REGLA
+  PROPIEDAD
+  ESTRATEGIA
+  ERROR_FRECUENTE
 }
 
 /// Motivo por el que cambió el nivel de un estudiante.
@@ -84,17 +149,25 @@ enum MotivoCambioNivel {
 // ── a) Usuarios y roles ──────────────────────────────────────────────────────
 
 model Usuario {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  nombre       String
-  rol          Rol      @default(ESTUDIANTE)
-  activo       Boolean  @default(true)
-  creadoEn     DateTime @default(now())
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  nombre        String
+  rol           Rol      @default(ESTUDIANTE)
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
   perfilEstudiante PerfilEstudiante?
   cambiosDeNivel   HistorialNivel[]  @relation("DocenteQueAjusta")
+
+  // Autoría (HITO 1). El contenido conserva a su autor para que el panel pueda
+  // responder "quién escribió esto" sin cruzar tablas de auditoría, y para que
+  // borrar una cuenta no se lleve por delante el currículo del colegio: la
+  // relación es SetNull, no Cascade.
+  temasCreados      NodoConocimiento[] @relation("AutorDelTema")
+  reglasCreadas     ReglaMatematica[]  @relation("AutorDeLaRegla")
+  ejerciciosCreados Ejercicio[]        @relation("AutorDelEjercicio")
 
   @@index([rol])
   @@map("usuarios")
@@ -103,19 +176,19 @@ model Usuario {
 // ── b) Perfil académico del estudiante ───────────────────────────────────────
 
 model PerfilEstudiante {
-  id        String @id @default(cuid())
-  usuarioId String @unique
+  id        String  @id @default(cuid())
+  usuarioId String  @unique
   usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   /// Ciclo académico (p. ej. "Secundaria", "Bachillerato", "Ciclo IV").
-  ciclo String?
+  ciclo       String?
   /// Grado o curso dentro del ciclo (p. ej. "3º").
-  grado String?
+  grado       String?
   institucion String?
 
   /// Nivel vigente. Queda en null hasta que se completa el diagnóstico inicial.
-  nivelActual      NivelAcademico?
-  nivelAsignadoEn  DateTime?
+  nivelActual     NivelAcademico?
+  nivelAsignadoEn DateTime?
 
   /// Metadatos de contexto que se inyectan en cada consulta a la IA
   /// (preferencias, notas del docente, ritmo, adaptaciones).
@@ -124,37 +197,56 @@ model PerfilEstudiante {
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
-  materias        PerfilMateria[]
-  historialNivel  HistorialNivel[]
+  materias            PerfilMateria[]
+  historialNivel      HistorialNivel[]
   intentosDiagnostico IntentoDiagnostico[]
-  sesiones        SesionAprendizaje[]
-  progreso        RegistroProgreso[]
-  errores         RegistroError[]
+  sesiones            SesionAprendizaje[]
+  progreso            RegistroProgreso[]
+  errores             RegistroError[]
 
   @@index([nivelActual])
   @@map("perfiles_estudiante")
 }
 
+/// Asignatura: el primer nivel de categorización del currículo.
+///
+/// Ya existía en el PMV 1 para registrar el nivel del alumno por materia; el
+/// HITO 1 la convierte además en el contenedor de los temas, que es el papel
+/// que pedía el pliego ("CRUD de asignaturas/temas"). Se amplía en vez de
+/// crear una tabla nueva: dos tablas para el mismo concepto acaban divergiendo
+/// y obligan a decidir, en cada consulta, cuál de las dos es la buena.
 model Materia {
   id     String @id @default(cuid())
   codigo String @unique
   nombre String
 
-  perfiles PerfilMateria[]
+  descripcion String?
+  /// Color de acento en la interfaz (hex). Es decoración, no semántica.
+  color       String?
+  orden       Int     @default(0)
+  /// Una asignatura retirada deja de ofrecerse sin borrar sus temas.
+  activa      Boolean @default(true)
 
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  perfiles PerfilMateria[]
+  temas    NodoConocimiento[]
+
+  @@index([activa, orden])
   @@map("materias")
 }
 
 /// Relación estudiante ↔ materia, con el nivel específico por materia.
 model PerfilMateria {
-  id       String @id @default(cuid())
-  perfilId String
-  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  id        String           @id @default(cuid())
+  perfilId  String
+  perfil    PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
   materiaId String
-  materia   Materia @relation(fields: [materiaId], references: [id], onDelete: Cascade)
+  materia   Materia          @relation(fields: [materiaId], references: [id], onDelete: Cascade)
 
   nivel    NivelAcademico?
-  creadoEn DateTime @default(now())
+  creadoEn DateTime        @default(now())
 
   @@unique([perfilId, materiaId])
   @@map("perfil_materias")
@@ -162,7 +254,7 @@ model PerfilMateria {
 
 /// Historial de nivel: cada cambio queda registrado con su motivo y su origen.
 model HistorialNivel {
-  id       String @id @default(cuid())
+  id       String           @id @default(cuid())
   perfilId String
   perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
@@ -183,67 +275,146 @@ model HistorialNivel {
 
 // ── c) Knowledge Tree ────────────────────────────────────────────────────────
 
-/// Nodo del árbol de conocimiento. Es un árbol real: cada nodo puede tener un
-/// padre, de modo que un tema se descompone en subtemas y habilidades.
+/// EL TEMA DEL CURRÍCULO. Es el objeto central del HITO 1.
+///
+/// Sigue siendo un árbol —una asignatura se descompone en temas y éstos en
+/// subtemas— pero ahora lo escribe el docente desde /docente/crear-tema, no la
+/// semilla. Tres campos sostienen ese cambio:
+///
+///   · `materiaId` lo categoriza (la asignatura a la que pertenece).
+///   · `motor` declara con qué motor determinista se corrige, si con alguno.
+///   · `estado` separa el borrador del contenido que ya ve el alumno.
+///
+/// `clave` se mantiene única y estable: es la que citan la semilla, el motor y
+/// los enlaces, así que se genera a partir del título pero NO se reescribe al
+/// renombrar el tema, para no romper lo que ya apunta a ella.
 model NodoConocimiento {
-  id     String @id @default(cuid())
-  clave  String @unique
-  tema   Tema
-  titulo String
+  id          String  @id @default(cuid())
+  clave       String  @unique
+  titulo      String
   descripcion String?
-  nivel  NivelAcademico?
-  orden  Int @default(0)
+
+  /// Asignatura que lo contiene. Opcional porque el árbol del PMV 1 se sembró
+  /// antes de que existiera la categorización, y esos nodos siguen siendo
+  /// válidos: la semilla del MVP 2 los reengancha a "Matemáticas".
+  materiaId String?
+  materia   Materia? @relation(fields: [materiaId], references: [id], onDelete: SetNull)
+
+  /// Motor determinista que sabe resolver y calificar los ejercicios de este
+  /// tema. `null` significa exactamente lo que parece: no hay corrección
+  /// automática garantizada, y la interfaz lo advierte antes de guardar.
+  motor Tema?
+
+  nivel NivelAcademico?
+  orden Int             @default(0)
 
   padreId String?
   padre   NodoConocimiento?  @relation("ArbolConocimiento", fields: [padreId], references: [id], onDelete: SetNull)
   hijos   NodoConocimiento[] @relation("ArbolConocimiento")
 
+  estado EstadoContenido @default(BORRADOR)
+
+  /// Objetivos de aprendizaje, en el orden en que se persiguen.
+  objetivos String[] @default([])
+  /// Etiquetas libres del docente, para buscar y agrupar transversalmente
+  /// ("selectividad", "refuerzo", "unidad 3").
+  etiquetas String[] @default([])
+
+  autorId String?
+  autor   Usuario? @relation("AutorDelTema", fields: [autorId], references: [id], onDelete: SetNull)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
   ejercicios Ejercicio[]
+  reglas     ReglaMatematica[]
   progreso   RegistroProgreso[]
   errores    RegistroError[]
 
-  @@index([tema, nivel])
+  @@index([materiaId, orden])
+  @@index([motor, nivel])
+  @@index([estado, actualizadoEn])
   @@map("nodos_conocimiento")
 }
 
-/// Banco de ejercicios generados/validados con sus metadatos.
+/// Banco de ejercicios: los que genera el motor y los que escribe el docente.
+///
+/// El HITO 1 añade dos cosas al banco del PMV 1:
+///
+///   1. AUTORÍA: autor, estado y nodo del currículo al que pertenece.
+///   2. PARAMETRIZACIÓN: un ejercicio puede ser una PLANTILLA —"{a}x + {b} =
+///      {c}"— con sus parámetros declarados y una fórmula de respuesta. De una
+///      plantilla salen tantos enunciados distintos como haga falta, lo que
+///      evita que toda un aula practique exactamente el mismo ejercicio.
+///
+/// `validado` sigue significando lo mismo que en el PMV 1 —el motor comprobó la
+/// respuesta— pero ahora lo escribe el validador del servidor, y deja su
+/// informe en `informeValidacion` para que el docente vea POR QUÉ.
 model Ejercicio {
-  id     String @id @default(cuid())
+  id     String            @id @default(cuid())
   nodoId String?
   nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
 
-  tema  Tema
+  /// Motor determinista con el que se corrige. Se hereda del tema al guardar.
+  motor Tema?
   nivel NivelAcademico
 
+  /// El enunciado. En una plantilla lleva los huecos: "{a}x + {b} = {c}".
   enunciado         String
+  /// La respuesta esperada. En una plantilla es la de la primera muestra, para
+  /// que el listado enseñe algo concreto; la verdad-base la da `respuestaFormula`.
   respuestaCorrecta String
   /// Pasos de resolución tal como los produce el motor determinista.
-  pasos Json @default("[]")
+  pasos             Json   @default("[]")
 
-  origen   OrigenContenido @default(DETERMINISTA)
-  /// Sólo entra al banco lo que el PRE Light ha podido verificar.
-  validado Boolean @default(false)
+  /// ¿Es una plantilla parametrizada?
+  plantilla        Boolean @default(false)
+  /// Declaración de los parámetros: [{ nombre, min, max, paso, excluir }].
+  parametros       Json    @default("[]")
+  /// Fórmula de la respuesta en función de los parámetros: "({c} - {b}) / {a}".
+  respuestaFormula String?
 
-  metadatos Json @default("{}")
-  creadoEn  DateTime @default(now())
+  /// Pistas del docente, de la más suave a la más concreta. Nunca la solución.
+  pistas String[] @default([])
+
+  origen            OrigenContenido @default(DETERMINISTA)
+  /// Sólo entra al banco como calificable lo que el PRE Light ha verificado.
+  validado          Boolean         @default(false)
+  /// Informe del validador: qué motor se usó, qué muestras se comprobaron y
+  /// qué avisos quedaron. Es lo que se le enseña al docente.
+  informeValidacion Json            @default("{}")
+  validadoEn        DateTime?
+
+  estado  EstadoContenido @default(BORRADOR)
+  autorId String?
+  autor   Usuario?        @relation("AutorDelEjercicio", fields: [autorId], references: [id], onDelete: SetNull)
+
+  metadatos     Json     @default("{}")
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
 
   progreso RegistroProgreso[]
 
-  /// Un mismo enunciado, en su tema y nivel, es UN ejercicio: la semilla lo
+  /// Un mismo enunciado, en su motor y nivel, es UN ejercicio: la semilla lo
   /// vuelve a sembrar en cada despliegue y sin esto se duplicaría cada vez.
-  @@unique([tema, nivel, enunciado])
-  @@index([tema, nivel, validado])
+  ///
+  /// Ojo: PostgreSQL considera distintos dos NULL, así que esta restricción NO
+  /// alcanza a los ejercicios sin motor. Para ésos, el duplicado se comprueba
+  /// en la API contra el nodo del currículo, que es su contexto real.
+  @@unique([motor, nivel, enunciado])
+  @@index([motor, nivel, validado])
+  @@index([nodoId, estado])
   @@map("ejercicios")
 }
 
 /// Sesión de aprendizaje: una unidad de trabajo del estudiante.
 model SesionAprendizaje {
-  id       String @id @default(cuid())
+  id       String           @id @default(cuid())
   perfilId String
   perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
-  tema      Tema?
-  intencion Intencion?
+  tema          Tema?
+  intencion     Intencion?
   nivelEnSesion NivelAcademico?
 
   iniciadaEn   DateTime  @default(now())
@@ -258,22 +429,22 @@ model SesionAprendizaje {
 
 /// Registro de progreso: una fila por intento de respuesta calificado.
 model RegistroProgreso {
-  id       String @id @default(cuid())
+  id       String           @id @default(cuid())
   perfilId String
   perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
-  sesionId String?
-  sesion   SesionAprendizaje? @relation(fields: [sesionId], references: [id], onDelete: SetNull)
-  nodoId   String?
-  nodo     NodoConocimiento?  @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+  sesionId    String?
+  sesion      SesionAprendizaje? @relation(fields: [sesionId], references: [id], onDelete: SetNull)
+  nodoId      String?
+  nodo        NodoConocimiento?  @relation(fields: [nodoId], references: [id], onDelete: SetNull)
   ejercicioId String?
-  ejercicio   Ejercicio? @relation(fields: [ejercicioId], references: [id], onDelete: SetNull)
+  ejercicio   Ejercicio?         @relation(fields: [ejercicioId], references: [id], onDelete: SetNull)
 
-  tema             Tema
-  acierto          Boolean
-  intentos         Int @default(1)
+  tema              Tema
+  acierto           Boolean
+  intentos          Int     @default(1)
   tiempoRespuestaMs Int?
-  respuestaDada    String?
+  respuestaDada     String?
 
   creadoEn DateTime @default(now())
 
@@ -284,7 +455,7 @@ model RegistroProgreso {
 /// Catálogo de errores y debilidades frecuentes. Se acumula por perfil y tipo,
 /// de modo que "cuántas veces falla el alumno en esto" es una consulta directa.
 model RegistroError {
-  id       String @id @default(cuid())
+  id       String           @id @default(cuid())
   perfilId String
   perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
@@ -316,16 +487,29 @@ model RegistroError {
 model ReglaMatematica {
   id    String @id @default(cuid())
   clave String @unique
-  tema  Tema
+
+  /// Motor determinista de la regla. Es lo que usa la lección del alumno para
+  /// filtrar el catálogo, y por eso se conserva: al guardar una regla desde el
+  /// panel docente se HEREDA del tema, de modo que lo que escribe el profesor
+  /// aparece en la lección del motor correspondiente sin tocar nada más.
+  tema Tema?
+
+  /// Tema del currículo al que pertenece. Es el vínculo de autoría: las reglas
+  /// del catálogo base del PMV 1 lo tienen a null, las que escribe el docente
+  /// cuelgan siempre de su tema.
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: Cascade)
+
+  tipo  TipoRegla @default(REGLA)
   orden Int
 
-  nombre String
+  nombre      String
   /// Enunciado formal en LaTeX, para componerlo con KaTeX.
-  enunciado String
+  enunciado   String
   /// Explicación en castellano, en prosa.
   descripcion String
   /// Ejemplo breve de aplicación, también en LaTeX.
-  ejemplo String?
+  ejemplo     String?
 
   nivel NivelAcademico?
 
@@ -338,9 +522,15 @@ model ReglaMatematica {
   /// calificar sin recurrir a la IA, que es justo lo que el PRE Light evita.
   practicable Boolean @default(false)
 
-  creadoEn DateTime @default(now())
+  estado  EstadoContenido @default(PUBLICADO)
+  autorId String?
+  autor   Usuario?        @relation("AutorDeLaRegla", fields: [autorId], references: [id], onDelete: SetNull)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
 
   @@index([tema, orden])
+  @@index([nodoId, orden])
   @@map("reglas_matematicas")
 }
 
@@ -353,20 +543,20 @@ model ReglaMatematica {
 /// contestaron. Al no serlo, la pregunta vieja se desactiva y su historial se
 /// conserva. Lo que está vigente lo marca `activa`, no el esquema.
 model PreguntaDiagnostico {
-  id     String @id @default(cuid())
-  clave  String @unique
-  orden  Int
-  tema   Tema
+  id    String @id @default(cuid())
+  clave String @unique
+  orden Int
+  tema  Tema
 
-  enunciado String
+  enunciado         String
   /// Opciones en formato [{ id, texto }]. El diagnóstico es de respuesta
   /// directa: se compara contra respuestaCorrecta, sin intervención de la IA.
-  opciones Json
+  opciones          Json
   /// Identificador de la opción correcta (no su texto), para que la corrección
   /// no dependa de espacios ni de cómo esté escrita la fórmula.
   respuestaCorrecta String
   /// Expresión matemática asociada, para renderizar con KaTeX en la SmartBoard.
-  expresion String?
+  expresion         String?
 
   activa   Boolean  @default(true)
   creadoEn DateTime @default(now())
@@ -381,14 +571,14 @@ model PreguntaDiagnostico {
 /// Un intento de diagnóstico. El nivel resultante se calcula con la regla de
 /// corte acordada: 0–2 aciertos BASICO · 3–4 INTERMEDIO · 5 AVANZADO.
 model IntentoDiagnostico {
-  id       String @id @default(cuid())
+  id       String           @id @default(cuid())
   perfilId String
   perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
 
-  aciertos         Int             @default(0)
-  totalPreguntas   Int             @default(5)
-  nivelResultante  NivelAcademico?
-  completado       Boolean         @default(false)
+  aciertos        Int             @default(0)
+  totalPreguntas  Int             @default(5)
+  nivelResultante NivelAcademico?
+  completado      Boolean         @default(false)
 
   iniciadoEn   DateTime  @default(now())
   finalizadoEn DateTime?
@@ -400,9 +590,9 @@ model IntentoDiagnostico {
 }
 
 model RespuestaDiagnostico {
-  id        String @id @default(cuid())
-  intentoId String
-  intento   IntentoDiagnostico @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+  id         String              @id @default(cuid())
+  intentoId  String
+  intento    IntentoDiagnostico  @relation(fields: [intentoId], references: [id], onDelete: Cascade)
   preguntaId String
   pregunta   PreguntaDiagnostico @relation(fields: [preguntaId], references: [id], onDelete: Cascade)
 

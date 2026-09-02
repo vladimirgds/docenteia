@@ -5,7 +5,8 @@
  * del Paso 1 sin tocar SQL a mano:
  *   1. La materia y el árbol de conocimiento de los cinco temas de PRE Light.
  *   2. El banco de preguntas del diagnóstico (desde el JSON del repositorio).
- *   3. Un usuario DOCENTE y uno ADMIN, que el registro público no puede crear.
+ *   3. Los usuarios que el registro público no puede crear: DOCENTE, DIRECTOR
+ *      y SUPERADMIN.
  *
  * Es idempotente: se puede ejecutar las veces que haga falta.
  *   npm run db:seed
@@ -101,7 +102,12 @@ const DEMO = {
   admin: {
     email: process.env.SEED_ADMIN_EMAIL || "admin@mentoriamath.local",
     password: process.env.SEED_ADMIN_PASSWORD || "Admin-2026",
-    nombre: "Administrador del sistema",
+    nombre: "Administrador de la plataforma",
+  },
+  director: {
+    email: process.env.SEED_DIRECTOR_EMAIL || "director@mentoriamath.local",
+    password: process.env.SEED_DIRECTOR_PASSWORD || "Director-2026",
+    nombre: "Dirección del centro",
   },
   docente: {
     email: process.env.SEED_DOCENTE_EMAIL || "docente@mentoriamath.local",
@@ -122,30 +128,54 @@ async function main() {
   console.log(`  ✓ Materia: ${matematicas.nombre}`);
 
   // 2. Árbol de conocimiento
+  //
+  // Se anota la raíz de cada motor para poder colgar de ella las reglas del
+  // catálogo base: en el MVP 2 las reglas pertenecen a un tema, y sin este
+  // vínculo el panel docente mostraría el temario de fábrica sin sus reglas.
+  const raicesPorMotor = new Map<TemaEnum, string>();
   let nodos = 0;
   for (const raiz of ARBOL) {
     const padre = await prisma.nodoConocimiento.upsert({
       where: { clave: raiz.clave },
-      update: { titulo: raiz.titulo, descripcion: raiz.descripcion },
-      create: {
-        clave: raiz.clave,
-        tema: raiz.tema,
+      // El catálogo base es contenido publicado, no borrador: es lo que el
+      // alumno ya podía usar en el PMV 1 y debe seguir usando.
+      update: {
         titulo: raiz.titulo,
         descripcion: raiz.descripcion,
+        materiaId: matematicas.id,
+        estado: "PUBLICADO",
+      },
+      create: {
+        clave: raiz.clave,
+        motor: raiz.tema,
+        titulo: raiz.titulo,
+        descripcion: raiz.descripcion,
+        materiaId: matematicas.id,
+        estado: "PUBLICADO",
       },
     });
+    raicesPorMotor.set(raiz.tema, padre.id);
     nodos++;
     for (const [i, hijo] of raiz.hijos.entries()) {
       await prisma.nodoConocimiento.upsert({
         where: { clave: hijo.clave },
-        update: { titulo: hijo.titulo, nivel: hijo.nivel, padreId: padre.id, orden: i },
-        create: {
-          clave: hijo.clave,
-          tema: raiz.tema,
+        update: {
           titulo: hijo.titulo,
           nivel: hijo.nivel,
           padreId: padre.id,
           orden: i,
+          materiaId: matematicas.id,
+          estado: "PUBLICADO",
+        },
+        create: {
+          clave: hijo.clave,
+          motor: raiz.tema,
+          titulo: hijo.titulo,
+          nivel: hijo.nivel,
+          padreId: padre.id,
+          orden: i,
+          materiaId: matematicas.id,
+          estado: "PUBLICADO",
         },
       });
       nodos++;
@@ -208,6 +238,7 @@ async function main() {
       where: { clave: r.clave },
       update: {
         tema: r.tema,
+        nodoId: raicesPorMotor.get(r.tema) ?? null,
         orden: r.orden,
         nombre: r.nombre,
         enunciado: r.enunciado,
@@ -219,6 +250,7 @@ async function main() {
       create: {
         clave: r.clave,
         tema: r.tema,
+        nodoId: raicesPorMotor.get(r.tema) ?? null,
         orden: r.orden,
         nombre: r.nombre,
         enunciado: r.enunciado,
@@ -258,15 +290,29 @@ async function main() {
       continue;
     }
     await prisma.ejercicio.upsert({
-      where: { tema_nivel_enunciado: { tema: e.tema as Tema, nivel: e.nivel as NivelAcademico, enunciado: e.enunciado } },
-      update: { respuestaCorrecta: respuesta, validado: true, metadatos: { nivelMotor: e.nivelMotor } },
+      where: {
+        motor_nivel_enunciado: {
+          motor: e.tema as Tema,
+          nivel: e.nivel as NivelAcademico,
+          enunciado: e.enunciado,
+        },
+      },
+      update: {
+        respuestaCorrecta: respuesta,
+        validado: true,
+        estado: "PUBLICADO",
+        nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
+        metadatos: { nivelMotor: e.nivelMotor },
+      },
       create: {
-        tema: e.tema as Tema,
+        motor: e.tema as Tema,
         nivel: e.nivel as NivelAcademico,
         enunciado: e.enunciado,
         respuestaCorrecta: respuesta,
         origen: "DETERMINISTA",
         validado: true,
+        estado: "PUBLICADO",
+        nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
         metadatos: { nivelMotor: e.nivelMotor },
       },
     });
@@ -282,7 +328,8 @@ async function main() {
 
   // 4. Usuarios que el registro público no crea
   for (const [rol, datosUsuario] of [
-    ["ADMIN", DEMO.admin],
+    ["SUPERADMIN", DEMO.admin],
+    ["DIRECTOR", DEMO.director],
     ["DOCENTE", DEMO.docente],
   ] as const) {
     const passwordHash = await bcrypt.hash(datosUsuario.password, 10);
@@ -301,8 +348,9 @@ async function main() {
 
   console.log("\n  Semilla completada.");
   console.log("  Credenciales de demostración (cámbialas antes de desplegar):");
-  console.log(`    ADMIN   → ${DEMO.admin.email} / ${DEMO.admin.password}`);
-  console.log(`    DOCENTE → ${DEMO.docente.email} / ${DEMO.docente.password}`);
+  console.log(`    SUPERADMIN → ${DEMO.admin.email} / ${DEMO.admin.password}`);
+  console.log(`    DIRECTOR   → ${DEMO.director.email} / ${DEMO.director.password}`);
+  console.log(`    DOCENTE    → ${DEMO.docente.email} / ${DEMO.docente.password}`);
   console.log("    ESTUDIANTE → regístrate en http://localhost:3000/registro\n");
 }
 

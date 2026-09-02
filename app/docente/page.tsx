@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Cabecera } from "@/components/cabecera";
+import { NavegacionDocente } from "@/components/docente/navegacion";
+import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
 import {
   Card,
@@ -31,11 +34,16 @@ export const dynamic = "force-dynamic";
  * atasca el grupo. Todo sale de las tablas que la lección lleva llenando:
  * sesiones_aprendizaje, registros_progreso y registros_error.
  *
- * Sirve además como comprobación visible de que el RBAC funciona: esta ruta
- * sólo la abren DOCENTE y ADMIN.
+ * Sirve además como comprobación visible de que el RBAC funciona: esta ruta la
+ * abren DOCENTE, DIRECTOR y SUPERADMIN.
+ *
+ * MVP 2. El panel gana una portada de AUTORÍA: desde aquí se entra al currículo,
+ * al alta de temas y al banco de ejercicios, con el recuento de lo que hay en
+ * cada sitio. Es lo primero que ve el docente al entrar y responde a la pregunta
+ * con la que llega: "¿qué tengo montado y qué me falta?".
  */
 export default async function PanelDocente() {
-  const [perfiles, intentos, errores] = await Promise.all([
+  const [perfiles, intentos, errores, temasPublicados, temasBorrador, ejerciciosValidados, ejerciciosTotales, reglas] = await Promise.all([
     prisma.perfilEstudiante.findMany({
       orderBy: { creadoEn: "desc" },
       take: 50,
@@ -62,7 +70,36 @@ export default async function PanelDocente() {
     prisma.registroError.findMany({
       select: { tema: true, tipoError: true, ocurrencias: true },
     }),
+    prisma.nodoConocimiento.count({ where: { estado: "PUBLICADO" } }),
+    prisma.nodoConocimiento.count({ where: { estado: "BORRADOR" } }),
+    prisma.ejercicio.count({ where: { validado: true } }),
+    prisma.ejercicio.count(),
+    prisma.reglaMatematica.count(),
   ]);
+
+  const autoria = [
+    {
+      href: "/docente/curriculo",
+      titulo: "Currículo",
+      descripcion: "Asignaturas, temas y subtemas.",
+      cifra: `${temasPublicados} publicado(s)`,
+      pie: `${temasBorrador} en borrador`,
+    },
+    {
+      href: "/docente/crear-tema",
+      titulo: "Crear tema",
+      descripcion: "Nuevo tema con sus reglas pedagógicas.",
+      cifra: `${reglas} regla(s)`,
+      pie: "en todo el temario",
+    },
+    {
+      href: "/docente/ejercicios",
+      titulo: "Ejercicios",
+      descripcion: "Banco con validación matemática en servidor.",
+      cifra: `${ejerciciosValidados} de ${ejerciciosTotales}`,
+      pie: "verificados por el motor",
+    },
+  ];
 
   const enBruto = perfiles.map((p) => ({
     perfilId: p.id,
@@ -81,12 +118,33 @@ export default async function PanelDocente() {
   return (
     <div className="min-h-screen">
       <Cabecera />
+      <NavegacionDocente />
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Panel docente</h1>
           <p className="text-muted-foreground">
             Estudiantes registrados y nivel asignado por el diagnóstico inicial.
           </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {autoria.map((a) => (
+            <Card key={a.href} className="flex flex-col">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">{a.titulo}</CardTitle>
+                <CardDescription>{a.descripcion}</CardDescription>
+              </CardHeader>
+              <CardContent className="mt-auto space-y-3">
+                <div>
+                  <p className="text-2xl font-semibold tabular-nums">{a.cifra}</p>
+                  <p className="text-xs text-muted-foreground">{a.pie}</p>
+                </div>
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <Link href={a.href}>Abrir</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
