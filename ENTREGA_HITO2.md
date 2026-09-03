@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.766 comprobaciones automáticas, 0
-fallos**, de las cuales **139 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.791 comprobaciones automáticas, 0
+fallos**, de las cuales **164 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -45,6 +45,13 @@ Cuando varias piezas comparten clase —las tres cifras de una columna—, el
 recuadro abarca a todas: así sale la caja vertical sobre la columna, que es
 exactamente lo que pedía el pliego.
 
+Y por el mismo camino se resuelve el **revelado progresivo**: cada cifra que
+todavía no toca lleva una clase `pz-rev-N` y arranca invisible; cuando la
+lección llega al paso N, el componente le sube la opacidad. Las piezas ocultas
+siguen ocupando su sitio, así que la fórmula no se mueve al aparecer y las cajas
+medidas al montar la escena siguen siendo válidas. Tampoco aquí se recompone
+nada.
+
 Las medidas se rehacen al cambiar de escena y al cambiar el tamaño
 (`ResizeObserver`, y también cuando terminan de cargar las fuentes de KaTeX).
 **No** se rehacen al cambiar de foco, que es lo que ocurre veinte veces por
@@ -59,13 +66,18 @@ determinista: no interviene el modelo.
 
 ### Cuenta en columna — llevadas y reagrupaciones
 
-`24 + 17` se dispone en vertical, con el **1 de la llevada escrito encima de las
-decenas**, y se recorre de derecha a izquierda:
+La cuenta **no aparece resuelta**: empieza con los dos sumandos y cada columna
+suelta su cifra cuando le toca. `234 + 178` da cinco pasos:
 
-- Caja sobre las unidades → *«Unidades: 4 más 7 son 11. Escribo 1 y llevo 1.»*
-  con el rótulo **llevo 1** sobre la caja.
-- Caja sobre las decenas → *«Decenas: 2 más 1 más 1 que llevábamos son 4.»*
-- Óvalo sobre el resultado → *«El resultado es 41.»*
+1. Sólo los sumandos, la raya y el signo. *«Vamos a sumar 234 más 178, columna
+   por columna.»*
+2. Caja sobre las **unidades** → *«4 más 8 son 12. Escribo 2 y llevo 1.»*
+   Aparecen el **2** debajo y el **1** de llevada encima de las decenas, con el
+   rótulo **llevo 1**.
+3. La caja se mueve a las **decenas** → *«3 más 7 más 1 que llevábamos son 11.
+   Escribo 1 y llevo 1.»* Aparecen el **1** debajo y la nueva llevada.
+4. Caja sobre las **centenas** → *«2 más 1 más 1 son 4.»*
+5. Óvalo sobre el resultado completo → *«El resultado es 412.»*
 
 En la resta, la reagrupación se narra con las dos cifras, la escrita y la
 rebajada: `52 - 27` dice *«a 2 no le puedo quitar 7, así que pido prestada una
@@ -165,12 +177,21 @@ con `prefers-reduced-motion`.
 ## 6. Modo proyección
 
 Botón en la cabecera del panel. Lleva el bloque a **pantalla completa** con la
-API del navegador y le aplica el tema de alto contraste:
+API del navegador y monta el escenario del aula: **pizarra oscura, avatar en un
+lateral y la fórmula ocupando el resto**.
 
-- tipografía escalada (`--pz-escala`), fondo blanco puro / negro puro,
-- **rayas de KaTeX engordadas** —la de la fracción, la de la cuenta en columna,
-  son bordes de 1 px y proyectadas desaparecen—,
-- trazo del resaltado a 5 px y rótulos más grandes.
+- **Tipografía escalada al ancho de la pantalla**: `clamp(2.25rem, 6.5vw,
+  4.5rem)` para la fórmula, que en una pantalla de aula equivale a lo que en
+  Tailwind serían `text-4xl`–`text-6xl`. El pie narrado y los mandos escalan con
+  ella.
+- **Lienzo alto** (`min-height: min(58vh, 34rem)`): la fórmula se centra en un
+  espacio grande en lugar de quedar en un renglón perdido.
+- **Avatar siempre a la vista**, a `clamp(7rem, 13vw, 15rem)` en la columna
+  izquierda, con su estado pedagógico en marcha. Por debajo de 1024 px cede el
+  sitio a la fórmula.
+- **Alto contraste**: fondo de pizarra oscura, texto blanco, **rayas de KaTeX a
+  4 px** —son bordes de 1 px y proyectadas desaparecen— y resaltados en ámbar,
+  que es el color de tiza que mejor aguanta un proyector.
 
 Salir con Escape o con el botón del navegador se detecta (`fullscreenchange`),
 no se supone. Y si el navegador deniega la pantalla completa —pasa dentro de
@@ -216,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 121 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 139
+node qa/hito2.mjs                                  # sin servidor: 146 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 164
 ```
 
 ---
@@ -229,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 139 | 0 |
+| `qa/hito2.mjs` (este hito) | 164 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -237,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.766** | **0** |
+| **Total** | **1.791** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -289,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 139 comprobaciones del hito |
+| `qa/hito2.mjs` | 164 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -300,3 +321,56 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `components/leccion/aula.tsx` | Monta el panel animado, le pasa la voz y cede el turno de palabra |
 | `components/docente/formulario-tema.tsx` | Orden de bloques del backlog y aviso de la casilla practicable |
 | `app/globals.css` | Animaciones nuevas del avatar, trazos de la pizarra y tema de proyección |
+
+---
+
+## 12. Correcciones tras la prueba del cliente
+
+Dos observaciones al probar el despliegue, las dos certeras. Esto es lo que se
+ha cambiado.
+
+### 1. La cuenta aparecía ya resuelta
+
+**El problema.** En el primer paso la suma se mostraba entera —resultado abajo
+y llevadas arriba— y el resaltado se limitaba a pasear un recuadro por encima.
+Eso no es una lección animada: es un resultado con adornos.
+
+**Qué ocurre ahora.** Cada cifra aparece en el paso que la calcula, con el
+recorrido que describía el pliego (arriba, sección 3): sumandos → unidades (con
+su cifra y su llevada) → decenas → centenas → resultado completo, y el foco
+coordinado con la locución.
+
+**Cómo, sin romper lo anterior.** El guion marca cada pieza pendiente con
+`pz-rev-N` y la hoja de estilos las arranca invisibles; el componente sube la
+opacidad de las que ya tocan. **No se recompone la fórmula** —seguiría siendo el
+parpadeo que el pliego prohíbe— y, como lo oculto sigue ocupando su sitio, ni la
+fórmula se mueve ni hay que volver a medir las cajas.
+
+Lo mismo se aplicó al despeje: lo que se resta al otro lado aparece al cancelar,
+y la solución, en el último paso. Antes se leía la respuesta antes de la
+pregunta.
+
+**El contador también estaba mal.** Decía «Paso 1 de 4» contando escenas
+mientras por dentro daba cuatro pasos, así que desde fuera parecía que no
+avanzaba. Ahora cuenta los pasos de la animación (`Paso 2 de 5`) y, si hay más
+de una línea, lo indica aparte.
+
+### 2. El modo proyección no escalaba
+
+**El problema.** En pantalla grande la fórmula quedaba diminuta en medio de un
+lienzo en blanco, y el avatar desaparecía.
+
+**Qué ocurre ahora.** Pizarra oscura de aula, fórmula escalada al ancho de la
+pantalla sobre un lienzo alto, avatar visible en el lateral con su estado
+pedagógico, rayas de KaTeX a 4 px, resaltados en ámbar y mandos agrandados para
+una pantalla táctil. El detalle está en la sección 6.
+
+### Comprobado
+
+`qa/hito2.mjs` pasa de 139 a **164 comprobaciones**. Las nuevas fijan que la
+cifra de cada columna y cada llevada se destapan en el paso que las calcula
+—verificado también como regla general sobre seis cuentas, sumas y restas—, que
+en el paso de entrada no hay nada destapado, que la solución del despeje llega
+la última, y que el tema de proyección escala con `vw`, reserva lienzo, deja
+sitio al avatar y usa pizarra oscura. Suite completa: **1.791 comprobaciones, 0
+fallos**.

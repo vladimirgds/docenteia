@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { TextoMatematico } from "@/components/math";
 import { Button } from "@/components/ui/button";
 import { useSincronizadorLeccion } from "@/components/leccion/sincronizador-leccion";
@@ -129,6 +130,29 @@ export function PizarraAnimada({
     setCajas({});
     medir();
   }, [medir, html]);
+
+  /**
+   * LO QUE SE VA DESTAPANDO.
+   *
+   * La cuenta empieza con los dos sumandos y nada más; cada columna suelta su
+   * cifra del resultado y su llevada cuando le toca. El guion lo dice con una
+   * clase `pz-rev-N` por pieza: aquí sólo se comparan números y se cambia una
+   * opacidad.
+   *
+   * Se hace tocando el DOM y no rehaciendo el HTML A PROPÓSITO: recomponer la
+   * fórmula en cada paso es exactamente el parpadeo que el pliego pide evitar.
+   * Y como las piezas ocultas siguen ocupando su sitio, las cajas medidas al
+   * montar la escena valen igual cuando aparecen.
+   */
+  useEffect(() => {
+    const raiz = contenedor.current;
+    if (!raiz) return;
+    for (const pieza of raiz.querySelectorAll<HTMLElement>("[class*='pz-rev-']")) {
+      const marca = /pz-rev-(\d+)/.exec(pieza.getAttribute("class") ?? "");
+      if (!marca) continue;
+      pieza.style.opacity = foco >= Number(marca[1]) ? "1" : "0";
+    }
+  }, [html, foco]);
 
   useEffect(() => {
     const raiz = contenedor.current;
@@ -360,15 +384,22 @@ export function PanelAnimado({
       ref={marco}
       className={cn(
         "rounded-lg border bg-card p-4",
-        proyeccion && "modo-proyeccion flex h-full flex-col justify-center overflow-y-auto",
+        proyeccion && "modo-proyeccion flex h-full flex-col overflow-y-auto",
         className,
       )}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="pz-cabecera mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <h3 className="text-sm font-semibold">Paso a paso animado</h3>
+          {/*
+            El paso que se cuenta es el de la ANIMACIÓN —la entrada y luego cada
+            resaltado—, no la escena. Contando escenas, una cuenta de tres
+            columnas decía "paso 1 de 4" mientras por dentro daba cuatro pasos,
+            y desde fuera parecía que no avanzaba.
+          */}
           <span className="text-xs text-muted-foreground tabular-nums">
-            Paso {estado.escena + 1} de {estado.escenas}
+            Paso {estado.foco + 2} de {estado.segmentos}
+            {estado.escenas > 1 ? ` · línea ${estado.escena + 1}/${estado.escenas}` : ""}
           </span>
         </div>
         <Button
@@ -382,7 +413,20 @@ export function PanelAnimado({
         </Button>
       </div>
 
-      <PizarraAnimada escena={escenaActual} foco={estado.foco} proyeccion={proyeccion} />
+      {/*
+        En proyección la pizarra comparte escenario con el avatar: el tutor
+        tiene que seguir a la vista del aula mientras la fórmula ocupa el resto
+        de la pantalla. Fuera de proyección no se duplica —el avatar ya está en
+        su tarjeta— y la pizarra ocupa todo el ancho.
+      */}
+      <div className="pz-escenario">
+        {proyeccion && (
+          <div className="pz-avatar">
+            <Avatar2D estado={estado.avatar} hablando={enMarcha && estado.modo === "voz"} />
+          </div>
+        )}
+        <PizarraAnimada escena={escenaActual} foco={estado.foco} proyeccion={proyeccion} />
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {enMarcha ? (

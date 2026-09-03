@@ -245,25 +245,83 @@
   fill: hsl(38 96% 60%);
 }
 
-/* ── Modo proyección ────────────────────────────────────────────────────────
-   Para la pizarra digital del aula: se mira desde cuatro metros y con la luz
-   encendida. Tipografía escalada, trazos gruesos y contraste máximo; el gris
-   medio de la interfaz normal, a esa distancia, no se ve. */
-.modo-proyeccion {
-  --pz-escala: 1.35;
-  background: hsl(0 0% 100%);
-  color: hsl(0 0% 0%);
-  font-size: calc(1rem * var(--pz-escala));
+/* ── Revelado progresivo ────────────────────────────────────────────────────
+   La cuenta no empieza resuelta: cada cifra del resultado y cada llevada
+   aparecen en su paso. Las piezas se marcan con `pz-rev-N` desde el guion y
+   arrancan invisibles; el componente sube la opacidad cuando le toca a cada
+   una. Siguen ocupando su sitio, así que la fórmula no se mueve al aparecer y
+   los recuadros medidos al montar la escena siguen valiendo. */
+.pz-animada [class*="pz-rev-"] {
+  opacity: 0;
+  transition: opacity 300ms ease-in-out;
 }
 
-.dark .modo-proyeccion {
-  background: hsl(0 0% 4%);
+@media (prefers-reduced-motion: reduce) {
+  .pz-animada [class*="pz-rev-"] {
+    transition: none;
+  }
+}
+
+/* ── Modo proyección ────────────────────────────────────────────────────────
+   Para la pizarra digital del aula: se mira desde el fondo de la clase, con la
+   luz encendida y sobre un proyector que come contraste. Pizarra oscura,
+   tipografía escalada al ancho de la pantalla, trazos gruesos y el avatar
+   siempre a la vista en un lateral. */
+.modo-proyeccion {
+  --pz-escala: 1.35;
+  background: hsl(222 47% 8%);
+  color: hsl(0 0% 100%);
+  padding: clamp(1rem, 3vw, 2.5rem);
+  gap: clamp(0.75rem, 2vh, 1.5rem);
+}
+
+/* El escenario: avatar a un lado, fórmula ocupando el resto. Por debajo de
+   1024 px (una tablet en vertical enchufada a la pantalla del aula) se apilan,
+   porque un avatar de 18vw dejaría la fórmula en un canal estrecho. */
+.modo-proyeccion .pz-escenario {
+  display: grid;
+  grid-template-columns: minmax(9rem, 16vw) 1fr;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 3rem);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 1024px) {
+  .modo-proyeccion .pz-escenario {
+    grid-template-columns: 1fr;
+  }
+  .modo-proyeccion .pz-avatar {
+    display: none;
+  }
+}
+
+/* El avatar, a tamaño de aula: la regla gana a las clases de utilidad del SVG
+   por especificidad, así que el componente no necesita saber nada de esto. */
+.modo-proyeccion .pz-avatar svg {
+  width: clamp(7rem, 13vw, 15rem);
+  height: auto;
+}
+
+.modo-proyeccion .pz-avatar span {
+  font-size: clamp(0.9rem, 1.4vw, 1.4rem);
   color: hsl(0 0% 100%);
 }
 
+/* La fórmula: grande de verdad y centrada en su propio lienzo. Sin la altura
+   mínima quedaba diminuta en medio de la pantalla, que es justo lo que el aula
+   no puede leer. */
+.modo-proyeccion .pz-animada {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: min(58vh, 34rem);
+}
+
 .modo-proyeccion .katex {
-  font-size: calc(1.08em * var(--pz-escala));
+  font-size: clamp(2.25rem, 6.5vw, 4.5rem);
   font-weight: 600;
+  color: hsl(0 0% 100%);
 }
 
 /* Las rayas de KaTeX —la de la fracción, la de la cuenta en columna— son
@@ -272,21 +330,52 @@
 .modo-proyeccion .katex .hline,
 .modo-proyeccion .katex .overline .overline-line,
 .modo-proyeccion .katex .underline .underline-line {
-  border-bottom-width: 2.5px;
-  min-height: 2.5px;
+  border-bottom-width: 4px;
+  min-height: 4px;
+  border-color: hsl(0 0% 100%);
 }
 
+/* Sobre pizarra oscura el azul de la interfaz se apaga: el resaltado pasa al
+   ámbar, que es el color de tiza que mejor aguanta un proyector. */
 .modo-proyeccion .pz-trazo {
-  stroke-width: 5;
+  stroke: hsl(45 96% 60%);
+  stroke-width: 6;
+}
+
+.modo-proyeccion .pz-resaltado[data-tipo="tachado"] .pz-trazo {
+  stroke: hsl(0 90% 68%);
 }
 
 .modo-proyeccion .pz-etiqueta {
-  font-size: 15px;
+  fill: hsl(45 96% 60%);
+  font-size: clamp(1rem, 1.8vw, 1.75rem);
 }
 
 .modo-proyeccion .pz-pie {
-  font-size: 1rem;
-  color: inherit;
+  font-size: clamp(1.05rem, 2vw, 1.75rem);
+  color: hsl(210 40% 92%);
+  max-width: 60ch;
+  margin-inline: auto;
+}
+
+/* Cabecera y mandos, legibles y pulsables desde una pantalla táctil de aula. */
+.modo-proyeccion .pz-cabecera h3,
+.modo-proyeccion .pz-cabecera span {
+  font-size: clamp(0.95rem, 1.5vw, 1.35rem);
+  color: hsl(210 40% 92%);
+}
+
+.modo-proyeccion button {
+  font-size: clamp(0.95rem, 1.3vw, 1.25rem);
+  padding: 0.65rem 1.1rem;
+  height: auto;
+  color: hsl(0 0% 100%);
+  border-color: hsl(210 40% 60% / 0.5);
+}
+
+.modo-proyeccion button svg {
+  width: 1.25em;
+  height: 1.25em;
 }
 
 /* En proyección, el resaltado ya pasado se ve más que en pantalla: de lejos, un

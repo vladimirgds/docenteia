@@ -99,6 +99,28 @@ export function escenaDeColumna(texto: string, id: string): Escena | null {
   const dr = cifras(op.resultado, ancho);
   const marcas = marcasDeColumna(op, ancho);
 
+  /**
+   * EN QUÉ PASO APARECE CADA CIFRA.
+   *
+   * La cuenta NO se muestra resuelta desde el principio: al empezar sólo están
+   * los dos sumandos, y cada columna va soltando su cifra del resultado y su
+   * llevada cuando le toca. Verla ya hecha y limitarse a pasear un recuadro por
+   * encima no es una lección animada; es un resultado con adornos.
+   *
+   * Los focos recorren las columnas de derecha a izquierda: el foco `f` opera
+   * la columna `ancho - 1 - f`. De ahí salen las dos cuentas:
+   *
+   *   · la cifra del resultado de la columna `i` aparece en el foco `ancho-1-i`;
+   *   · la llevada escrita sobre la columna `j` la produce la columna `j+1`, así
+   *     que aparece en el foco `ancho-2-j`, a la vez que la cifra de abajo.
+   */
+  const pasoDeColumna = (i: number) => ancho - 1 - i;
+  const pasoDeMarca = (j: number) => ancho - 2 - j;
+
+  /** Une la clase de la columna con la del paso en que la pieza se revela. */
+  const conRevelado = (clases: string, paso: number, valor: string) =>
+    marcar(`${clases} pz-rev-${Math.max(0, paso)}`, valor);
+
   // Cada celda lleva la clase de SU columna; el recuadro que las abarca a todas
   // es lo que dibuja la caja vertical.
   const celda = (columna: number, valor: string) =>
@@ -107,16 +129,26 @@ export function escenaDeColumna(texto: string, id: string): Escena | null {
   const filas: string[] = [];
   if (marcas.some(Boolean)) {
     filas.push(
-      ["", ...marcas.map((m, i) => (m ? marcar(`pz-llevada-${i}`, `\\scriptstyle ${m}`) : ""))].join(
-        " & ",
-      ),
+      [
+        "",
+        ...marcas.map((m, j) =>
+          m ? conRevelado(`pz-llevada-${j}`, pasoDeMarca(j), `\\scriptstyle ${m}`) : "",
+        ),
+      ].join(" & "),
     );
   }
   filas.push(["", ...da.map((d, i) => celda(i, d))].join(" & "));
   filas.push([op.operador, ...db.map((d, i) => celda(i, d))].join(" & "));
 
   const cuerpo = filas.join(" \\\\ ") + " \\\\ \\hline";
-  const total = " " + ["", ...dr.map((d, i) => marcar("pz-resultado", celda(i, d)))].join(" & ");
+  const total =
+    " " +
+    [
+      "",
+      ...dr.map((d, i) =>
+        d === "" ? "" : conRevelado(`pz-resultado pz-col-${i}`, pasoDeColumna(i), d),
+      ),
+    ].join(" & ");
   const latex = `\\begin{array}{${"r" + "c".repeat(ancho)}} ${cuerpo}${total} \\end{array}`;
 
   return {
@@ -352,12 +384,26 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
     ? `${coeficiente === -1 ? "-" : ""}${variable}`
     : `${marcar("pz-coef-despeje", String(coeficiente))}${variable}`;
   const terminoLatex = b === 0 ? "" : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela", String(Math.abs(b)))}`;
-  const compensacion = b === 0 ? "" : ` ${b > 0 ? "-" : "+"} ${marcar("pz-cancela", String(Math.abs(b)))}`;
+
+  // Cuántos focos habrá, para saber en cuál se destapa la solución. La ecuación
+  // no puede empezar con el resultado escrito: eso es dar la respuesta antes de
+  // la pregunta.
+  const focosPrevistos = (b !== 0 ? 1 : 0) + (unitario ? 0 : 1) + 1;
+  const pasoSolucion = focosPrevistos - 1;
+
+  // Lo que se resta a la derecha aparece en el momento de cancelar, no antes.
+  const compensacion =
+    b === 0
+      ? ""
+      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela", String(Math.abs(b)))}`)}`;
 
   const solucion = formatearRacional(c - b, coeficiente);
   const latex =
     `${izquierda}${terminoLatex} = ${c}${compensacion}` +
-    ` \\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`;
+    ` ${marcar(
+      `pz-rev-${pasoSolucion}`,
+      `\\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,
+    )}`;
 
   const focos: Foco[] = [];
   if (b !== 0) {

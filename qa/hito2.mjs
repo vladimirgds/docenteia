@@ -68,6 +68,41 @@ function titulo(texto) {
   console.log(`\n── ${texto} ${"─".repeat(Math.max(0, 58 - texto.length))}`);
 }
 
+/**
+ * Las marcas del LaTeX, ya separadas en clases y contenido.
+ *
+ * Una pieza puede llevar varias clases a la vez —"pz-resultado pz-col-2
+ * pz-rev-0"—, así que buscar la cadena `\htmlClass{pz-col-2}` a pelo daría
+ * falsos negativos. Aquí se lee la lista de clases, que es lo que hará el
+ * navegador.
+ */
+function marcas(latex) {
+  return [...String(latex ?? "").matchAll(/\\htmlClass\{([^}]*)\}\{([^{}]*)\}/g)].map(
+    ([, clases, contenido]) => ({
+      clases: clases.trim().split(/\s+/),
+      contenido: contenido.trim(),
+    }),
+  );
+}
+
+/**
+ * ¿Hay alguna pieza marcada con esta clase?
+ *
+ * Se leen sólo las listas de clases, sin mirar el contenido: una marca puede
+ * envolver a otra —el término de un polinomio envuelve a su coeficiente— y
+ * emparejar llaves anidadas con una expresión regular no sale bien.
+ */
+function marcada(latex, clase) {
+  return [...String(latex ?? "").matchAll(/\\htmlClass\{([^}]*)\}/g)]
+    .flatMap(([, clases]) => clases.trim().split(/\s+/))
+    .includes(clase);
+}
+
+/** Lo que envuelve esa clase, para comprobar qué cifra lleva dentro. */
+function contenidoDe(latex, clase) {
+  return marcas(latex).find((m) => m.clases.includes(clase))?.contenido ?? null;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // A. El guion de la pizarra
 // ═════════════════════════════════════════════════════════════════════════════
@@ -99,7 +134,7 @@ titulo("A. Cuenta en columna: columnas, llevadas y reagrupaciones");
   );
   check(
     "la llevada se escribe SOBRE las decenas, no sobre las unidades",
-    escena.latex.includes("\\htmlClass{pz-llevada-0}"),
+    marcada(escena.latex, "pz-llevada-0"),
     escena.latex.slice(0, 80),
   );
   check(
@@ -131,8 +166,8 @@ titulo("A. Cuenta en columna: columnas, llevadas y reagrupaciones");
   );
   check(
     "la marca del préstamo aparece sobre las decenas",
-    escena.latex.includes("\\htmlClass{pz-llevada-0}{\\scriptstyle 4}"),
-    escena.latex.slice(0, 90),
+    contenidoDe(escena.latex, "pz-llevada-0") === "\\scriptstyle 4",
+    String(contenidoDe(escena.latex, "pz-llevada-0")),
   );
   check(
     "el resultado es el correcto",
@@ -173,12 +208,12 @@ titulo("A. Cuenta en columna: columnas, llevadas y reagrupaciones");
   for (const texto of casos) {
     const op = leerSumaOResta(texto);
     const ancho = Math.max(String(op.a).length, String(op.b).length, String(op.resultado).length);
-    const marcas = marcasDeColumna(op, ancho);
+    const esperadas = marcasDeColumna(op, ancho);
     const escena = escenaDeColumna(texto, "e");
-    const enLatex = marcas.every((marca, i) =>
+    const enLatex = esperadas.every((marca, i) =>
       marca
-        ? escena.latex.includes(`\\htmlClass{pz-llevada-${i}}{\\scriptstyle ${marca}}`)
-        : !escena.latex.includes(`\\htmlClass{pz-llevada-${i}}`),
+        ? contenidoDe(escena.latex, `pz-llevada-${i}`) === `\\scriptstyle ${marca}`
+        : !marcada(escena.latex, `pz-llevada-${i}`),
     );
     if (enLatex) coinciden++;
   }
@@ -186,6 +221,99 @@ titulo("A. Cuenta en columna: columnas, llevadas y reagrupaciones");
     "las marcas del guion son las de la aritmética en columna",
     coinciden === casos.length,
     `${coinciden}/${casos.length}`,
+  );
+}
+
+titulo("A1. La cuenta se resuelve PASO A PASO, no de golpe");
+
+{
+  // Lo señaló el cliente probando el despliegue: la suma aparecía ya resuelta
+  // —resultado abajo y llevadas arriba— desde el primer paso, y el resaltado se
+  // limitaba a pasear por encima. Cada cifra tiene que aparecer cuando le toca.
+  const escena = escenaDeColumna("234 + 178", "e");
+
+  /** Las piezas que el guion revela, con el paso en que lo hace. */
+  const revelaciones = [...escena.latex.matchAll(/\\htmlClass\{([^}]*)pz-rev-(\d+)\}\{([^{}]*)\}/g)]
+    .map(([, clases, paso, contenido]) => ({
+      clases: clases.trim(),
+      paso: Number(paso),
+      contenido: contenido.trim(),
+    }));
+
+  check(
+    "la cuenta tiene cinco pasos: entrada, tres columnas y resultado",
+    escena.focos.length + 1 === 5,
+    `${escena.focos.length + 1}`,
+  );
+
+  check(
+    "los sumandos NO se revelan: están desde el primer paso",
+    !/234|178/.test(revelaciones.map((r) => r.contenido).join(" ")) &&
+      escena.latex.includes("\\htmlClass{pz-col-0}{2}"),
+  );
+
+  const resultado = revelaciones.filter((r) => r.clases.includes("pz-resultado"));
+  check("las tres cifras del resultado se revelan una a una", resultado.length === 3);
+  check(
+    "el 2 de las unidades aparece en el paso de las unidades",
+    resultado.some((r) => r.contenido === "2" && r.paso === 0),
+    JSON.stringify(resultado),
+  );
+  check(
+    "el 1 de las decenas, en el paso de las decenas",
+    resultado.some((r) => r.contenido === "1" && r.paso === 1),
+  );
+  check(
+    "y el 4 de las centenas, en el suyo",
+    resultado.some((r) => r.contenido === "4" && r.paso === 2),
+  );
+
+  const llevadas = revelaciones.filter((r) => r.clases.includes("pz-llevada"));
+  check("las dos llevadas también se revelan", llevadas.length === 2);
+  check(
+    "la llevada sobre las decenas aparece a la vez que el 2 de las unidades",
+    llevadas.some((r) => r.clases.includes("pz-llevada-1") && r.paso === 0),
+    JSON.stringify(llevadas),
+  );
+  check(
+    "y la de las centenas, en el paso de las decenas",
+    llevadas.some((r) => r.clases.includes("pz-llevada-0") && r.paso === 1),
+  );
+
+  check(
+    "en el paso de entrada (foco -1) no se ha destapado nada todavía",
+    revelaciones.every((r) => r.paso >= 0),
+  );
+}
+
+{
+  // La regla general, sobre varias cuentas: la cifra de la columna `i` se
+  // revela en el paso `ancho - 1 - i`, y la llevada escrita sobre la columna
+  // `j`, en el paso `ancho - 2 - j`. Si esto se desalinea, la pizarra escribe
+  // una cifra antes de haberla contado.
+  let correctas = 0;
+  const casos = ["24 + 17", "58 + 66", "999 + 1", "52 - 27", "345 - 178", "7 + 8"];
+  for (const texto of casos) {
+    const op = leerSumaOResta(texto);
+    const ancho = Math.max(String(op.a).length, String(op.b).length, String(op.resultado).length);
+    const escena = escenaDeColumna(texto, "e");
+    const revelaciones = [...escena.latex.matchAll(/\\htmlClass\{([^}]*)pz-rev-(\d+)\}\{([^{}]*)\}/g)];
+
+    const bien = revelaciones.every(([, clases, paso]) => {
+      const enResultado = /pz-col-(\d+)/.exec(clases);
+      if (clases.includes("pz-resultado") && enResultado) {
+        return Number(paso) === ancho - 1 - Number(enResultado[1]);
+      }
+      const enLlevada = /pz-llevada-(\d+)/.exec(clases);
+      if (enLlevada) return Number(paso) === Math.max(0, ancho - 2 - Number(enLlevada[1]));
+      return false;
+    });
+    if (bien) correctas++;
+  }
+  check(
+    "cada cifra y cada llevada se destapan en el paso que las calcula",
+    correctas === casos.length,
+    `${correctas}/${casos.length}`,
   );
 }
 
@@ -244,6 +372,24 @@ titulo("A2. Polinomios, despejes y prosa");
     "sin coeficiente escrito no se resalta un 1 que no existe",
     !unitario.latex.includes("pz-coef-despeje") &&
       !unitario.focos.some((f) => f.clase === "pz-coef-despeje"),
+    unitario.latex,
+  );
+
+  // La solución tampoco puede estar escrita desde el principio: sería dar la
+  // respuesta antes de la pregunta.
+  check(
+    "lo que se resta al otro lado aparece al cancelar, no antes",
+    escena.latex.includes("\\htmlClass{pz-rev-0}"),
+    escena.latex,
+  );
+  check(
+    "la solución se destapa en el último paso",
+    escena.latex.includes(`\\htmlClass{pz-rev-${escena.focos.length - 1}}`),
+    escena.latex,
+  );
+  check(
+    "y en el despeje sin coeficiente, también",
+    unitario.latex.includes(`\\htmlClass{pz-rev-${unitario.focos.length - 1}}`),
     unitario.latex,
   );
 }
@@ -306,7 +452,7 @@ titulo("B. Toda escena se compone con KaTeX y conserva sus marcas");
 
   for (const escena of guion) {
     for (const foco of escena.focos) {
-      if (!escena.latex?.includes(`\\htmlClass{${foco.clase}}`)) huerfanos++;
+      if (!marcada(escena.latex, foco.clase)) huerfanos++;
     }
 
     // La prosa no lleva LaTeX a propósito: compuesta como fórmula saldría en
@@ -685,6 +831,48 @@ titulo("D. Máquina de estados del avatar");
     estilos.includes(".modo-proyeccion .katex .frac-line"),
   );
   check("el trazo del resaltado también engorda", /modo-proyeccion \.pz-trazo/.test(estilos));
+
+  // Lo que el cliente echó en falta probando en pantalla grande: la fórmula
+  // quedaba diminuta en medio de un lienzo en blanco y el avatar desaparecía.
+  const bloqueProyeccion = estilos.slice(estilos.indexOf(".modo-proyeccion {"));
+  check(
+    "la fórmula escala con el ancho de la pantalla, no a un tamaño fijo",
+    /\.modo-proyeccion \.katex \{[^}]*clamp\([^)]*vw/.test(bloqueProyeccion),
+  );
+  check(
+    "y ocupa un lienzo alto, no un renglón en medio de la nada",
+    /\.modo-proyeccion \.pz-animada \{[^}]*min-height/.test(bloqueProyeccion),
+  );
+  check(
+    "el avatar se queda a la vista, en un lateral",
+    /\.modo-proyeccion \.pz-escenario \{[^}]*grid-template-columns/.test(bloqueProyeccion) &&
+      bloqueProyeccion.includes(".modo-proyeccion .pz-avatar svg"),
+  );
+  check(
+    "el tema es de pizarra oscura y texto claro",
+    /\.modo-proyeccion \{[^}]*background: hsl\(222 47% 8%\)/.test(bloqueProyeccion) &&
+      /\.modo-proyeccion \.katex \{[^}]*color: hsl\(0 0% 100%\)/.test(bloqueProyeccion),
+  );
+  check(
+    "los mandos se agrandan para una pantalla táctil de aula",
+    /\.modo-proyeccion button \{[^}]*font-size/.test(bloqueProyeccion),
+  );
+  check(
+    "el panel monta el avatar cuando entra en proyección",
+    panel.includes("proyeccion && (") && panel.includes("<Avatar2D"),
+  );
+  check(
+    "y cuenta los pasos de la animación, no las escenas",
+    panel.includes("estado.foco + 2"),
+  );
+  check(
+    "las piezas por destapar arrancan invisibles",
+    /\.pz-animada \[class\*="pz-rev-"\] \{[^}]*opacity: 0/.test(estilos),
+  );
+  check(
+    "y se destapan cambiando una opacidad, sin recomponer la fórmula",
+    panel.includes("pz-rev-") && panel.includes("style.opacity"),
+  );
   check(
     "la pantalla completa se pide con la API del navegador",
     panel.includes("requestFullscreen") && panel.includes("exitFullscreen"),
@@ -798,6 +986,20 @@ if (!vivo) {
     }
     check("la pizarra animada viaja en el paquete de la lección", conPizarra);
     check("y con ella el modo proyección", conProyeccion);
+
+    // Los estilos no van en el mismo sitio que el código: el resaltado y el
+    // tema de proyección son CSS, y si su hoja no llega a esta ruta la pizarra
+    // se pinta sin recuadros y sin escalar, sin dar un solo error.
+    const hojas = [...html.matchAll(/href="(\/_next\/static\/css\/[^"]+)"/g)].map((m) => m[1]);
+    let conEstilos = false;
+    let conRevelado = false;
+    for (const hoja of hojas) {
+      const css = await (await fetch(`${BASE}${hoja}`)).text();
+      if (css.includes("modo-proyeccion") && css.includes("pz-trazo")) conEstilos = true;
+      if (css.includes("pz-rev-")) conRevelado = true;
+    }
+    check("los estilos de la pizarra y de proyección llegan a la ruta", conEstilos);
+    check("y las piezas por destapar arrancan invisibles en el navegador", conRevelado);
   }
 
   const docente = await iniciarSesion(
