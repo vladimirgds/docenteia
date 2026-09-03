@@ -518,6 +518,102 @@ if (!salud) {
     );
     check("y queda colgada de su tema", reglaGuardada?.nodoId === temaId);
 
+    // 2d. LO QUE REPORTÓ EL CLIENTE SOBRE EL FORMULARIO DE REGLAS.
+    //
+    //   · La barra invertida DUPLICADA que deja un copiado desde código
+    //     ("\\frac") convertía la fórmula en texto suelto al componerla.
+    //   · "Se puede practicar" podía quedar marcado en un tema SIN motor, que
+    //     es una promesa que nadie puede cumplir.
+    //   · El nivel vacío de una regla significa "hereda el del tema", no "sin
+    //     nivel": por eso se guarda nulo y no una copia del nivel del tema.
+    const rReglasFormulario = await api(`/api/docente/temas/${temaId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        reglas: [
+          {
+            tipo: "REGLA",
+            nombre: `Regla con barra doble ${sufijo}`,
+            enunciado: "\\\\frac{d}{dx}(x^n) = n x^{n-1}",
+            descripcion: "Escrita con la barra duplicada, como al copiar desde código.",
+            ejemplo: "\\\\frac{d}{dx}(3x^4) = 12x^3",
+            practicable: true,
+          },
+        ],
+      }),
+    });
+    check("se guardan las reglas del formulario", rReglasFormulario.status === 200);
+
+    const conBarras = await (await api(`/api/docente/temas/${temaId}`)).json();
+    const reglaBarras = conBarras?.tema?.reglas?.[0];
+    check(
+      "la barra duplicada se corrige al guardar",
+      reglaBarras?.enunciado === "\\frac{d}{dx}(x^n) = n x^{n-1}",
+      JSON.stringify(reglaBarras?.enunciado),
+    );
+    check(
+      "también en el ejemplo",
+      reglaBarras?.ejemplo === "\\frac{d}{dx}(3x^4) = 12x^3",
+      JSON.stringify(reglaBarras?.ejemplo),
+    );
+    check(
+      "el nivel vacío se guarda como heredado del tema",
+      reglaBarras?.nivel === null,
+      String(reglaBarras?.nivel),
+    );
+    check(
+      "y en un tema CON motor sí se admite marcarla practicable",
+      reglaBarras?.practicable === true,
+    );
+
+    // Un tema sin motor no puede tener reglas practicables, aunque se pida.
+    const rSinMotor = await api("/api/docente/temas", {
+      method: "POST",
+      body: JSON.stringify({
+        titulo: `QA Sin motor ${sufijo}`,
+        materiaId,
+        motor: null,
+        reglas: [
+          {
+            tipo: "ESTRATEGIA",
+            nombre: `Estrategia sin motor ${sufijo}`,
+            enunciado: "a + b = b + a",
+            descripcion: "El orden de los sumandos no altera la suma.",
+            practicable: true,
+          },
+        ],
+      }),
+    });
+    const temaSinMotor = await rSinMotor.json().catch(() => ({}));
+    const idSinMotor = temaSinMotor?.tema?.id ?? null;
+    check("se crea un tema sin motor", rSinMotor.status === 201 && Boolean(idSinMotor));
+
+    if (idSinMotor) {
+      const detalleSinMotor = await (await api(`/api/docente/temas/${idSinMotor}`)).json();
+      check(
+        "sin motor, la regla NO queda marcada como practicable aunque se pida",
+        detalleSinMotor?.tema?.reglas?.[0]?.practicable === false,
+        String(detalleSinMotor?.tema?.reglas?.[0]?.practicable),
+      );
+      await api(`/api/docente/temas/${idSinMotor}`, { method: "DELETE" });
+    }
+
+    // Y si a un tema se le QUITA el motor, sus reglas dejan de ser practicables.
+    await api(`/api/docente/temas/${temaId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ motor: null }),
+    });
+    const trasQuitarMotor = await (await api(`/api/docente/temas/${temaId}`)).json();
+    check(
+      "al quitarle el motor a un tema, sus reglas dejan de ser practicables",
+      (trasQuitarMotor?.tema?.reglas ?? []).every((r) => r.practicable === false),
+      (trasQuitarMotor?.tema?.reglas ?? []).map((r) => r.practicable).join(", "),
+    );
+    // Se le devuelve su motor para el resto de la batería.
+    await api(`/api/docente/temas/${temaId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ motor: "ECUACIONES_LINEALES" }),
+    });
+
     // 3. Validación en seco
     const rValidar = await api("/api/docente/ejercicios/validar", {
       method: "POST",

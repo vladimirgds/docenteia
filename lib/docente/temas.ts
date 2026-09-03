@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { claveUnica, generarClave, type Estado, type EntradaRegla, type Motor } from "./curriculo.ts";
+import { normalizarLatex } from "../matematicas/index.ts";
 
 /**
  * Piezas de persistencia del tema, compartidas por las rutas que lo escriben.
@@ -87,11 +88,19 @@ export function reglasParaGuardar(
       tipo: regla.tipo ?? "REGLA",
       orden: regla.orden ?? indice,
       nombre: regla.nombre,
-      enunciado: regla.enunciado,
+      // La barra duplicada de un copiado desde código se corrige aquí también,
+      // no sólo en el formulario: por la API entra contenido igual que por la
+      // pantalla, y lo que se guarda es lo que acabará en la pizarra.
+      enunciado: normalizarLatex(regla.enunciado),
       descripcion: regla.descripcion,
-      ejemplo: regla.ejemplo ?? null,
+      ejemplo: regla.ejemplo ? normalizarLatex(regla.ejemplo) : null,
+      // Vacío = hereda el nivel del tema. No se copia el valor del tema: si se
+      // copiara, cambiar el nivel del tema dejaría las reglas con el viejo.
       nivel: regla.nivel ?? null,
-      practicable: regla.practicable ?? false,
+      // Sin motor no hay quien califique la práctica de una regla, así que
+      // "se puede practicar" no puede quedar marcado. La interfaz ya lo
+      // deshabilita; esto lo garantiza venga de donde venga la petición.
+      practicable: ctx.motor ? (regla.practicable ?? false) : false,
       estado: ctx.estado,
       autorId: ctx.autorId,
     };

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { puedeSerPadre, temaActualizacionSchema, type Estado, type Motor } from "@/lib/docente/curriculo";
 import { SELECCION_TEMA, normalizarEtiquetas, reglasParaGuardar } from "@/lib/docente/temas";
+import { normalizarLatex } from "@/lib/matematicas";
 import { camposDeValidacion, pasosJson } from "@/lib/docente/ejercicios";
 import { validarEjercicio } from "@/lib/docente/validador";
 import type { Parametro } from "@/lib/docente/parametros";
@@ -128,11 +129,13 @@ export async function PATCH(req: Request, { params }: Contexto) {
             data: {
               tipo: regla.tipo ?? "REGLA",
               nombre: regla.nombre,
-              enunciado: regla.enunciado,
+              // Mismas garantías que al crear: la barra duplicada se corrige y
+              // sin motor no queda ninguna regla marcada como practicable.
+              enunciado: normalizarLatex(regla.enunciado),
               descripcion: regla.descripcion,
-              ejemplo: regla.ejemplo ?? null,
+              ejemplo: regla.ejemplo ? normalizarLatex(regla.ejemplo) : null,
               nivel: regla.nivel ?? null,
-              practicable: regla.practicable ?? false,
+              practicable: motor ? (regla.practicable ?? false) : false,
               orden: regla.orden ?? indice,
               tema: motor,
               estado,
@@ -164,6 +167,15 @@ export async function PATCH(req: Request, { params }: Contexto) {
           where: { nodoId: id },
           data: { tema: motor, estado },
         });
+
+        // Y si el tema se quedó SIN motor, ninguna de sus reglas puede seguir
+        // marcada como practicable: ya no hay quien califique esa práctica.
+        if (!motor) {
+          await tx.reglaMatematica.updateMany({
+            where: { nodoId: id },
+            data: { practicable: false },
+          });
+        }
       }
 
       return actualizado;

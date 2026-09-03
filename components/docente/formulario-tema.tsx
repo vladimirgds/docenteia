@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Math } from "@/components/math";
+import { normalizarLatex } from "@/lib/matematicas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -179,11 +180,15 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
         ...(r.id ? { id: r.id } : {}),
         tipo: r.tipo,
         nombre: r.nombre.trim(),
-        enunciado: r.enunciado.trim(),
+        // La barra duplicada que deja un copiado desde código se corrige antes
+        // de guardar, no sólo en la vista previa: lo que se almacena es lo que
+        // verá el alumno en la pizarra.
+        enunciado: normalizarLatex(r.enunciado.trim()),
         descripcion: r.descripcion.trim(),
-        ejemplo: r.ejemplo.trim() || null,
+        ejemplo: normalizarLatex(r.ejemplo.trim()) || null,
+        // Vacío significa "hereda el nivel del tema", no "sin nivel".
         nivel: r.nivel || null,
-        practicable: r.practicable,
+        practicable: motor ? r.practicable : false,
         orden: i,
       })),
     };
@@ -336,7 +341,20 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Select value={motor} onChange={(e) => setMotor(e.target.value)} disabled={!puedeEditar}>
+          <Select
+            value={motor}
+            onChange={(e) => {
+              const elegido = e.target.value;
+              setMotor(elegido);
+              // Al quitar el motor, ninguna regla puede seguir marcada como
+              // practicable: sin motor no hay quien califique esa práctica, y
+              // dejarlo marcado guardaría una incoherencia.
+              if (!elegido) {
+                setReglas((actuales) => actuales.map((r) => ({ ...r, practicable: false })));
+              }
+            }}
+            disabled={!puedeEditar}
+          >
             <option value="">Sin motor (corrección manual)</option>
             {MOTORES_DISPONIBLES.map((m) => (
               <option key={m.motor} value={m.motor}>
@@ -490,6 +508,13 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
             <CardDescription>
               Lo que el tutor explica antes de practicar. Las reglas publicadas de un tema con motor
               aparecen en la lección del alumno.
+              <span className="mt-1 block">
+                El <strong>nivel de cada regla es opcional</strong>: si lo dejas en "Hereda del
+                tema", la regla usa el nivel del tema y lo sigue si mañana lo cambias. Sólo se
+                indica uno propio para marcar una regla más difícil —o más fácil— que el resto del
+                tema; eso afecta a cómo se gradúan sus ejercicios, no a quién los recibe, que lo
+                decide el alcance curricular.
+              </span>
             </CardDescription>
           </div>
           <Button
@@ -576,13 +601,19 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                   <Input
                     id={`enunciado-${i}`}
                     value={regla.enunciado}
-                    placeholder="\\frac{d}{dx}(x^n) = n x^{n-1}"
+                    placeholder={"\\frac{d}{dx}(x^n) = n x^{n-1}"}
                     onChange={(e) => actualizarRegla(i, { enunciado: e.target.value })}
                     disabled={!puedeEditar}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Sintaxis KaTeX, con UNA barra invertida:{" "}
+                    <code>{"\\frac{a}{b}"}</code>, <code>{"x^{2}"}</code>,{" "}
+                    <code>{"\\sqrt{x}"}</code>. Si pegas la fórmula desde código y llega con la
+                    barra duplicada, se corrige sola.
+                  </p>
                   {regla.enunciado.trim() && (
                     <div className="rounded-md border bg-muted/30 px-3 py-2 text-center">
-                      <Math expresion={regla.enunciado} display />
+                      <Math expresion={normalizarLatex(regla.enunciado)} display />
                     </div>
                   )}
                 </div>
@@ -603,13 +634,13 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                   <Input
                     id={`ejemplo-${i}`}
                     value={regla.ejemplo}
-                    placeholder="\\frac{d}{dx}(3x^4) = 12x^3"
+                    placeholder={"\\frac{d}{dx}(3x^4) = 12x^3"}
                     onChange={(e) => actualizarRegla(i, { ejemplo: e.target.value })}
                     disabled={!puedeEditar}
                   />
                   {regla.ejemplo.trim() && (
                     <div className="rounded-md border bg-muted/30 px-3 py-2 text-center">
-                      <Math expresion={regla.ejemplo} display />
+                      <Math expresion={normalizarLatex(regla.ejemplo)} display />
                     </div>
                   )}
                 </div>
@@ -622,7 +653,13 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                     onChange={(e) => actualizarRegla(i, { nivel: e.target.value })}
                     disabled={!puedeEditar}
                   >
-                    <option value="">Sin nivel</option>
+                    {/* El vacío no es "sin nivel": es HEREDAR el del tema. Dejarlo
+                        así mantiene la regla en su sitio cuando el tema cambia de
+                        nivel, en vez de congelar una copia que se queda vieja. */}
+                    <option value="">
+                      Hereda del tema
+                      {nivel ? ` (${ETIQUETA_NIVEL_CURRICULO[nivel as Nivel]})` : " (sin nivel)"}
+                    </option>
                     {NIVELES.map((n) => (
                       <option key={n} value={n}>
                         {ETIQUETA_NIVEL_CURRICULO[n as Nivel]}
@@ -635,14 +672,19 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                   <input
                     type="checkbox"
                     className="h-4 w-4"
-                    checked={regla.practicable}
+                    checked={regla.practicable && Boolean(motor)}
                     onChange={(e) => actualizarRegla(i, { practicable: e.target.checked })}
-                    disabled={!puedeEditar}
+                    // Sin motor no hay nada que pueda calificar la práctica de
+                    // esta regla: marcarlo dejaría guardada una promesa que el
+                    // sistema no puede cumplir.
+                    disabled={!puedeEditar || !motor}
                   />
                   <span>
                     Se puede practicar
                     <span className="block text-xs text-muted-foreground">
-                      Marca sólo si el motor sabe calificar ejercicios de esta regla.
+                      {motor
+                        ? `El motor "${MOTORES_DISPONIBLES.find((m) => m.motor === motor)?.titulo ?? motor}" calificará los ejercicios de esta regla.`
+                        : "No disponible: el tema no tiene motor de corrección, así que nadie puede calificar su práctica."}
                     </span>
                   </span>
                 </label>

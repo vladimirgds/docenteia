@@ -1,11 +1,13 @@
 # Guía de pruebas — correcciones del HITO 1
 
-Cuatro correcciones, una por cada cosa reportada tras verificar el hito:
+Cinco correcciones, una por cada cosa reportada tras verificar el hito:
 
 1. **Derivadas con `e^x` y `ln(x)`** — el motor las daba por "no comprobable".
 2. **La prueba diagnóstica daba derivadas** a un alumno de 3.º de secundaria.
 3. **Nivel ≠ nivel educativo** — faltaba la taxonomía de etapa y curso.
 4. **La lección listaba todos los temas** sin discriminar la etapa del alumno.
+5. **El formulario de reglas**: notación LaTeX, jerarquía del nivel y la casilla
+   de práctica sin motor.
 
 Cada apartado de esta guía se puede comprobar en unos minutos, y al final están
 las baterías automáticas por si prefieres verlo sin tocar la interfaz.
@@ -181,12 +183,72 @@ fallo de infraestructura sería peor que enseñarle una tarjeta de más.
 
 ---
 
+## 5 · El formulario de reglas: notación, nivel y práctica
+
+Tres ajustes pedidos tras revisar `/docente/crear-tema`.
+
+### 5.1 · La vista previa tolera la barra duplicada
+
+**Lo que fallaba:** con una barra (`\frac{a}{b}`) la fórmula se componía al
+instante; con dos (`\\frac{a}{b}`) no. La causa estaba en el propio formulario: los
+textos de ayuda mostraban la versión con **dos barras**, así que el campo estaba
+enseñando la sintaxis equivocada.
+
+1. En cualquier regla, escribe el enunciado con UNA barra: `\frac{a}{b}` →
+   se compone debajo al momento.
+2. Escríbelo ahora con DOS: `\\frac{a}{b}` → **también se compone**. La barra
+   duplicada que deja un copiado desde código se corrige sola.
+3. Debajo del campo tienes la ayuda: *"Sintaxis KaTeX, con UNA barra
+   invertida"*, con ejemplos.
+4. Guarda y vuelve a abrir el tema: lo almacenado es la versión de una barra,
+   no la del copiado. La corrección se aplica también en el servidor, así que
+   vale igual si el contenido entra por la API.
+
+> Se colapsa la barra doble **sólo cuando le sigue una letra**, que es la firma
+> del escape accidental. El `\\frac{a}{b}` de un salto de línea real —el de una
+> matriz o un `egin{cases}`— va seguido de espacio o corchete y se respeta.
+
+### 5.2 · El nivel de la regla hereda el del tema
+
+**La duda planteada:** si el nivel de la regla sobrescribe el del tema o hereda.
+
+**Decisión: hereda.** El desplegable de cada regla ya no dice "Sin nivel" sino
+**"Hereda del tema (Intermedio)"**, mostrando el nivel actual del tema. Sólo se
+indica uno propio para marcar una regla más difícil —o más fácil— que el resto
+del tema.
+
+Se guarda como *heredado*, no como una copia del valor: si mañana cambias el
+nivel del tema, sus reglas lo siguen en lugar de quedarse con el viejo. La
+tarjeta lo explica en pantalla, incluido lo que afecta y lo que no: gradúa la
+dificultad de sus ejercicios, no decide **a quién** le llegan —eso lo hace el
+alcance curricular—.
+
+### 5.3 · "Se puede practicar" depende del motor
+
+**Lo que pedías:** si el tema está en *"Sin motor (corrección manual)"*, la
+casilla debería deshabilitarse o desmarcarse.
+
+1. Pon el tema en **Sin motor**: la casilla de todas sus reglas queda
+   **deshabilitada y desmarcada**, y el texto de ayuda explica por qué —*"el
+   tema no tiene motor de corrección, así que nadie puede calificar su
+   práctica"*—.
+2. Elige un motor: la casilla se habilita y el texto pasa a nombrarlo —*"El
+   motor Ecuaciones lineales calificará los ejercicios de esta regla"*—.
+3. Marca una regla como practicable, guarda, y quita después el motor del tema:
+   al guardar, esa regla deja de ser practicable. No queda ninguna promesa que
+   el sistema no pueda cumplir.
+
+El servidor aplica la misma regla venga la petición de donde venga: en el alta,
+en la edición y también cuando un tema pierde su motor.
+
+---
+
 ## Comprobación automática
 
 ```bash
 npm run qa:diagnostico-nivel   # 94 comprobaciones · etapa, curso, prueba y lección
 npm run qa:matematicas         # 100 comprobaciones · derivadas y equivalencia
-npm run qa:hito1               # 108 comprobaciones · autoría docente
+npm run qa:hito1               # 116 comprobaciones · autoría docente
 ```
 
 Las dos primeras registran alumnos reales contra el servidor (necesitan
@@ -208,11 +270,11 @@ La suite completa —incluida la del PMV 1, sin regresiones— está en verde:
 | --- | --- |
 | `qa/diagnostico-nivel.mjs` | 94 · 0 |
 | `qa/matematicas.mjs` | 100 · 0 |
-| `qa/hito1.mjs` | 108 · 0 |
+| `qa/hito1.mjs` | 116 · 0 |
 | `qa/diagnostico.mjs` | 416 · 0 |
 | `qa/leccion.mjs` | 811 · 0 |
 | `qa/paso1.mjs` · `qa/frontend.mjs` | 72 · 0 · 10 · 0 |
-| **Total** | **1.611 comprobaciones · 0 fallos** |
+| **Total** | **1.619 comprobaciones · 0 fallos** |
 
 ---
 

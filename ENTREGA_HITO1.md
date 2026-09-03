@@ -215,7 +215,7 @@ la aplicación compilada en modo producción:
 
 | Batería | Resultado |
 | --- | --- |
-| `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
+| `npm run qa:hito1` — **nueva** | **116 comprobaciones · 0 fallidas** |
 | `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
 | `npm run qa:diagnostico-nivel` — **nueva** | **94 comprobaciones · 0 fallidas** |
 | `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
@@ -671,3 +671,49 @@ components/leccion/aula.tsx       pinta los temas que recibe, no los cinco fijos
 app/api/sesion/route.ts           403 si el tema no es de su curso
 qa/diagnostico-nivel.mjs          94 comprobaciones (9 nuevas, de esta vista)
 ```
+
+---
+
+## 14. Quinta observación: el formulario de reglas
+
+Tres ajustes sobre `/docente/crear-tema`, los tres con el mismo hilo: que el
+formulario no le pida al docente saber cómo funciona por dentro.
+
+### La barra duplicada
+
+El campo de enunciado formal mostraba en su texto de ayuda la fórmula con **dos
+barras** —un descuido de escritura en la propia pantalla—, de modo que el
+formulario enseñaba una sintaxis que después no se componía. Corregido el texto,
+y añadido `normalizarLatex`: la barra doble se colapsa **sólo cuando le sigue
+una letra**, que es la firma inequívoca de un copiado desde código. El salto de
+línea legítimo de LaTeX va seguido de espacio o corchete y se respeta, así que
+una matriz o un `egin{cases}` siguen componiéndose igual.
+
+Se aplica en la vista previa y **al guardar**, en el alta y en la edición: lo que
+se almacena es lo que verá el alumno en la pizarra.
+
+### La jerarquía del nivel
+
+Se planteaba la duda de si el nivel de la regla sobrescribe el del tema. La
+decisión, ahora explícita en la interfaz: **hereda**. El desplegable dice
+"Hereda del tema (Intermedio)" con el nivel vigente, y se guarda como heredado
+—nulo— y no como una copia, de modo que al cambiar el nivel del tema sus reglas
+lo siguen. La tarjeta explica además el alcance de ese campo: gradúa la
+dificultad de los ejercicios de la regla, no decide a qué alumnos les llegan,
+que es cosa de la etapa y el curso.
+
+### La casilla de práctica
+
+"Se puede practicar" sólo tiene sentido si hay motor que califique. Ahora la
+casilla se **deshabilita y desmarca** cuando el tema está en "Sin motor", con el
+texto explicando por qué; al elegir motor, se habilita y lo nombra. Y el
+servidor lo garantiza en los tres caminos —alta, edición y cuando un tema pierde
+su motor—, porque una comprobación que sólo vive en la interfaz se salta
+repitiendo la petición.
+
+### Comprobado
+
+Ocho comprobaciones nuevas en `npm run qa:hito1` (116 en total): la barra doble
+se corrige al guardar —enunciado y ejemplo—, el nivel vacío se guarda como
+heredado, un tema con motor admite la práctica, uno sin motor la rechaza aunque
+se pida por API, y quitarle el motor a un tema desmarca las suyas.

@@ -126,6 +126,26 @@ export function notacionFormal(linea: string): string | null {
 }
 
 /**
+ * Arregla la barra invertida DUPLICADA en un LaTeX escrito a mano.
+ *
+ * POR QUÉ HACE FALTA
+ * En LaTeX, `\frac{a}{b}` lleva una barra y `\\` es un salto de línea. Pero al
+ * copiar una fórmula desde código —donde la barra va escapada— llega
+ * `\\frac{a}{b}`, y entonces KaTeX lee un salto de línea seguido de la palabra
+ * "frac": el docente ve su fórmula convertida en texto suelto y no entiende por
+ * qué. Es un error de copiado, no de contenido, y no tiene ningún sentido
+ * hacérselo pagar.
+ *
+ * Sólo se colapsa la barra doble CUANDO LE SIGUE UNA LETRA, que es la firma
+ * inequívoca del escape accidental: el salto de línea de verdad va seguido de
+ * espacio, de corchete o de final de línea, y ése se respeta. Así una matriz o
+ * un `\begin{cases}` con saltos legítimos siguen componiéndose igual.
+ */
+export function normalizarLatex(texto: string): string {
+  return String(texto ?? "").replace(/\\{2,}(?=[a-zA-Z])/g, "\\");
+}
+
+/**
  * Traduce notación plana a LaTeX para componerla con KaTeX.
  *
  * Es la inversa de `latexAPlano()`: aquélla existe para que el motor pueda
