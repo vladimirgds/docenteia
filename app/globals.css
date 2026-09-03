@@ -96,12 +96,55 @@
 }
 .avatar-pensando { animation: avatar-piensa 2.6s ease-in-out infinite; }
 
-/* Corrigiendo: un latido breve que llama la atención sobre la corrección. */
+/* Celebrando: un latido breve que llama la atención sobre el acierto. */
 @keyframes avatar-corrige {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.06); }
 }
-.avatar-corrigiendo { animation: avatar-corrige 1.1s ease-in-out infinite; }
+.avatar-celebrando { animation: avatar-corrige 1.1s ease-in-out infinite; }
+
+/* Explicando: un asentimiento mínimo, el gesto de quien va desgranando algo. */
+@keyframes avatar-explica {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(1px) rotate(1.5deg); }
+}
+.avatar-explicando { animation: avatar-explica 2s ease-in-out infinite; }
+
+/* Apoyo: la cabeza ladeada y quieta. Ante un fallo, el avatar se calma en vez
+   de agitarse; un tutor que se mueve mucho justo cuando el alumno se equivoca
+   se lee como impaciencia. */
+.avatar-apoyo { transform: rotate(-6deg); }
+
+/* La cara entra con un fundido corto en cada cambio de estado: el atributo `d`
+   de un path no interpola, así que sin esto el gesto cambiaría de golpe. */
+@keyframes avatar-entra {
+  from { opacity: 0.35; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.avatar-cara {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: avatar-entra 0.26s ease-out;
+}
+
+/* Destellos de la celebración y puntitos de la reflexión. */
+@keyframes avatar-brilla {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.avatar-destellos {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: avatar-brilla 0.9s ease-in-out infinite;
+}
+
+@keyframes avatar-piensa-punto {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+.avatar-punto { animation: avatar-piensa-punto 1.5s ease-in-out infinite; }
+.avatar-punto-2 { animation-delay: 0.25s; }
+.avatar-punto-3 { animation-delay: 0.5s; }
 
 /* Esperando: respiración muy leve, señal de que el tutor sigue ahí. */
 @keyframes avatar-espera {
@@ -114,9 +157,15 @@
   .avatar-ojos,
   .avatar-boca-hablando,
   .avatar-pensando,
-  .avatar-corrigiendo,
-  .avatar-esperando {
+  .avatar-celebrando,
+  .avatar-explicando,
+  .avatar-esperando,
+  .avatar-cara,
+  .avatar-destellos,
+  .avatar-punto,
+  .pz-resaltado {
     animation: none;
+    transition: none;
   }
 }
 
@@ -159,4 +208,89 @@
 
 .dark .pz-exponente {
   color: hsl(38 96% 60%);
+}
+
+/* ── Pizarra animada ────────────────────────────────────────────────────────
+   Los resaltados no se pintan dentro de la fórmula, sino en una capa SVG por
+   encima: encender un foco cambia una opacidad y no recompila KaTeX. El color
+   vive aquí para que siga al tema claro y al oscuro. */
+.pz-trazo {
+  stroke: hsl(221 83% 45%);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.dark .pz-trazo {
+  stroke: hsl(213 94% 72%);
+}
+
+/* La cancelación se pinta en rojo: es la única marca que dice "esto se va". */
+.pz-resaltado[data-tipo="tachado"] .pz-trazo {
+  stroke: hsl(0 72% 45%);
+}
+
+.dark .pz-resaltado[data-tipo="tachado"] .pz-trazo {
+  stroke: hsl(0 84% 65%);
+}
+
+/* El rótulo de la llevada o de la reagrupación, sobre la caja. */
+.pz-etiqueta {
+  fill: hsl(25 95% 38%);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dark .pz-etiqueta {
+  fill: hsl(38 96% 60%);
+}
+
+/* ── Modo proyección ────────────────────────────────────────────────────────
+   Para la pizarra digital del aula: se mira desde cuatro metros y con la luz
+   encendida. Tipografía escalada, trazos gruesos y contraste máximo; el gris
+   medio de la interfaz normal, a esa distancia, no se ve. */
+.modo-proyeccion {
+  --pz-escala: 1.35;
+  background: hsl(0 0% 100%);
+  color: hsl(0 0% 0%);
+  font-size: calc(1rem * var(--pz-escala));
+}
+
+.dark .modo-proyeccion {
+  background: hsl(0 0% 4%);
+  color: hsl(0 0% 100%);
+}
+
+.modo-proyeccion .katex {
+  font-size: calc(1.08em * var(--pz-escala));
+  font-weight: 600;
+}
+
+/* Las rayas de KaTeX —la de la fracción, la de la cuenta en columna— son
+   bordes de 1px: proyectadas desaparecen. */
+.modo-proyeccion .katex .frac-line,
+.modo-proyeccion .katex .hline,
+.modo-proyeccion .katex .overline .overline-line,
+.modo-proyeccion .katex .underline .underline-line {
+  border-bottom-width: 2.5px;
+  min-height: 2.5px;
+}
+
+.modo-proyeccion .pz-trazo {
+  stroke-width: 5;
+}
+
+.modo-proyeccion .pz-etiqueta {
+  font-size: 15px;
+}
+
+.modo-proyeccion .pz-pie {
+  font-size: 1rem;
+  color: inherit;
+}
+
+/* En proyección, el resaltado ya pasado se ve más que en pantalla: de lejos, un
+   28 % de opacidad es invisible. */
+.modo-proyeccion .pz-resaltado {
+  stroke-opacity: 1;
 }

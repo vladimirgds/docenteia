@@ -337,53 +337,6 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
         </CardContent>
       </Card>
 
-      {/* ── Motor de corrección ──────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Motor de corrección</CardTitle>
-          <CardDescription>
-            Decide si los ejercicios de este tema se pueden calificar solos, con matemática
-            garantizada y sin intervención de la IA.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Select
-            value={motor}
-            onChange={(e) => {
-              const elegido = e.target.value;
-              setMotor(elegido);
-              // Al quitar el motor, ninguna regla puede seguir marcada como
-              // practicable: sin motor no hay quien califique esa práctica, y
-              // dejarlo marcado guardaría una incoherencia.
-              if (!elegido) {
-                setReglas((actuales) => actuales.map((r) => ({ ...r, practicable: false })));
-              }
-            }}
-            disabled={!puedeEditar}
-          >
-            <option value="">Sin motor (corrección manual)</option>
-            {MOTORES_DISPONIBLES.map((m) => (
-              <option key={m.motor} value={m.motor}>
-                {m.titulo} — {m.descripcion}
-              </option>
-            ))}
-          </Select>
-
-          {motor ? (
-            <p className="text-sm text-muted-foreground">
-              Los ejercicios de este tema se validarán contra el motor antes de guardarse, y el
-              alumno recibirá corrección automática.
-            </p>
-          ) : (
-            <div className="rounded-md border border-amber-600/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-400">
-              Sin motor, los ejercicios de este tema se guardan <strong>sin verificar</strong> y no
-              se pueden autocorregir: tendrás que indicar tú la respuesta correcta y calificarlos a
-              mano.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* ── Alcance curricular ───────────────────────────────────────────── */}
       <Card>
         <CardHeader>
@@ -690,13 +643,60 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                     <span className="block text-xs text-muted-foreground">
                       {motor
                         ? `El motor "${MOTORES_DISPONIBLES.find((m) => m.motor === motor)?.titulo ?? motor}" calificará los ejercicios de esta regla.`
-                        : "No disponible: el tema no tiene motor de corrección, así que nadie puede calificar su práctica."}
+                        : "No disponible: elige antes un motor de corrección, en el bloque de más abajo; sin él nadie puede calificar esta práctica."}
                     </span>
                   </span>
                 </label>
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/* ── Motor de corrección ──────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Motor de corrección</CardTitle>
+          <CardDescription>
+            Decide si los ejercicios de este tema se pueden calificar solos, con matemática
+            garantizada y sin intervención de la IA.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Select
+            value={motor}
+            onChange={(e) => {
+              const elegido = e.target.value;
+              setMotor(elegido);
+              // Al quitar el motor, ninguna regla puede seguir marcada como
+              // practicable: sin motor no hay quien califique esa práctica, y
+              // dejarlo marcado guardaría una incoherencia.
+              if (!elegido) {
+                setReglas((actuales) => actuales.map((r) => ({ ...r, practicable: false })));
+              }
+            }}
+            disabled={!puedeEditar}
+          >
+            <option value="">Sin motor (corrección manual)</option>
+            {MOTORES_DISPONIBLES.map((m) => (
+              <option key={m.motor} value={m.motor}>
+                {m.titulo} — {m.descripcion}
+              </option>
+            ))}
+          </Select>
+
+          {motor ? (
+            <p className="text-sm text-muted-foreground">
+              Los ejercicios de este tema se validarán contra el motor antes de guardarse, y el
+              alumno recibirá corrección automática.
+            </p>
+          ) : (
+            <div className="rounded-md border border-amber-600/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-400">
+              Sin motor, los ejercicios de este tema se guardan <strong>sin verificar</strong> y no
+              se pueden autocorregir: tendrás que indicar tú la respuesta correcta y calificarlos a
+              mano.
+            </div>
+          )}
         </CardContent>
       </Card>
 

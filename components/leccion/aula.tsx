@@ -18,6 +18,8 @@ import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
+import { PanelAnimado } from "@/components/leccion/pizarra-animada";
+import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import {
   Pizarra,
   tituloDeFase,
@@ -195,6 +197,23 @@ export function Aula({
   const [tema, setTema] = useState<TemaLeccion | null>(null);
   const [estadoAvatar, setEstadoAvatar] = useState<EstadoAvatar>("neutral");
   const [hablando, setHablando] = useState(false);
+  /**
+   * El estado que pide la pizarra animada, cuando está reproduciendo.
+   *
+   * Manda sobre el del motor mientras dura la animación —es lo que está
+   * ocurriendo en pantalla— y se aparta en cuanto queda en reposo, para no
+   * dejar al avatar clavado en "esperando" durante el resto de la lección.
+   */
+  const [avatarPizarra, setAvatarPizarra] = useState<EstadoPedagogico | null>(null);
+  const alCambiarAvatar = useCallback((estado: EstadoPedagogico) => {
+    setAvatarPizarra(estado === "IDLE" ? null : estado);
+  }, []);
+  /**
+   * El sintetizador, también en estado y no sólo en la referencia: la pizarra
+   * animada lo recibe como prop, y una referencia rellenada en un efecto no
+   * provoca el repintado que se lo entregaría.
+   */
+  const [tts, setTts] = useState<TTS | null>(null);
   /**
    * La pizarra en TRES estados independientes.
    *
@@ -401,6 +420,7 @@ export function Aula({
   useEffect(() => {
     const tts = new TTS();
     ttsRef.current = tts;
+    setTts(tts);
     setEstadoVoz(tts.describe());
 
     // El avatar y la voz son dependencias del motor; aquí se le entregan como
@@ -780,6 +800,24 @@ export function Aula({
     [reglas, tema],
   );
 
+  /**
+   * Las líneas que se le pasan a la pizarra animada.
+   *
+   * El enunciado primero y luego los pasos del procedimiento, sin las
+   * aclaraciones: una aclaración responde a una duda puntual y se sustituye por
+   * la siguiente, así que animarla dejaría el repaso lleno de pasos que ya no
+   * están. Las líneas van en la notación plana del motor; el guion se encarga
+   * de decidir cuáles se dejan animar.
+   */
+  const lineasAnimadas = useMemo(() => {
+    const textos: string[] = [];
+    if (ejercicio?.texto) textos.push(ejercicio.texto);
+    for (const linea of desarrollo) {
+      if (!linea.aclaracion) textos.push(linea.texto);
+    }
+    return textos;
+  }, [ejercicio, desarrollo]);
+
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
   const [reglaDetectada, setReglaDetectada] = useState<ReglaVista | null>(null);
@@ -906,7 +944,7 @@ export function Aula({
         <div className="space-y-4">
           <Card>
             <CardContent className="flex flex-col items-center gap-3 pt-6">
-              <Avatar2D estado={estadoAvatar} hablando={hablando} />
+              <Avatar2D estado={avatarPizarra ?? estadoAvatar} hablando={hablando} />
               <div className="flex gap-2">
                 {controles.playing && !controles.paused ? (
                   <Button size="sm" variant="outline" onClick={() => pseRef.current?.pause()}>
@@ -963,6 +1001,20 @@ export function Aula({
             reglas={reglasDelTema}
             reglaDetectada={reglaDetectada}
             tema={tema.tema}
+          />
+
+          {/* Repaso animado de lo que hay en la pizarra: la misma lección, paso
+              a paso, con los resaltados sincronizados con la voz. Se monta sólo
+              cuando hay algo que animar. */}
+          <PanelAnimado
+            lineas={lineasAnimadas}
+            tts={tts}
+            vozActiva={vozActiva}
+            alCambiarAvatar={alCambiarAvatar}
+            // El sintetizador es uno solo: cuando el repaso animado se pone a
+            // hablar, el tutor de la lección calla. Sin esto se solapan las dos
+            // voces y no se entiende ninguna de las dos.
+            alTomarLaVoz={() => pseRef.current?.pause()}
           />
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
