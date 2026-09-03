@@ -109,11 +109,25 @@ export interface ProgresoTema {
 }
 
 export function Aula({
+  temas = TEMAS_LECCION,
   reglas = [],
   progreso = [],
+  curso = null,
 }: {
+  /**
+   * Los temas que se le pueden ofrecer a ESTE alumno.
+   *
+   * Los decide el servidor a partir del currículo y del curso del alumno; antes
+   * se pintaban los cinco motores escritos en el código, y por eso a un alumno
+   * de 6.º de primaria le aparecían derivadas. El valor por defecto se conserva
+   * para que el componente siga siendo utilizable de forma aislada (la batería
+   * de QA lo monta sin servidor).
+   */
+  temas?: readonly TemaLeccion[];
   reglas?: ReglaVista[];
   progreso?: ProgresoTema[];
+  /** Curso del alumno, para poder decírselo en pantalla. */
+  curso?: string | null;
 }) {
   // ── Instancias del motor (sólo en el navegador) ────────────────────────────
   const pseRef = useRef<PSELight | null>(null);
@@ -789,10 +803,18 @@ export function Aula({
             Elige un tema. El tutor te lo explicará paso a paso en la pizarra y
             después practicarás.
           </p>
+          {curso && (
+            // Se dice de dónde sale la lista: son los temas de su curso, no
+            // "los temas que hay". Un alumno que no ve derivadas tiene derecho
+            // a saber por qué.
+            <p className="text-sm text-muted-foreground">
+              Temas publicados para tu curso: <strong>{curso}</strong>.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {TEMAS_LECCION.map((t) => {
+          {temas.map((t) => {
             const avance = progreso.find((p) => p.tema === t.tema);
             const visitado = Boolean(avance && (avance.sesiones > 0 || avance.intentos > 0));
             return (

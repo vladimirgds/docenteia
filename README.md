@@ -536,6 +536,13 @@ del cual se plantean. Así, una derivada marcada como Superior no le aparece a u
 alumno de secundaria por muy avanzado que vaya en lo suyo, y un universitario sí
 recibe la factorización de secundaria, que tiene estudiada.
 
+La evaluación inicial y la **lección interactiva** se componen con lo que le
+corresponde: las preguntas calibradas de su nivel, los ejercicios que su
+profesorado haya publicado para ese punto del temario, y sólo los temas cuyo
+alcance cubre su curso. `/api/sesion` lo comprueba también en el servidor: la
+interfaz no ofrece lo que no toca, y la API tampoco lo permite si se pide a
+mano.
+
 Las preguntas salen del catálogo sembrado (cinco por nivel, de opción múltiple)
 y del **banco del profesorado**: los ejercicios publicados y verificados de ese
 nivel entran en la prueba como preguntas de respuesta abierta, corregidas por el

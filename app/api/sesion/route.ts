@@ -5,6 +5,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { TEMA_POR_CLAVE } from "@/lib/leccion/temas";
+import { puedeAbrirTema } from "@/lib/leccion/disponibles";
+import { cursoDelPerfil } from "@/lib/curriculo/etapas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +51,24 @@ export async function POST(req: Request) {
   const temaEnum = TEMA_POR_CLAVE[parsed.data.tema.toLowerCase()];
   if (!temaEnum) {
     return NextResponse.json({ error: "Tema desconocido." }, { status: 400 });
+  }
+
+  // ── El tema tiene que corresponderle ──────────────────────────────────────
+  // La pantalla ya no le ofrece las tarjetas que no son de su curso, pero una
+  // comprobación que sólo vive en la interfaz no es una comprobación: basta con
+  // repetir la petición a mano para saltarla. Aquí se cierra de verdad.
+  const perfil = await prisma.perfilEstudiante.findUnique({
+    where: { id: perfilId },
+    select: { etapa: true, curso: true, ciclo: true, grado: true },
+  });
+  if (!(await puedeAbrirTema(cursoDelPerfil(perfil ?? {}), temaEnum))) {
+    return NextResponse.json(
+      {
+        error:
+          "Ese tema no corresponde a tu curso. Elige uno de los que aparecen en tu lección.",
+      },
+      { status: 403 },
+    );
   }
 
   try {

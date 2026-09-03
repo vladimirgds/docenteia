@@ -45,7 +45,7 @@ import { adaptarBanco } from "../lib/diagnostico/banco.ts";
 import { clasificarNivel } from "../lib/diagnostico/clasificar.ts";
 
 import { BASE_URL as BASE } from "./base-url.mjs";
-import { registrarAlumno } from "./sesion.mjs";
+import { iniciarSesion, registrarAlumno } from "./sesion.mjs";
 
 let ok = 0;
 const fallos = [];
@@ -526,6 +526,107 @@ if (!salud || (salud.base_datos && salud.base_datos !== "ok")) {
     check(
       "y tampoco ve derivadas",
       (heredada.prueba.preguntas ?? []).every((p) => p.tema !== "DERIVADAS"),
+    );
+  }
+
+  // ── La vista de LECCIÓN sólo ofrece lo que le toca ──────────────────────
+  // Lo reportó el cliente: un alumno de 6.º de primaria hacía un diagnóstico de
+  // primaria y al entrar en la lección se encontraba con Ecuaciones lineales,
+  // Factorización y Derivadas, porque las tarjetas salían de una lista escrita
+  // en el código en lugar del currículo.
+  async function leccionDe(nombre, etapa, curso) {
+    const email = `qa.leccion.${nombre}.${sufijo}@mentoriamath.local`;
+    const alta = await registrarAlumno(BASE, {
+      nombre: `QA Leccion ${nombre}`,
+      email,
+      password: "Diagnostico-2026",
+    });
+    if (!alta.ok) return null;
+
+    await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", cookie: alta.sesion },
+      body: JSON.stringify({ etapa, curso }),
+    });
+
+    // La lección exige diagnóstico hecho, así que se completa.
+    const prueba = await (
+      await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: alta.sesion } })
+    ).json();
+    await fetch(`${BASE}/api/diagnostico`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: alta.sesion },
+      body: JSON.stringify({
+        respuestas: (prueba.preguntas ?? []).map((p) => ({
+          preguntaId: p.id,
+          respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0",
+        })),
+      }),
+    });
+
+    // El nivel viaja en el token, y el de la sesión abierta es de antes del
+    // diagnóstico: se vuelve a entrar para que la página no rebote.
+    const sesion = await iniciarSesion(BASE, email, "Diagnostico-2026");
+    const r = await fetch(`${BASE}/estudiante/leccion`, { headers: { cookie: sesion } });
+    const html = await r.text();
+    const tarjetas = ["Aritmética", "Fracciones", "Ecuaciones lineales", "Factorización", "Derivadas"]
+      .filter((t) => html.includes(t));
+    return { estado: r.status, tarjetas, sesion };
+  }
+
+  const leccionPri6 = await leccionDe("pri6", "PRIMARIA", 6);
+  if (leccionPri6) {
+    check("la lección carga para un alumno de 6.º de primaria", leccionPri6.estado === 200);
+    check(
+      "y NO ofrece derivadas, factorización ni ecuaciones lineales (el fallo reportado)",
+      !leccionPri6.tarjetas.some((t) =>
+        ["Derivadas", "Factorización", "Ecuaciones lineales"].includes(t),
+      ),
+      leccionPri6.tarjetas.join(", "),
+    );
+    check(
+      "sí ofrece lo que le corresponde",
+      leccionPri6.tarjetas.includes("Aritmética") && leccionPri6.tarjetas.includes("Fracciones"),
+      leccionPri6.tarjetas.join(", "),
+    );
+
+    // Y el servidor lo impide, no sólo la pantalla.
+    for (const [tema, esperado] of [
+      ["derivadas", 403],
+      ["factorizacion", 403],
+      ["lineales", 403],
+      ["aritmetica", 200],
+    ]) {
+      const r = await fetch(`${BASE}/api/sesion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: leccionPri6.sesion },
+        body: JSON.stringify({ tema }),
+      });
+      check(
+        `/api/sesion con "${tema}" responde ${esperado}`,
+        r.status === esperado,
+        `HTTP ${r.status}`,
+      );
+    }
+  }
+
+  const leccionSec3 = await leccionDe("sec3", "SECUNDARIA", 3);
+  if (leccionSec3) {
+    check(
+      "a 3.º de secundaria la lección le ofrece álgebra pero no derivadas",
+      leccionSec3.tarjetas.includes("Ecuaciones lineales") &&
+        leccionSec3.tarjetas.includes("Factorización") &&
+        !leccionSec3.tarjetas.includes("Derivadas"),
+      leccionSec3.tarjetas.join(", "),
+    );
+  }
+
+  const leccionSup = await leccionDe("sup1", "SUPERIOR", 1);
+  if (leccionSup) {
+    check(
+      "a un universitario le ofrece los cinco temas",
+      leccionSup.tarjetas.length === 5,
+      leccionSup.tarjetas.join(", "),
     );
   }
 

@@ -1,10 +1,11 @@
 # Guía de pruebas — correcciones del HITO 1
 
-Tres correcciones, una por cada cosa reportada tras verificar el hito:
+Cuatro correcciones, una por cada cosa reportada tras verificar el hito:
 
 1. **Derivadas con `e^x` y `ln(x)`** — el motor las daba por "no comprobable".
 2. **La prueba diagnóstica daba derivadas** a un alumno de 3.º de secundaria.
 3. **Nivel ≠ nivel educativo** — faltaba la taxonomía de etapa y curso.
+4. **La lección listaba todos los temas** sin discriminar la etapa del alumno.
 
 Cada apartado de esta guía se puede comprobar en unos minutos, y al final están
 las baterías automáticas por si prefieres verlo sin tocar la interfaz.
@@ -141,10 +142,49 @@ preguntas; las otras 2 salen del catálogo calibrado).
 
 ---
 
+## 4 · La lección sólo ofrece los temas del curso
+
+**Lo que fallaba:** un alumno de 6.º de primaria entraba en la lección
+interactiva y le aparecían Ecuaciones lineales, Factorización y Derivadas. Las
+tarjetas salían de una lista escrita en el código —los cinco motores— sin mirar
+quién estaba delante.
+
+Ahora la lista sale del **currículo**, filtrada por la etapa y el curso del
+alumno: se ofrece un tema si existe al menos uno **publicado** con ese motor
+cuyo alcance cubre a ese alumno.
+
+1. Entra con un alumno de **Primaria · 6.º Grado** (regístralo, configura su
+   curso y completa la evaluación inicial) y ve a **/estudiante/leccion**.
+   → Sólo verás **Aritmética** y **Fracciones**.
+   → Arriba dice *"Temas publicados para tu curso: Primaria · 6.º Grado"*.
+2. Con un alumno de **Secundaria · 3.er Año**: aparecen además **Ecuaciones
+   lineales** y **Factorización**, pero **no Derivadas**.
+3. Con uno de **Superior**: aparecen los cinco.
+
+**Y el servidor lo impide, no sólo la pantalla.** Si se repite la petición a
+mano, `/api/sesion` la rechaza:
+
+```
+POST /api/sesion {"tema":"derivadas"}      → 403  (alumno de primaria)
+POST /api/sesion {"tema":"factorizacion"}  → 403
+POST /api/sesion {"tema":"lineales"}       → 403
+POST /api/sesion {"tema":"aritmetica"}     → 200
+```
+
+Una comprobación que sólo vive en la interfaz no es una comprobación: basta con
+repetir la llamada para saltarla.
+
+Si un alumno no tiene ningún tema publicado para su curso, la pantalla se lo
+dice —con su curso por delante— en lugar de quedarse en blanco. Y si la base de
+datos no responde, no se restringe nada: dejar a un alumno sin lección por un
+fallo de infraestructura sería peor que enseñarle una tarjeta de más.
+
+---
+
 ## Comprobación automática
 
 ```bash
-npm run qa:diagnostico-nivel   # 85 comprobaciones · etapa, curso y prueba
+npm run qa:diagnostico-nivel   # 94 comprobaciones · etapa, curso, prueba y lección
 npm run qa:matematicas         # 100 comprobaciones · derivadas y equivalencia
 npm run qa:hito1               # 108 comprobaciones · autoría docente
 ```
@@ -166,18 +206,17 @@ La suite completa —incluida la del PMV 1, sin regresiones— está en verde:
 
 | Batería | Resultado |
 | --- | --- |
-| `qa/diagnostico-nivel.mjs` | 85 · 0 |
+| `qa/diagnostico-nivel.mjs` | 94 · 0 |
 | `qa/matematicas.mjs` | 100 · 0 |
 | `qa/hito1.mjs` | 108 · 0 |
 | `qa/diagnostico.mjs` | 416 · 0 |
 | `qa/leccion.mjs` | 811 · 0 |
 | `qa/paso1.mjs` · `qa/frontend.mjs` | 72 · 0 · 10 · 0 |
-| **Total** | **1.602 comprobaciones · 0 fallos** |
+| **Total** | **1.611 comprobaciones · 0 fallos** |
 
 ---
 
 ## Detalle técnico
 
 El detalle de cada corrección —decisiones de diseño, modelo de datos y
-migraciones— está en [`ENTREGA_HITO1.md`](ENTREGA_HITO1.md), apartados 10, 11
-y 12.
+migraciones— está en [`ENTREGA_HITO1.md`](ENTREGA_HITO1.md), apartados 10 a 13.

@@ -217,7 +217,7 @@ la aplicación compilada en modo producción:
 | --- | --- |
 | `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
 | `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
-| `npm run qa:diagnostico-nivel` — **nueva** | **85 comprobaciones · 0 fallidas** |
+| `npm run qa:diagnostico-nivel` — **nueva** | **94 comprobaciones · 0 fallidas** |
 | `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
 | `qa/diagnostico.mjs` (banco, por nivel y etapa) | 416 · 0 |
 | `qa/paso1.mjs` (PMV 1, roles y registro) | 72 · 0 |
@@ -608,4 +608,66 @@ lib/diagnostico/prueba.ts      consulta y compone con el curso del alumno
 lib/leccion/correccion.ts      aritmética contrastada entre los dos motores
 components/docente/*           alcance en el formulario, la tabla y el banco
 qa/diagnostico-nivel.mjs       85 comprobaciones
+```
+
+---
+
+## 13. Cuarta observación: la lección listaba todo el temario
+
+> "Me registré con un perfil de 6.º de Primaria, pero al ingresar a la vista de
+> Lección interactiva el sistema lista todos los temas disponibles sin
+> discriminar la etapa del alumno."
+
+Cierto, y el diagnóstico era acertado: la vista pintaba sus tarjetas a partir de
+`TEMAS_LECCION`, la lista de los cinco motores **escrita en el código**, sin
+consultar el currículo ni el curso del alumno. La taxonomía ya filtraba la
+evaluación inicial, pero esta pantalla se había quedado fuera.
+
+### La lista se pregunta al currículo
+
+`lib/leccion/disponibles.ts` responde a "qué temas puede ver este alumno": un
+motor se ofrece si existe al menos un tema **PUBLICADO** que lo use y cuyo
+**alcance cubra** a ese alumno. Lo que el docente clasifica es exactamente lo que
+el alumno recibe.
+
+| Alumno | Temas que ve |
+| --- | --- |
+| Primaria · 6.º | Aritmética, Fracciones |
+| Secundaria · 3.er año | + Ecuaciones lineales, Factorización |
+| Superior · 2.º ciclo | + Derivadas |
+
+La pantalla dice además de dónde sale la lista —*"Temas publicados para tu
+curso: Primaria · 6.º Grado"*—: un alumno que no ve derivadas tiene derecho a
+saber por qué.
+
+### Y el servidor lo impide, no sólo la pantalla
+
+`/api/sesion` comprueba el alcance antes de abrir una sesión de lección:
+
+```
+POST /api/sesion {"tema":"derivadas"}   → 403   (alumno de 6.º de primaria)
+POST /api/sesion {"tema":"aritmetica"}  → 200
+```
+
+Una comprobación que sólo vive en la interfaz no es una comprobación: basta con
+repetir la petición a mano para saltarla. El catálogo de reglas que viaja al
+navegador se recorta igual, para no mandarle el temario de cursos que no son
+suyos.
+
+Dos decisiones deliberadas:
+
+- **Sin temas para su curso**, la pantalla lo dice con su curso por delante, en
+  lugar de quedarse en blanco.
+- **Si la base de datos no responde**, no se restringe nada. Dejar a un alumno
+  sin lección por un fallo de infraestructura es peor que enseñarle una tarjeta
+  de más, y el resto de la vista ya está preparada para funcionar sin base.
+
+### Ficheros
+
+```
+lib/leccion/disponibles.ts        qué temas le corresponden (nuevo)
+app/estudiante/leccion/page.tsx   compone la lista y recorta las reglas
+components/leccion/aula.tsx       pinta los temas que recibe, no los cinco fijos
+app/api/sesion/route.ts           403 si el tema no es de su curso
+qa/diagnostico-nivel.mjs          94 comprobaciones (9 nuevas, de esta vista)
 ```
