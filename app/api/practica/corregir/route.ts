@@ -4,7 +4,8 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
-import { checkAnswer, buildHint } from "@/public/pseLight.js";
+import { buildHint } from "@/public/pseLight.js";
+import { compararRespuesta } from "@/lib/matematicas/equivalencia";
 import { resolverEjercicio } from "@/lib/leccion/correccion";
 import { TEMA_POR_CLAVE } from "@/lib/leccion/temas";
 
@@ -78,7 +79,11 @@ export async function POST(req: Request) {
     });
   }
 
-  const { correct } = checkAnswer(respuesta, esperada);
+  // La respuesta se juzga como FUNCIÓN, no como texto: "e^x + 2x" y "2x + e^x"
+  // son la misma, y con la comparación de cadenas del PMV 1 la segunda se daba
+  // por incorrecta. Lo que no se deja leer como expresión —una frase, una
+  // respuesta con unidades— lo sigue juzgando el corrector heredado.
+  const { correcto: correct } = compararRespuesta(respuesta, esperada);
 
   // ── Registro de progreso ───────────────────────────────────────────────────
   // Alimenta la analítica del Paso 4. Un fallo al registrar no debe impedir que

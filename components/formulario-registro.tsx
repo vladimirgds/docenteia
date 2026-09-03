@@ -21,12 +21,14 @@ export function FormularioRegistro() {
     setError(null);
 
     const datos = new FormData(e.currentTarget);
+    // El curso NO se pide aquí. Se elige en la pantalla siguiente, que es la de
+    // configuración de nivel educativo: es el dato que decide qué contenidos
+    // recibe el alumno y merece su propio paso, no un desplegable al final de
+    // un formulario de alta.
     const cuerpo = {
       nombre: String(datos.get("nombre") ?? ""),
       email: String(datos.get("email") ?? ""),
       password: String(datos.get("password") ?? ""),
-      ciclo: String(datos.get("ciclo") ?? ""),
-      grado: String(datos.get("grado") ?? ""),
     };
 
     const respuesta = await fetch("/api/registro", {
@@ -55,7 +57,9 @@ export function FormularioRegistro() {
       return;
     }
 
-    router.push("/estudiante/diagnostico");
+    // A configurar la etapa y el curso: sin ese dato no se puede componer una
+    // prueba que le corresponda.
+    router.push("/estudiante/nivel-educativo");
     router.refresh();
   }
 
@@ -98,16 +102,10 @@ export function FormularioRegistro() {
         <p className="text-xs text-muted-foreground">Mínimo 8 caracteres.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="ciclo">Ciclo</Label>
-          <Input id="ciclo" name="ciclo" placeholder="Secundaria" maxLength={80} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="grado">Grado</Label>
-          <Input id="grado" name="grado" placeholder="3º" maxLength={80} />
-        </div>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        En el siguiente paso elegirás tu etapa educativa y tu curso, para que la evaluación
+        inicial y los contenidos sean los de tu nivel.
+      </p>
 
       <Button type="submit" className="w-full" disabled={enviando}>
         {enviando && <Loader2 className="h-4 w-4 animate-spin" />}

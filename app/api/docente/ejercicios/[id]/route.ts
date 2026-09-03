@@ -35,13 +35,20 @@ export async function PATCH(req: Request, { params }: Contexto) {
     // Si el ejercicio cambia de tema, cambia de motor con él.
     const nodoId = datos.nodoId ?? actual.nodoId;
     let motor = actual.motor as Motor | null;
+    // El alcance curricular vuelve a leerse del tema en cada edición: si el
+    // tema cambió de etapa, sus ejercicios la siguen.
+    let alcance: { etapa: typeof actual.etapa; cursoMin: number | null } = {
+      etapa: actual.etapa,
+      cursoMin: actual.cursoMin,
+    };
     if (nodoId) {
       const tema = await prisma.nodoConocimiento.findUnique({
         where: { id: nodoId },
-        select: { motor: true },
+        select: { motor: true, etapa: true, cursoMin: true },
       });
       if (!tema) return noEncontrado("El tema");
       motor = tema.motor as Motor | null;
+      alcance = { etapa: tema.etapa, cursoMin: tema.cursoMin };
     }
 
     // ── Se revalida SIEMPRE, aunque el cambio parezca inocente ───────────────
@@ -100,6 +107,8 @@ export async function PATCH(req: Request, { params }: Contexto) {
       data: {
         ...(datos.nodoId !== undefined ? { nodoId: datos.nodoId } : {}),
         motor,
+        etapa: alcance.etapa,
+        cursoMin: alcance.cursoMin,
         nivel: fusionado.nivel,
         enunciado: fusionado.enunciado,
         respuestaCorrecta: campos.respuestaCorrecta,

@@ -4,8 +4,16 @@ import type { Tema } from "@prisma/client";
 // la vez Next.js —que resuelve el alias— y los scripts de qa/, que se ejecutan
 // con Node a secas. La ruta relativa funciona en los dos sitios.
 import { computeAnswer } from "../../src/preLight.js";
-import { checkAnswer } from "../../public/pseLight.js";
-import { resolverEjercicio } from "../leccion/correccion.ts";
+import {
+  analizar,
+  escribir,
+  evaluar,
+  formatearNumero,
+  variablesDe,
+} from "../matematicas/expresiones.ts";
+import { compararRespuesta } from "../matematicas/equivalencia.ts";
+import { simplificar } from "../matematicas/derivar.ts";
+import { resolverConDetalle } from "../leccion/correccion.ts";
 import { CLAVE_POR_TEMA } from "../leccion/temas.ts";
 import {
   colapsarSignos,
@@ -79,6 +87,8 @@ export interface InformeValidacion {
   exhaustivo: boolean;
   /** Cuántas muestras se han podido comparar de verdad. */
   comprobadas: number;
+  /** Reglas del cálculo que ha aplicado el motor: "regla del producto"… */
+  reglas: string[];
   /** Impiden guardar. */
   errores: string[];
   /** No impiden guardar, pero el docente debe verlos. */
@@ -123,6 +133,7 @@ export function validarEjercicio(entrada: EntradaValidacion): InformeValidacion 
     totalCombinaciones: 1,
     exhaustivo: true,
     comprobadas: 0,
+    reglas: [],
     errores,
     avisos,
     revisadoEn: new Date().toISOString(),
@@ -188,6 +199,7 @@ export function validarEjercicio(entrada: EntradaValidacion): InformeValidacion 
   // ── 4. Enfrentar las fuentes de verdad, combinación a combinación ──────────
   const claveMotor = motor ? CLAVE_POR_TEMA[motor] : undefined;
   const discrepancias: MuestraValidada[] = [];
+  const reglasAplicadas = new Set<string>();
   let sinResolver = 0;
   let noEnteras = 0;
 
@@ -209,13 +221,18 @@ export function validarEjercicio(entrada: EntradaValidacion): InformeValidacion 
       esperada = declarada;
     }
 
-    const respuestaMotor = claveMotor ? resolverSeguro(texto, claveMotor) : null;
+    const delMotor = claveMotor ? resolverSeguro(texto, claveMotor) : { respuesta: null, reglas: [] };
+    const respuestaMotor = delMotor.respuesta;
+    for (const regla of delMotor.reglas) reglasAplicadas.add(regla);
     if (claveMotor && respuestaMotor == null) sinResolver++;
 
     let coincide: boolean | null = null;
     let adoptada = false;
     if (esperada != null && respuestaMotor != null) {
-      coincide = checkAnswer(esperada, respuestaMotor).correct === true;
+      // Se comparan como FUNCIONES, no como cadenas: "e^x + 2x" y "2x + e^x"
+      // son la misma respuesta, y rechazar la segunda era el falso negativo que
+      // reportó el cliente.
+      coincide = compararRespuesta(esperada, respuestaMotor).correcto;
       if (!coincide) {
         problema = `El motor calcula ${respuestaMotor} y la respuesta indicada es ${esperada}.`;
       }
@@ -229,7 +246,12 @@ export function validarEjercicio(entrada: EntradaValidacion): InformeValidacion 
       adoptada = true;
     }
 
-    if (esperada != null && !/^-?\d+$/.test(esperada.replace(/\s+/g, ""))) noEnteras++;
+    // Sólo se cuenta sobre respuestas NUMÉRICAS: en una plantilla de derivadas
+    // la respuesta es una expresión, y avisar de que "no es un número entero"
+    // no significaría nada.
+    if (esperada != null && !/[a-zA-Z]/.test(esperada) && !/^-?\d+$/.test(esperada.replace(/\s+/g, ""))) {
+      noEnteras++;
+    }
 
     const muestra: MuestraValidada = {
       valores,
@@ -262,6 +284,8 @@ export function validarEjercicio(entrada: EntradaValidacion): InformeValidacion 
       `…y ${discrepancias.length - MAX_ERRORES_DETALLADOS} combinación(es) más con el mismo problema.`,
     );
   }
+
+  informe.reglas = [...reglasAplicadas];
 
   const primera = informe.muestras[0];
   informe.respuestaCorrecta =
@@ -326,12 +350,21 @@ function limpiar(v: string | null | undefined): string | null {
 }
 
 /**
- * Evalúa la fórmula de respuesta con aritmética EXACTA.
+ * Resuelve la fórmula de respuesta de una plantilla, con los parámetros puestos.
  *
- * Se apoya en `computeAnswer`, que es el evaluador racional del motor: "(17 -
- * 3) / 4" devuelve "7/2", no 3.4999999999999996. Que la respuesta sea una
- * fracción exacta importa, porque es contra ella contra la que se corrige al
- * alumno.
+ * Tiene dos salidas legítimas, y la diferencia importa:
+ *
+ *   · NUMÉRICA. "({c} - {b})/{a}" con a=4, b=3, c=17 da "7/2" —exacto, no
+ *     3.4999999999999996—, porque es contra esa fracción contra la que se
+ *     corrige al alumno.
+ *   · SIMBÓLICA. Una plantilla de derivadas —enunciado "ln({a}x)", fórmula
+ *     "1/x"— tiene por respuesta una EXPRESIÓN, no un número. Antes eso se
+ *     rechazaba como fórmula no evaluable, que dejaba fuera justo las
+ *     plantillas de cálculo. Ahora se devuelve la expresión ya sustituida y es
+ *     la comparación con el motor la que dictamina.
+ *
+ * Devuelve null sólo cuando la fórmula no da ninguna de las dos cosas: una
+ * división por cero, o algo que no se deja leer.
  */
 export function evaluarFormula(formula: string, valores: Valores): string | null {
   // `limpiar: false` a propósito: aquí no se escribe un enunciado para nadie,
@@ -341,10 +374,22 @@ export function evaluarFormula(formula: string, valores: Valores): string | null
   // misma cuenta mal escrita.
   const expresion = colapsarSignos(sustituir(formula, valores, { limpiar: false }));
   if (tieneHuecos(expresion)) return null; // Faltaba algún valor.
+
+  const arbol = analizar(expresion);
+  const esSimbolica = arbol !== null && variablesDe(arbol).length > 0;
+  // Se simplifica antes de guardarla: la fórmula "{a}·{n}·x^({n}-1)" con a=2 y
+  // n=2 se sustituye en "2·2x^(2 - 1)", que es correcto y nadie escribiría.
+  if (esSimbolica) return escribir(simplificar(arbol));
+
   try {
     const resultado = computeAnswer(expresion);
     const texto = resultado == null ? null : String(resultado).trim();
-    return texto ? texto : null;
+    if (texto) return texto;
+    // `computeAnswer` sólo hace aritmética racional: una fórmula con ln o con
+    // una raíz —"ln({a})/ln(2)"— se le escapa. El analizador nuevo sí la
+    // evalúa; se usa DESPUÉS para no perder la fracción exacta en los casos
+    // que el primero ya resuelve bien.
+    return evaluarConAnalizador(expresion);
   } catch {
     // División por cero y demás: no es una excepción del sistema, es un dato
     // sobre esta combinación concreta, y así lo trata quien llama.
@@ -352,12 +397,20 @@ export function evaluarFormula(formula: string, valores: Valores): string | null
   }
 }
 
+/** Evaluación numérica de una expresión constante, ya sustituida. */
+function evaluarConAnalizador(expresion: string): string | null {
+  const arbol = analizar(expresion);
+  if (!arbol || variablesDe(arbol).length > 0) return null;
+  const valor = evaluar(arbol, {});
+  return Number.isFinite(valor) ? formatearNumero(valor) : null;
+}
+
 /** El motor, sin que un enunciado raro tumbe la validación entera. */
-function resolverSeguro(enunciado: string, clave: string): string | null {
+function resolverSeguro(enunciado: string, clave: string): { respuesta: string | null; reglas: string[] } {
   try {
-    return resolverEjercicio(enunciado, clave);
+    return resolverConDetalle(enunciado, clave);
   } catch {
-    return null;
+    return { respuesta: null, reglas: [] };
   }
 }
 

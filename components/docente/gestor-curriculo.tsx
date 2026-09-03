@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { pedir } from "@/lib/docente/cliente";
+import { ETAPAS, describirAlcance } from "@/lib/curriculo/etapas";
 import {
   ESTADOS,
   ETIQUETA_ESTADO,
@@ -65,6 +66,8 @@ export interface TemaVista {
   descripcion: string | null;
   motor: string | null;
   nivel: string | null;
+  etapa: string | null;
+  cursoMin: number | null;
   orden: number;
   estado: Estado;
   etiquetas: string[];
@@ -93,6 +96,7 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
   const [filtroMateria, setFiltroMateria] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroMotor, setFiltroMotor] = useState("");
+  const [filtroEtapa, setFiltroEtapa] = useState("");
 
   const [nuevaMateria, setNuevaMateria] = useState({ nombre: "", descripcion: "", color: "#2563eb" });
   const [creandoMateria, setCreandoMateria] = useState(false);
@@ -105,6 +109,8 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
       if (filtroEstado && t.estado !== filtroEstado) return false;
       if (filtroMotor === "SIN_MOTOR" && t.motor) return false;
       if (filtroMotor && filtroMotor !== "SIN_MOTOR" && t.motor !== filtroMotor) return false;
+      if (filtroEtapa === "SIN_ETAPA" && t.etapa) return false;
+      if (filtroEtapa && filtroEtapa !== "SIN_ETAPA" && t.etapa !== filtroEtapa) return false;
       if (!texto) return true;
       return (
         t.titulo.toLowerCase().includes(texto) ||
@@ -113,11 +119,11 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
         t.etiquetas.some((e) => e.includes(texto))
       );
     });
-  }, [temas, busqueda, filtroMateria, filtroEstado, filtroMotor]);
+  }, [temas, busqueda, filtroMateria, filtroEstado, filtroMotor, filtroEtapa]);
 
   // Con filtros activos el árbol pierde padres, y sangrar respecto a un padre
   // que no está en pantalla despista más que ayuda: en ese caso se lista plano.
-  const hayFiltros = Boolean(busqueda || filtroMateria || filtroEstado || filtroMotor);
+  const hayFiltros = Boolean(busqueda || filtroMateria || filtroEstado || filtroMotor || filtroEtapa);
   const filas = hayFiltros
     ? filtrados.map((nodo) => ({ nodo, profundidad: 0 }))
     : aplanarArbol(filtrados);
@@ -126,8 +132,9 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
     const publicados = temas.filter((t) => t.estado === "PUBLICADO").length;
     const borradores = temas.filter((t) => t.estado === "BORRADOR").length;
     const sinMotor = temas.filter((t) => !t.motor).length;
+    const sinNivel = temas.filter((t) => !t.nivel).length;
     const ejercicios = temas.reduce((n, t) => n + t.ejercicios, 0);
-    return { publicados, borradores, sinMotor, ejercicios };
+    return { publicados, borradores, sinMotor, sinNivel, ejercicios };
   }, [temas]);
 
   // ── Acciones ───────────────────────────────────────────────────────────────
@@ -217,11 +224,14 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           { rotulo: "Temas publicados", valor: metricas.publicados, pie: "visibles para el alumno" },
           { rotulo: "En borrador", valor: metricas.borradores, pie: "sólo los ves tú" },
           { rotulo: "Sin motor", valor: metricas.sinMotor, pie: "sin corrección automática" },
+          // Un tema sin nivel no le llega a ningún alumno por la evaluación
+          // inicial, que se compone por niveles. Conviene verlo de un vistazo.
+          { rotulo: "Sin nivel", valor: metricas.sinNivel, pie: "no entran en la evaluación inicial" },
           { rotulo: "Ejercicios en el banco", valor: metricas.ejercicios, pie: "en todos los temas" },
         ].map((m) => (
           <Card key={m.rotulo}>
@@ -342,7 +352,7 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Input
               placeholder="Buscar por título, clave o etiqueta"
               value={busqueda}
@@ -373,6 +383,15 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
                 </option>
               ))}
             </Select>
+            <Select value={filtroEtapa} onChange={(e) => setFiltroEtapa(e.target.value)}>
+              <option value="">Cualquier etapa</option>
+              <option value="SIN_ETAPA">Sin etapa (transversal)</option>
+              {ETAPAS.map((e) => (
+                <option key={e.valor} value={e.valor}>
+                  {e.nombre}
+                </option>
+              ))}
+            </Select>
           </div>
 
           {filas.length === 0 ? (
@@ -387,6 +406,7 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
                     <th className="pb-2 font-medium">Tema</th>
                     <th className="pb-2 font-medium">Asignatura</th>
                     <th className="pb-2 font-medium">Motor</th>
+                    <th className="pb-2 font-medium">Alcance</th>
                     <th className="pb-2 font-medium">Nivel</th>
                     <th className="pb-2 font-medium">Contenido</th>
                     <th className="pb-2 font-medium">Estado</th>
@@ -423,6 +443,20 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
                         ) : (
                           <Badge variant="aviso" title="Sus ejercicios no se corrigen solos">
                             Sin motor
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-3">
+                        {nodo.etapa ? (
+                          <span className="text-muted-foreground">
+                            {describirAlcance({
+                              etapa: nodo.etapa as never,
+                              cursoMin: nodo.cursoMin,
+                            })}
+                          </span>
+                        ) : (
+                          <Badge variant="contorno" title="Puede llegarle a cualquier alumno">
+                            Transversal
                           </Badge>
                         )}
                       </td>

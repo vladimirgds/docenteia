@@ -1,14 +1,103 @@
 [
   {
+    "id": "diag_bas_01",
+    "nivel": "BASICO",
+    "tema": "aritmetica",
+    "pregunta": "Calcula el resultado de: $8 + 3 \\times 2$",
+    "opciones": [
+      "$14$",
+      "$22$",
+      "$16$",
+      "$11$"
+    ],
+    "respuesta_correcta": "$14$",
+    "tipo": "opcion_multiple",
+    "etapa": "PRIMARIA",
+    "curso_min": 3
+  },
+  {
+    "id": "diag_bas_02",
+    "nivel": "BASICO",
+    "tema": "aritmetica",
+    "pregunta": "Calcula el resultado de: $144 \\div 12$",
+    "opciones": [
+      "$12$",
+      "$14$",
+      "$11$",
+      "$24$"
+    ],
+    "respuesta_correcta": "$12$",
+    "tipo": "opcion_multiple",
+    "etapa": "PRIMARIA",
+    "curso_min": 3
+  },
+  {
+    "id": "diag_bas_03",
+    "nivel": "BASICO",
+    "tema": "fracciones",
+    "pregunta": "Resuelve: $\\frac{1}{5} + \\frac{2}{5}$",
+    "opciones": [
+      "$\\frac{3}{5}$",
+      "$\\frac{3}{10}$",
+      "$\\frac{2}{5}$",
+      "$\\frac{1}{2}$"
+    ],
+    "respuesta_correcta": "$\\frac{3}{5}$",
+    "tipo": "opcion_multiple",
+    "etapa": "PRIMARIA",
+    "curso_min": 4
+  },
+  {
+    "id": "diag_bas_04",
+    "nivel": "BASICO",
+    "tema": "fracciones",
+    "pregunta": "Simplifica la fracción: $\\frac{6}{8}$",
+    "opciones": [
+      "$\\frac{3}{4}$",
+      "$\\frac{2}{3}$",
+      "$\\frac{4}{6}$",
+      "$\\frac{6}{4}$"
+    ],
+    "respuesta_correcta": "$\\frac{3}{4}$",
+    "tipo": "opcion_multiple",
+    "etapa": "PRIMARIA",
+    "curso_min": 4
+  },
+  {
+    "id": "diag_bas_05",
+    "nivel": "BASICO",
+    "tema": "ecuaciones_lineales",
+    "pregunta": "Encuentra el valor de $x$ en: $x + 7 = 12$",
+    "opciones": [
+      "$5$",
+      "$19$",
+      "$-5$",
+      "$7$"
+    ],
+    "respuesta_correcta": "$5$",
+    "tipo": "opcion_multiple",
+    "etapa": "PRIMARIA",
+    "curso_min": 4
+  },
+  {
     "id": "diag_01",
+    "nivel": "INTERMEDIO",
     "tema": "aritmetica",
     "pregunta": "Calcula el resultado de: $15 - 3 \\times (4 + 2) / 6$",
-    "opciones": ["$12$", "$13$", "$10$", "$14$"],
+    "opciones": [
+      "$12$",
+      "$13$",
+      "$10$",
+      "$14$"
+    ],
     "respuesta_correcta": "$12$",
-    "tipo": "opcion_multiple"
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 1
   },
   {
     "id": "diag_02",
+    "nivel": "INTERMEDIO",
     "tema": "fracciones",
     "pregunta": "Resuelve y simplifica: $\\frac{2}{3} + \\frac{5}{6}$",
     "opciones": [
@@ -18,18 +107,61 @@
       "$\\frac{4}{3}$"
     ],
     "respuesta_correcta": "$\\frac{3}{2}$",
-    "tipo": "opcion_multiple"
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 1
   },
   {
     "id": "diag_03",
+    "nivel": "INTERMEDIO",
     "tema": "ecuaciones_lineales",
     "pregunta": "Encuentra el valor de $x$ en: $3x - 7 = 2x + 5$",
-    "opciones": ["$12$", "$-2$", "$2$", "$-12$"],
+    "opciones": [
+      "$12$",
+      "$-2$",
+      "$2$",
+      "$-12$"
+    ],
     "respuesta_correcta": "$12$",
-    "tipo": "opcion_multiple"
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 2
+  },
+  {
+    "id": "diag_int_04",
+    "nivel": "INTERMEDIO",
+    "tema": "ecuaciones_lineales",
+    "pregunta": "Encuentra el valor de $x$ en: $2(x - 3) = 10$",
+    "opciones": [
+      "$8$",
+      "$2$",
+      "$5$",
+      "$11$"
+    ],
+    "respuesta_correcta": "$8$",
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 2
+  },
+  {
+    "id": "diag_int_05",
+    "nivel": "INTERMEDIO",
+    "tema": "factorizacion",
+    "pregunta": "Extrae el factor común de: $x^{2} + 5x$",
+    "opciones": [
+      "$x(x + 5)$",
+      "$x(x - 5)$",
+      "$(x + 5)(x - 5)$",
+      "$5x(x + 1)$"
+    ],
+    "respuesta_correcta": "$x(x + 5)$",
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 3
   },
   {
     "id": "diag_04",
+    "nivel": "AVANZADO",
     "tema": "factorizacion",
     "pregunta": "Factoriza la siguiente diferencia de cuadrados: $x^{2} - 49$",
     "opciones": [
@@ -39,10 +171,29 @@
       "$(x - 49)(x + 1)$"
     ],
     "respuesta_correcta": "$(x + 7)(x - 7)$",
-    "tipo": "opcion_multiple"
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 4
+  },
+  {
+    "id": "diag_avz_02",
+    "nivel": "AVANZADO",
+    "tema": "factorizacion",
+    "pregunta": "Factoriza el trinomio cuadrado perfecto: $x^{2} - 8x + 16$",
+    "opciones": [
+      "$(x - 4)^{2}$",
+      "$(x + 4)^{2}$",
+      "$(x - 8)(x + 2)$",
+      "$(x - 16)(x + 1)$"
+    ],
+    "respuesta_correcta": "$(x - 4)^{2}$",
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 4
   },
   {
     "id": "diag_05",
+    "nivel": "AVANZADO",
     "tema": "derivadas",
     "pregunta": "¿Cuál es la derivada de $f(x) = 4x^{3} - 5x + 7$ respecto a $x$?",
     "opciones": [
@@ -52,6 +203,88 @@
       "$12x^{2} + 7$"
     ],
     "respuesta_correcta": "$12x^{2} - 5$",
+    "tipo": "opcion_multiple",
+    "etapa": "SUPERIOR",
+    "curso_min": 1
+  },
+  {
+    "id": "diag_avz_04",
+    "nivel": "AVANZADO",
+    "tema": "derivadas",
+    "pregunta": "¿Cuál es la derivada de $f(x) = \\ln(x)$ respecto a $x$?",
+    "opciones": [
+      "$\\frac{1}{x}$",
+      "$\\ln(x)$",
+      "$x$",
+      "$e^{x}$"
+    ],
+    "respuesta_correcta": "$\\frac{1}{x}$",
+    "tipo": "opcion_multiple",
+    "etapa": "SUPERIOR",
+    "curso_min": 1
+  },
+  {
+    "id": "diag_avz_05",
+    "nivel": "AVANZADO",
+    "tema": "ecuaciones_lineales",
+    "pregunta": "Encuentra el valor de $x$ en: $\\frac{x}{2} + 3 = 7$",
+    "opciones": [
+      "$8$",
+      "$5$",
+      "$2$",
+      "$20$"
+    ],
+    "respuesta_correcta": "$8$",
+    "tipo": "opcion_multiple",
+    "etapa": "SECUNDARIA",
+    "curso_min": 3
+  },
+  {
+    "id": "diag_avz_06",
+    "nivel": "AVANZADO",
+    "tema": "ecuaciones_lineales",
+    "etapa": "SECUNDARIA",
+    "curso_min": 4,
+    "pregunta": "Encuentra el valor de $x$ en: $\\frac{2x - 1}{3} = x - 4$",
+    "opciones": [
+      "$11$",
+      "$-11$",
+      "$5$",
+      "$13$"
+    ],
+    "respuesta_correcta": "$11$",
+    "tipo": "opcion_multiple"
+  },
+  {
+    "id": "diag_avz_07",
+    "nivel": "AVANZADO",
+    "tema": "aritmetica",
+    "etapa": "SECUNDARIA",
+    "curso_min": 4,
+    "pregunta": "Calcula el resultado de: $(-2)^{3} + 5 \\times (-3)$",
+    "opciones": [
+      "$-23$",
+      "$-7$",
+      "$23$",
+      "$7$"
+    ],
+    "respuesta_correcta": "$-23$",
+    "tipo": "opcion_multiple"
+  },
+  {
+    "id": "diag_bas_06",
+    "nivel": "BASICO",
+    "tema": "aritmetica",
+    "etapa": "PRIMARIA",
+    "curso_min": 1,
+    "pregunta": "Calcula el resultado de: $27 + 15$",
+    "opciones": [
+      "$42$",
+      "$32$",
+      "$43$",
+      "$12$"
+    ],
+    "respuesta_correcta": "$42$",
     "tipo": "opcion_multiple"
   }
 ]

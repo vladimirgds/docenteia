@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     const padre = datos.padreId
       ? await prisma.nodoConocimiento.findUnique({
           where: { id: datos.padreId },
-          select: { id: true, materiaId: true, motor: true },
+          select: { id: true, materiaId: true, motor: true, etapa: true, cursoMin: true },
         })
       : null;
     if (datos.padreId && !padre) return noEncontrado("El tema padre");
@@ -103,6 +103,11 @@ export async function POST(req: Request) {
       if (!materia) return noEncontrado("La asignatura");
     }
     const motor = datos.motor !== undefined ? (datos.motor ?? null) : (padre?.motor ?? null);
+    // El alcance curricular se hereda del padre igual que el motor: un subtema
+    // de "Derivadas" es de Superior aunque nadie vuelva a marcarlo.
+    const etapa = datos.etapa !== undefined ? (datos.etapa ?? null) : (padre?.etapa ?? null);
+    const cursoMin =
+      datos.cursoMin !== undefined ? (datos.cursoMin ?? null) : (padre?.cursoMin ?? null);
     const estado: Estado = datos.estado ?? "BORRADOR";
 
     const claves = (await prisma.nodoConocimiento.findMany({ select: { clave: true } })).map(
@@ -120,6 +125,8 @@ export async function POST(req: Request) {
           padreId: padre?.id ?? null,
           motor,
           nivel: datos.nivel ?? null,
+          etapa,
+          cursoMin,
           orden: datos.orden ?? 0,
           estado,
           objetivos: datos.objetivos ?? [],

@@ -32,11 +32,25 @@ export const TEMAS: readonly TemaEnum[] = [
 export interface PreguntaOficial {
   id: string;
   tema: string;
+  /** Nivel de dificultad: BASICO, INTERMEDIO o AVANZADO. */
+  nivel?: string;
+  /** Etapa educativa A PARTIR DE la cual se plantea: PRIMARIA, SECUNDARIA, SUPERIOR. */
+  etapa?: string;
+  /** Curso mínimo dentro de esa etapa. */
+  curso_min?: number;
   pregunta: string;
   opciones: string[];
   respuesta_correcta: string;
   tipo?: string;
 }
+
+export type NivelPregunta = "BASICO" | "INTERMEDIO" | "AVANZADO";
+
+const NIVELES_PREGUNTA: readonly NivelPregunta[] = ["BASICO", "INTERMEDIO", "AVANZADO"];
+
+export type EtapaPregunta = "PRIMARIA" | "SECUNDARIA" | "SUPERIOR";
+
+const ETAPAS_PREGUNTA: readonly EtapaPregunta[] = ["PRIMARIA", "SECUNDARIA", "SUPERIOR"];
 
 /** Pregunta ya adaptada al esquema de `preguntas_diagnostico`. */
 export interface PreguntaAdaptada {
@@ -47,6 +61,21 @@ export interface PreguntaAdaptada {
   opciones: Array<{ id: string; texto: string }>;
   /** Identificador de la opción correcta, no su texto. */
   respuestaCorrecta: string;
+  /**
+   * Nivel al que se plantea la pregunta. `null` = vale para cualquiera.
+   *
+   * Es lo que evita que a un alumno de 3.º de secundaria se le pregunte por
+   * derivadas: el diagnóstico sirve las preguntas de SU nivel, no el banco
+   * entero.
+   */
+  nivel: NivelPregunta | null;
+  /**
+   * Desde qué punto del sistema educativo se plantea. Es el otro eje: `nivel`
+   * dice cuánto cuesta, esto dice a quién le toca. Una derivada es de Superior
+   * aunque su dificultad relativa sea la misma que la de una factorización.
+   */
+  etapa: EtapaPregunta | null;
+  cursoMin: number | null;
 }
 
 /**
@@ -97,6 +126,17 @@ export function temaAEnum(tema: string): TemaEnum {
 export const IDS_OPCION = ["a", "b", "c", "d", "e", "f"];
 
 /**
+ * Cuántas preguntas del mismo tema se toleran dentro de un mismo nivel.
+ *
+ * Eran dos cuando el banco sólo se dividía por dificultad. Con la taxonomía
+ * curricular, un mismo nivel reparte sus preguntas entre varios cursos —lo
+ * básico empieza en 1.º de primaria y llega hasta 1.º de secundaria— y dos por
+ * tema no alcanzan a cubrirlos. Tres siguen dejando sitio a otros temas, que es
+ * lo que este tope protege.
+ */
+export const MAX_PREGUNTAS_POR_TEMA = 3;
+
+/**
  * Convierte una pregunta del formato oficial al del esquema.
  *
  * Las opciones pasan de ser una lista de textos a pares { id, texto }, y la
@@ -135,6 +175,23 @@ export function adaptar(p: PreguntaOficial, indice: number): PreguntaAdaptada {
     );
   }
 
+  const nivel = p.nivel ? String(p.nivel).toUpperCase() : null;
+  if (nivel && !(NIVELES_PREGUNTA as readonly string[]).includes(nivel)) {
+    throw new Error(
+      `Nivel desconocido en la pregunta "${p.id}": ${p.nivel}. Los válidos son: ${NIVELES_PREGUNTA.join(", ")}`,
+    );
+  }
+
+  const etapa = p.etapa ? String(p.etapa).toUpperCase() : null;
+  if (etapa && !(ETAPAS_PREGUNTA as readonly string[]).includes(etapa)) {
+    throw new Error(
+      `Etapa desconocida en la pregunta "${p.id}": ${p.etapa}. Las válidas son: ${ETAPAS_PREGUNTA.join(", ")}`,
+    );
+  }
+  if (p.curso_min != null && (!Number.isInteger(p.curso_min) || p.curso_min < 1 || p.curso_min > 10)) {
+    throw new Error(`El curso mínimo de "${p.id}" no es un curso posible: ${p.curso_min}`);
+  }
+
   return {
     clave: p.id,
     orden: indice + 1,
@@ -142,6 +199,9 @@ export function adaptar(p: PreguntaOficial, indice: number): PreguntaAdaptada {
     enunciado: p.pregunta,
     opciones,
     respuestaCorrecta: correcta.id,
+    nivel: (nivel as NivelPregunta | null) ?? null,
+    etapa: (etapa as EtapaPregunta | null) ?? null,
+    cursoMin: p.curso_min ?? null,
   };
 }
 
@@ -162,11 +222,44 @@ export function adaptarBanco(oficial: PreguntaOficial[]): PreguntaAdaptada[] {
     throw new Error("Hay identificadores de pregunta repetidos en el banco.");
   }
 
-  const temas = preguntas.map((p) => p.tema);
-  if (new Set(temas).size !== temas.length) {
-    throw new Error(
-      "Hay más de una pregunta para el mismo tema. El diagnóstico asigna el nivel contando aciertos por tema, así que duplicar un tema desequilibraría la clasificación.",
-    );
+  // ── Equilibrio DENTRO de cada nivel ────────────────────────────────────────
+  // La regla del PMV 1 era "una pregunta por tema", porque el banco era uno
+  // solo y cubría los cinco temas del motor. Con el banco partido por niveles
+  // esa regla deja de valer: en BÁSICO no se pregunta por derivadas, así que
+  // sus cinco preguntas salen de tres temas. Lo que sí hay que seguir evitando
+  // es que un nivel se apoye en un único tema, porque entonces el diagnóstico
+  // mediría ese tema y no el nivel del alumno.
+  const porNivel = new Map<string, PreguntaAdaptada[]>();
+  for (const p of preguntas) {
+    const clave = p.nivel ?? "SIN_NIVEL";
+    porNivel.set(clave, [...(porNivel.get(clave) ?? []), p]);
+  }
+
+  for (const [nivel, delNivel] of porNivel) {
+    const cuenta = new Map<string, number>();
+    for (const p of delNivel) cuenta.set(p.tema, (cuenta.get(p.tema) ?? 0) + 1);
+
+    for (const [tema, veces] of cuenta) {
+      if (veces > MAX_PREGUNTAS_POR_TEMA) {
+        throw new Error(
+          `El nivel ${nivel} tiene ${veces} preguntas de ${tema}; el máximo son ${MAX_PREGUNTAS_POR_TEMA}, o el diagnóstico mediría un solo tema.`,
+        );
+      }
+    }
+
+    if (delNivel.length >= 3 && cuenta.size < 2) {
+      throw new Error(`El nivel ${nivel} sólo pregunta por un tema (${[...cuenta.keys()][0]}).`);
+    }
+  }
+
+  // Lo que motivó toda la taxonomía: una derivada no se le plantea a un alumno
+  // de secundaria, por muy avanzado que vaya en lo suyo.
+  for (const p of preguntas) {
+    if (p.tema === "DERIVADAS" && p.etapa !== "SUPERIOR") {
+      throw new Error(
+        `La pregunta "${p.clave}" es de derivadas y su etapa es ${p.etapa ?? "ninguna"}: las derivadas son de Superior.`,
+      );
+    }
   }
 
   return preguntas;

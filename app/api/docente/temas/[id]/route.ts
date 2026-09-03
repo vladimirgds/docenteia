@@ -59,7 +59,7 @@ export async function PATCH(req: Request, { params }: Contexto) {
   try {
     const actual = await prisma.nodoConocimiento.findUnique({
       where: { id },
-      select: { id: true, clave: true, motor: true, estado: true },
+      select: { id: true, clave: true, motor: true, estado: true, etapa: true, cursoMin: true },
     });
     if (!actual) return noEncontrado("El tema");
 
@@ -96,6 +96,8 @@ export async function PATCH(req: Request, { params }: Contexto) {
           ...(datos.padreId !== undefined ? { padreId: datos.padreId ?? null } : {}),
           ...(datos.motor !== undefined ? { motor } : {}),
           ...(datos.nivel !== undefined ? { nivel: datos.nivel ?? null } : {}),
+          ...(datos.etapa !== undefined ? { etapa: datos.etapa ?? null } : {}),
+          ...(datos.cursoMin !== undefined ? { cursoMin: datos.cursoMin ?? null } : {}),
           ...(datos.orden !== undefined ? { orden: datos.orden } : {}),
           ...(datos.estado !== undefined ? { estado } : {}),
           ...(datos.objetivos !== undefined ? { objetivos: datos.objetivos } : {}),

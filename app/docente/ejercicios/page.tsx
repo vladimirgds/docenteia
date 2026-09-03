@@ -33,7 +33,15 @@ export default async function PaginaEjercicios() {
     prisma.nodoConocimiento.findMany({
       where: { estado: { not: "ARCHIVADO" } },
       orderBy: [{ orden: "asc" }, { titulo: "asc" }],
-      select: { id: true, titulo: true, motor: true, estado: true },
+      select: {
+        id: true,
+        titulo: true,
+        motor: true,
+        estado: true,
+        nivel: true,
+        etapa: true,
+        cursoMin: true,
+      },
       take: 500,
     }),
     prisma.ejercicio.findMany({
@@ -48,6 +56,9 @@ export default async function PaginaEjercicios() {
     titulo: t.titulo,
     motor: t.motor,
     estado: t.estado as Estado,
+    nivel: t.nivel,
+    etapa: t.etapa,
+    cursoMin: t.cursoMin,
   }));
 
   const ejerciciosVista: EjercicioVista[] = ejercicios.map((e) => ({
@@ -62,6 +73,8 @@ export default async function PaginaEjercicios() {
     pistas: e.pistas,
     nivel: e.nivel,
     motor: e.motor,
+    etapa: e.etapa,
+    cursoMin: e.cursoMin,
     estado: e.estado as Estado,
     origen: e.origen,
     validado: e.validado,
@@ -80,6 +93,13 @@ export default async function PaginaEjercicios() {
           <p className="text-muted-foreground">
             Escribe ejercicios sueltos o plantillas parametrizadas. El servidor comprueba la
             matemática contra el motor determinista antes de guardarlos.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            El <strong>nivel</strong> de cada ejercicio decide a qué alumnos les llega: la
+            evaluación inicial de un alumno se compone con los ejercicios publicados y verificados
+            que le corresponden. Y el <strong>alcance curricular</strong> del tema —etapa y curso a
+            partir del cual se plantea— decide a qué alumnos les llega: una derivada marcada como
+            Superior no le aparece a uno de secundaria por muy avanzado que vaya.
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 // Con extensión explícita: este módulo lo importa también la suite de qa/, que
 // se ejecuta con Node a secas y exige la extensión en los imports relativos.
 import { esFaseDeConcepto, esFaseDeReglas } from "./fases.ts";
-import { expresionPrincipal } from "../matematicas.ts";
+import { expresionPrincipal } from "../matematicas/index.ts";
 
 /**
  * Cómo hay que presentar la respuesta a un seguimiento.

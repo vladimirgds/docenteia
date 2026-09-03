@@ -41,6 +41,7 @@ import { reglasParaGuardar } from "../lib/docente/temas.ts";
 import { INICIO_POR_ROL, ROLES, ZONAS, puedeAcceder, puedeEditarCurriculo } from "../lib/rbac.ts";
 
 import { BASE_URL as BASE } from "./base-url.mjs";
+import { iniciarSesion } from "./sesion.mjs";
 
 let ok = 0;
 const fallos = [];
@@ -420,6 +421,7 @@ if (!salud) {
   }
 
   const sesion = await iniciarSesion(
+    BASE,
     process.env.SEED_DOCENTE_EMAIL || "docente@mentoriamath.local",
     process.env.SEED_DOCENTE_PASSWORD || "Docente-2026",
   );
@@ -588,6 +590,66 @@ if (!salud) {
       `HTTP ${rPlantilla.status}`,
     );
 
+    // 5b. LO QUE REPORTÓ EL CLIENTE: una derivada con funciones trascendentes.
+    //     Antes el motor no las reconocía y el ejercicio se guardaba como "no
+    //     comprobable". Ahora tiene que quedar VERIFICADO, y por el camino
+    //     completo: API, validador y motor simbólico.
+    //
+    //     Va en un tema PROPIO, con motor de derivadas: el ejercicio hereda el
+    //     motor de su tema, y meterlo en el de ecuaciones lineales sería pedirle
+    //     al motor equivocado que lo resuelva.
+    const rTemaDerivadas = await api("/api/docente/temas", {
+      method: "POST",
+      body: JSON.stringify({
+        titulo: `QA Derivadas ${sufijo}`,
+        materiaId,
+        motor: "DERIVADAS",
+        nivel: "AVANZADO",
+        estado: "PUBLICADO",
+      }),
+    });
+    const temaDerivadas = await rTemaDerivadas.json().catch(() => ({}));
+    const temaDerivadasId = temaDerivadas?.tema?.id ?? null;
+    check("se crea un tema con motor de derivadas", Boolean(temaDerivadasId));
+
+    const rTrascendente = await api("/api/docente/ejercicios", {
+      method: "POST",
+      body: JSON.stringify({
+        nodoId: temaDerivadasId,
+        nivel: "AVANZADO",
+        enunciado: "x·ln(x)",
+        // Escrita en otro orden a propósito: el motor calcula "ln(x) + 1".
+        respuestaCorrecta: "1 + ln(x)",
+      }),
+    });
+    const trascendente = await rTrascendente.json().catch(() => ({}));
+    check(
+      "una derivada con ln(x) se guarda VERIFICADA (lo que fallaba)",
+      rTrascendente.status === 201 && trascendente?.ejercicio?.validado === true,
+      `HTTP ${rTrascendente.status}`,
+    );
+    check(
+      "y el informe nombra la regla del producto",
+      (trascendente?.informe?.reglas ?? []).some((r) => r.includes("producto")),
+      (trascendente?.informe?.reglas ?? []).join(" · "),
+    );
+
+    const rExponencial = await api("/api/docente/ejercicios/validar", {
+      method: "POST",
+      body: JSON.stringify({
+        nodoId: temaDerivadasId,
+        enunciado: "e^(2x)",
+        respuestaCorrecta: "e^(2x)",
+      }),
+    });
+    const exponencial = await rExponencial.json().catch(() => ({}));
+    check(
+      "y una derivada exponencial mal resuelta se rechaza con el número exacto",
+      exponencial?.informe?.valido === false &&
+        (exponencial?.informe?.errores ?? []).some((e) => e.includes("2e^(2x)")),
+      (exponencial?.informe?.errores ?? [])[0],
+    );
+
     // 6. Duplicado
     const rRepetido = await api("/api/docente/ejercicios", {
       method: "POST",
@@ -676,6 +738,7 @@ if (!salud) {
     //     no le ofrece el botón, así que sin esta prueba nadie notaría que la
     //     API sí se lo permite.
     const sesionDirector = await iniciarSesion(
+      BASE,
       process.env.SEED_DIRECTOR_EMAIL || "director@mentoriamath.local",
       process.env.SEED_DIRECTOR_PASSWORD || "Director-2026",
     );
@@ -704,6 +767,14 @@ if (!salud) {
     for (const ej of banco?.ejercicios ?? []) {
       await api(`/api/docente/ejercicios/${ej.id}`, { method: "DELETE" });
     }
+    const bancoDerivadas = await (
+      await api(`/api/docente/ejercicios?nodoId=${temaDerivadasId}`)
+    ).json();
+    for (const ej of bancoDerivadas?.ejercicios ?? []) {
+      await api(`/api/docente/ejercicios/${ej.id}`, { method: "DELETE" });
+    }
+    await api(`/api/docente/temas/${temaDerivadasId}`, { method: "DELETE" });
+
     const rBorrarTema = await api(`/api/docente/temas/${temaId}`, { method: "DELETE" });
     check("el tema se borra cuando ya no tiene historial", rBorrarTema.status === 200, `HTTP ${rBorrarTema.status}`);
 
@@ -720,49 +791,3 @@ if (fallos.length > 0) {
 }
 console.log("═══════════════════════════════════════════════════════════\n");
 process.exit(fallos.length > 0 ? 1 : 0);
-
-/**
- * Inicia sesión contra NextAuth con credenciales y devuelve la cookie de sesión.
- *
- * El PMV 1 no probaba nada que necesitara sesión iniciada, y lo decía. Con el
- * HITO 1 eso deja de ser aceptable: todo el módulo de autoría vive detrás del
- * inicio de sesión, así que la batería tiene que saber entrar. Son dos pasos:
- * pedir el token CSRF (que viene con su cookie) y enviarlo con las credenciales
- * al proveedor de credenciales.
- */
-async function iniciarSesion(email, password) {
-  try {
-    const rCsrf = await fetch(`${BASE}/api/auth/csrf`);
-    const cookiesCsrf = leerCookies(rCsrf);
-    const { csrfToken } = await rCsrf.json();
-
-    const cuerpo = new URLSearchParams({
-      csrfToken,
-      email,
-      password,
-      callbackUrl: BASE,
-      redirect: "false",
-    });
-
-    const rLogin = await fetch(`${BASE}/api/auth/callback/credentials`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        cookie: cookiesCsrf,
-      },
-      body: cuerpo.toString(),
-      redirect: "manual",
-    });
-
-    const cookiesSesion = leerCookies(rLogin);
-    return /session-token/.test(cookiesSesion) ? `${cookiesCsrf}; ${cookiesSesion}` : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Las cookies de una respuesta, en el formato que espera la cabecera `cookie`. */
-function leerCookies(respuesta) {
-  const crudas = respuesta.headers.getSetCookie?.() ?? [];
-  return crudas.map((c) => c.split(";")[0]).join("; ");
-}

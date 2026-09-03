@@ -10,6 +10,7 @@ import { Math, TextoMatematico } from "@/components/math";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -17,11 +18,19 @@ import { DESCRIPCION_NIVEL, ETIQUETA_NIVEL } from "@/lib/diagnostico/clasificar"
 
 interface Pregunta {
   id: string;
-  orden: number;
-  tema: string;
+  /**
+   * De opción múltiple (catálogo) o de respuesta abierta (banco del docente).
+   *
+   * Las dos conviven en la misma prueba desde el MVP 2: el catálogo aporta las
+   * preguntas calibradas por nivel y el banco, las que ha escrito el profesor
+   * para ese nivel. Se corrigen igual de bien —las abiertas, con el mismo motor
+   * determinista que la práctica—, pero no se responden igual.
+   */
+  tipo: "opcion_multiple" | "respuesta_abierta";
+  tema: string | null;
   enunciado: string;
-  expresion: string | null;
-  opciones: Array<{ id: string; texto: string }>;
+  expresion?: string | null;
+  opciones?: Array<{ id: string; texto: string }>;
 }
 
 interface Resultado {
@@ -37,7 +46,17 @@ interface Resultado {
  * las envía; quién acierta y qué nivel sale de ello lo decide el servidor con
  * la regla de corte determinista. El navegador nunca recibe la clave.
  */
-export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) {
+export function FormularioDiagnostico({
+  preguntas,
+  nivel,
+  curso,
+}: {
+  preguntas: Pregunta[];
+  /** Nivel con el que se ha compuesto la prueba. */
+  nivel?: keyof typeof ETIQUETA_NIVEL;
+  /** Curso declarado por el alumno, si lo hay. */
+  curso?: string | null;
+}) {
   const router = useRouter();
   const { update } = useSession();
 
@@ -54,6 +73,7 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
   const pregunta = preguntas[indice];
   const total = preguntas.length;
   const seleccion = pregunta ? respuestas[pregunta.id] : undefined;
+  const respondida = Boolean(seleccion && seleccion.trim());
   const progreso = useMemo(
     () => (resultado ? 100 : (indice / total) * 100),
     [indice, total, resultado],
@@ -65,7 +85,7 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
   }
 
   function avanzar() {
-    if (!pregunta || !seleccion) return;
+    if (!pregunta || !respondida) return;
     registrarTiempo(pregunta.id);
     if (indice < total - 1) setIndice(indice + 1);
   }
@@ -109,7 +129,7 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
     setEnviando(false);
   }
 
-  const todasRespondidas = preguntas.every((p) => respuestas[p.id]);
+  const todasRespondidas = preguntas.every((p) => (respuestas[p.id] ?? "").trim());
 
   // ── Resultado ──────────────────────────────────────────────────────────────
   if (resultado) {
@@ -159,6 +179,15 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
             {indice + 1} de {total}
           </span>
         </div>
+        {nivel && (
+          // Se dice con qué nivel se ha armado la prueba, y por qué. Un alumno
+          // de 3.º de secundaria tiene que ver que las preguntas son de su
+          // curso, no de un temario que aún no ha dado.
+          <p className="text-sm text-muted-foreground">
+            Preguntas de nivel <strong>{ETIQUETA_NIVEL[nivel]}</strong>
+            {curso ? `, ajustadas a tu curso (${curso}).` : "."}
+          </p>
+        )}
         <Progress value={progreso} />
       </div>
 
@@ -191,27 +220,49 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
               )}
             </CardHeader>
             <CardContent>
-              <RadioGroup
-                value={seleccion ?? ""}
-                onValueChange={(valor) =>
-                  setRespuestas((prev) => ({ ...prev, [pregunta.id]: valor }))
-                }
-                className="gap-3"
-              >
-                {pregunta.opciones.map((opcion) => (
-                  <Label
-                    key={opcion.id}
-                    htmlFor={`${pregunta.id}-${opcion.id}`}
-                    className="flex cursor-pointer items-center gap-3 rounded-md border p-4 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-accent"
-                  >
-                    <RadioGroupItem
-                      value={opcion.id}
-                      id={`${pregunta.id}-${opcion.id}`}
-                    />
-                    <TextoMatematico texto={opcion.texto} />
-                  </Label>
-                ))}
-              </RadioGroup>
+              {pregunta.tipo === "respuesta_abierta" ? (
+                <div className="space-y-2">
+                  <Label htmlFor={`respuesta-${pregunta.id}`}>Tu respuesta</Label>
+                  <Input
+                    id={`respuesta-${pregunta.id}`}
+                    value={seleccion ?? ""}
+                    autoComplete="off"
+                    placeholder="Escribe el resultado"
+                    onChange={(e) =>
+                      setRespuestas((prev) => ({ ...prev, [pregunta.id]: e.target.value }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && respondida && indice < total - 1) avanzar();
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se acepta cualquier forma equivalente: da igual el orden de los términos, y
+                    7/2 vale lo mismo que 3,5.
+                  </p>
+                </div>
+              ) : (
+                <RadioGroup
+                  value={seleccion ?? ""}
+                  onValueChange={(valor) =>
+                    setRespuestas((prev) => ({ ...prev, [pregunta.id]: valor }))
+                  }
+                  className="gap-3"
+                >
+                  {(pregunta.opciones ?? []).map((opcion) => (
+                    <Label
+                      key={opcion.id}
+                      htmlFor={`${pregunta.id}-${opcion.id}`}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border p-4 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-accent"
+                    >
+                      <RadioGroupItem
+                        value={opcion.id}
+                        id={`${pregunta.id}-${opcion.id}`}
+                      />
+                      <TextoMatematico texto={opcion.texto} />
+                    </Label>
+                  ))}
+                </RadioGroup>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -224,7 +275,7 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
         </Button>
 
         {indice < total - 1 ? (
-          <Button onClick={avanzar} disabled={!seleccion}>
+          <Button onClick={avanzar} disabled={!respondida}>
             Siguiente
             <ArrowRight className="h-4 w-4" />
           </Button>

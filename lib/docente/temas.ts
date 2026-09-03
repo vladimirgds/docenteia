@@ -20,6 +20,8 @@ export const SELECCION_TEMA = {
   descripcion: true,
   motor: true,
   nivel: true,
+  etapa: true,
+  cursoMin: true,
   orden: true,
   estado: true,
   objetivos: true,

@@ -71,6 +71,8 @@ export default async function PaginaCrearTema({
         padreId: tema.padreId,
         motor: tema.motor,
         nivel: tema.nivel,
+        etapa: tema.etapa,
+        cursoMin: tema.cursoMin,
         orden: tema.orden,
         estado: tema.estado as Estado,
         objetivos: tema.objetivos,

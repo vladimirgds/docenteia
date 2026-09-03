@@ -159,6 +159,13 @@ export function planoALatex(expresion: string): string {
   // estropear "d/dx", que no es una fracción sino una notación de derivada.
   s = s.replace(/(?<![\w}])(\d+)\s*\/\s*(\d+)(?![\w{])/g, "\\frac{$1}{$2}");
 
+  // Nombres de función (MVP 2). Sin la barra delante, KaTeX compone "ln(x)"
+  // como el producto de tres variables en cursiva —l·n·x—, que es exactamente
+  // lo que se veía en la pizarra en cuanto el temario incluyó logaritmos.
+  s = s.replace(/\bexp\s*\(([^()]*)\)/gi, "e^{$1}");
+  s = s.replace(/\b(?:sqrt|raiz)\s*\(([^()]*)\)/gi, "\\sqrt{$1}");
+  s = s.replace(/\b(ln|log|sin|sen|cos|tan)\b/g, (_, f) => `\\${f === "sen" ? "sin" : f}`);
+
   // Caracteres que LaTeX interpreta como órdenes y aquí son literales.
   s = s.replace(/%/g, "\\%").replace(/(?<!\\)&/g, "\\&");
 

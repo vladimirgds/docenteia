@@ -63,6 +63,8 @@ export default async function PaginaCurriculo() {
     descripcion: t.descripcion,
     motor: t.motor,
     nivel: t.nivel,
+    etapa: t.etapa,
+    cursoMin: t.cursoMin,
     orden: t.orden,
     estado: t.estado as Estado,
     etiquetas: t.etiquetas,

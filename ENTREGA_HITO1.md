@@ -215,9 +215,11 @@ la aplicación compilada en modo producción:
 
 | Batería | Resultado |
 | --- | --- |
-| `npm run qa:hito1` — **nueva** | **104 comprobaciones · 0 fallidas** |
-| `qa/leccion.mjs` (PMV 1, lección) | 809 · 0 |
-| `qa/diagnostico.mjs` (PMV 1, banco) | 124 · 0 |
+| `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
+| `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
+| `npm run qa:diagnostico-nivel` — **nueva** | **85 comprobaciones · 0 fallidas** |
+| `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
+| `qa/diagnostico.mjs` (banco, por nivel y etapa) | 416 · 0 |
 | `qa/paso1.mjs` (PMV 1, roles y registro) | 72 · 0 |
 | `qa/frontend.mjs` (PMV 1, arranque) | 10 · 0 |
 | `npx tsc --noEmit` | sin errores |
@@ -292,9 +294,190 @@ components/docente/navegacion.tsx
 components/ui/{textarea,select,badge}.tsx
 
 prisma/migrations/20260901120000_hito1_autoria_docente/migration.sql
-qa/hito1.mjs                    104 comprobaciones
+qa/hito1.mjs                    108 comprobaciones
+qa/matematicas.mjs              100 comprobaciones (ampliación)
 ENTREGA_HITO1.md                este documento
 ```
+
+---
+
+## 10. Ampliación tras la verificación del cliente
+
+Al revisar el hito, el cliente encontró el límite exacto del motor heredado: la
+autoría funcionaba con polinomios, pero **una derivada con funciones
+trascendentes —`e^x`, `ln(x)`— se marcaba como "no comprobable"**. Pidió tres
+cosas, y las tres están resueltas.
+
+### 1. El analizador entiende e^x y ln(x)
+
+El motor del PMV 1 leía las expresiones con expresiones regulares: buscaba
+"coeficiente + variable + exponente". `e^x` no era una función que no supiera
+derivar, era texto que no encajaba en el patrón. Parchear el patrón sólo habría
+movido el límite un poco más allá, así que se ha hecho lo que faltaba: leer la
+expresión como una **gramática**.
+
+`lib/matematicas/expresiones.ts` convierte el texto en un árbol —números,
+variables, constantes `e` y `π`, superíndices Unicode, multiplicación implícita,
+llaves de LaTeX, y las funciones `ln`, `log`, `exp`, `sqrt`, `sin`, `cos`,
+`tan`, con o sin paréntesis— y `lib/matematicas/derivar.ts` deriva sobre él.
+
+### 2. Regla del producto y del cociente, verificadas
+
+Al derivar sobre la estructura, las reglas se componen solas:
+
+| Ejercicio | El motor calcula | Reglas que declara haber aplicado |
+| --- | --- | --- |
+| `x·ln(x)` | `ln(x) + 1` | producto · logaritmo |
+| `ln(x)/x` | `(1 - ln(x))/x²` | cociente · logaritmo |
+| `(x² + 1)/(x - 3)` | `(2x·(x - 3) - (x² + 1))/(x - 3)²` | cociente · suma · potencia |
+| `e^(2x)` | `2e^(2x)` | exponencial · cadena |
+| `ln(x² + 1)` | `2x/(x² + 1)` | cadena · logaritmo |
+| `x^x` | `(ln(x) + 1)x^x` | derivación logarítmica |
+
+Las reglas aplicadas se guardan en el informe del ejercicio y se muestran en
+pantalla: el docente ve **con qué** se ha comprobado su ejercicio, no sólo que
+salió bien.
+
+### 3. La corrección acepta respuestas equivalentes
+
+Se dejan de comparar cadenas y se comparan **funciones**: dos respuestas son la
+misma si valen lo mismo, evaluadas en varios puntos. Con eso, `e^x + 2x` y
+`2x + e^x` dejan de ser respuestas distintas, y con ellas `12x^3` y `12x³`,
+`7/2` y `3.5`, `f'(x) = e^x` y `e^x`, o `2e^x` y `e^x + e^x`.
+
+Dos cosas se han conservado a propósito:
+
+- **La forma sigue importando donde el ejercicio ES la forma.** Si se pedía
+  factorizar y el alumno entrega `x² - 9`, se rechaza: vale lo mismo que
+  `(x - 3)(x + 3)` y no es la respuesta a lo que se preguntaba.
+- **Las respuestas en prosa** —"la respuesta es 4", "8 metros/segundo"— las
+  sigue interpretando el corrector del PMV 1, que sabe leerlas.
+
+### Comprobado contra las matemáticas, no contra lo que yo recuerde
+
+Además de las comprobaciones caso a caso, la batería deriva 16 funciones y
+compara cada derivada con la **pendiente numérica real** de su función
+(diferencia centrada). Si una regla estuviera mal escrita, la comparación
+fallaría aunque el resultado coincidiera con lo que la prueba esperaba.
+
+### Ficheros de la ampliación
+
+```
+lib/matematicas/expresiones.ts   analizador: texto → árbol (nuevo)
+lib/matematicas/derivar.ts       reglas de derivación y simplificación (nuevo)
+lib/matematicas/equivalencia.ts  ¿son la misma respuesta? (nuevo)
+lib/matematicas/index.ts         lo que era lib/matematicas.ts, más el LaTeX
+                                 de ln, log, sen, cos, tan, sqrt y exp
+lib/leccion/correccion.ts        el solver de derivadas usa el motor nuevo
+lib/docente/validador.ts         compara por equivalencia y guarda las reglas
+app/api/practica/corregir/…      el alumno también se beneficia
+qa/matematicas.mjs               100 comprobaciones (nuevo)
+```
+
+Nota de alcance: el motor sigue **sin** cubrir integrales, límites ni
+trigonometría inversa. Lo que hay ahora es lo que se pidió —derivadas con
+exponenciales, logaritmos, producto, cociente y cadena— más raíz y
+trigonometría básica, que salían gratis al derivar sobre el árbol.
+
+---
+
+## 11. Segunda observación del cliente: la prueba, ajustada al curso
+
+> "Al loguearse un alumno e indicar su grado escolar (ej. 3.º de secundaria), la
+> prueba diagnóstica le presenta derivadas en lugar de contenidos acordes a su
+> nivel."
+
+Tenía razón, y la causa era estructural: el diagnóstico del PMV 1 era **una sola
+lista** de cinco preguntas —una por cada tema del motor, derivadas incluidas—
+que se servía entera a todo el mundo. El alumno declaraba su curso al
+registrarse y ese dato no se usaba para nada.
+
+### 1. El currículo se clasifica por nivel, y el docente lo ve
+
+El nivel ya existía en los formularios; lo que faltaba era que sirviera para
+algo y que se notara:
+
+- El ejercicio **hereda el nivel de su tema** al elegirlo, que es justo el paso
+  que se olvida cuando hay que marcarlo a mano cada vez.
+- El banco tiene **filtro por nivel**, y cada ejercicio que cumple las
+  condiciones lleva la etiqueta **"Entra en el diagnóstico"**.
+- El currículo cuenta los **temas sin nivel**, que son los que no llegan a
+  ningún alumno por esta vía.
+
+### 2. La prueba se compone por nivel, en `app/api/diagnostico/route.ts`
+
+El nivel de partida sale, por este orden: del nivel ya diagnosticado, del
+**curso declarado** al registrarse, o —si no hay nada— de lo básico. Con él se
+arma la prueba a partir de dos fuentes:
+
+| Fuente | Qué aporta |
+| --- | --- |
+| Catálogo (`preguntas_diagnostico`) | Preguntas de opción múltiple calibradas por nivel |
+| Banco del docente (`ejercicios`) | Lo que ha publicado y verificado el profesorado para ese nivel, de respuesta abierta |
+
+Del banco entran como máximo 3 de las 5, y sólo ejercicios **publicados,
+verificados por el motor y sin huecos de plantilla**: son los únicos que el
+servidor puede corregir sin margen de duda. Las dos fuentes se reparten **por
+tema**, para que la prueba no acabe midiendo un solo asunto.
+
+La corrección recompone la prueba en el servidor y sólo admite esas preguntas:
+no se acepta la lista que envía el navegador, porque bastaría con mandar las
+fáciles.
+
+### 3. Preguntas base sembradas en los tres niveles
+
+`prisma/seed-data/preguntas-diagnostico.json` pasa de 5 preguntas a **15: cinco
+por nivel**. Se sembraron cinco y no las tres o cuatro pedidas para que la regla
+de corte acordada con el cliente —0-2 básico · 3-4 intermedio · 5 avanzado—
+siga contando sobre cinco exactamente igual que antes.
+
+| Nivel | Temas que se preguntan |
+| --- | --- |
+| Básico | aritmética, fracciones, ecuaciones lineales |
+| Intermedio | aritmética, fracciones, ecuaciones lineales, factorización |
+| Avanzado | factorización, derivadas, ecuaciones lineales |
+
+**Las derivadas sólo aparecen en el nivel avanzado.**
+
+### 4. El curso deja de escribirse a mano
+
+El registro pedía "Ciclo" y "Grado" en dos campos de texto libre. Ahora es una
+lista cerrada de cursos —de 1.º de primaria a preuniversitario—, porque de ese
+dato depende qué prueba se compone y "3º" escrito de seis maneras son seis
+alumnos que no se pueden clasificar. El mapeo tolera igualmente lo que ya
+estuviera guardado ("3.º de secundaria", "tercero", "3 ESO").
+
+### Comprobado de punta a punta
+
+`npm run qa:diagnostico-nivel` registra alumnos de verdad contra el servidor y
+comprueba el caso exacto del cliente:
+
+```
+✓ se registra un alumno de 3.º de secundaria
+✓ la prueba se arma con nivel INTERMEDIO
+✓ el servidor dice que el nivel sale del curso declarado
+✓ NO le aparece ninguna pregunta de derivadas (el fallo reportado)
+✓ un alumno de bachillerato SÍ recibe nivel avanzado, y en su prueba sí hay derivadas
+✓ sin curso declarado, la prueba es de nivel básico
+```
+
+### Ficheros
+
+```
+lib/curriculo/etapas.ts          taxonomía curricular: etapa, curso y alcance
+lib/diagnostico/seleccion.ts     composición de la prueba, con reparto por tema (nuevo)
+lib/diagnostico/prueba.ts        la prueba de un alumno, leída de la base (nuevo)
+lib/diagnostico/banco.ts         el catálogo declara nivel; equilibrio por nivel
+app/api/diagnostico/route.ts     compone y corrige por nivel
+app/estudiante/diagnostico/…     la página usa la misma composición que la API
+components/formulario-diagnostico.tsx  admite respuestas abiertas del banco
+components/formulario-registro.tsx     el curso se elige de una lista
+prisma/seed-data/preguntas-diagnostico.json  15 preguntas, 5 por nivel
+qa/diagnostico-nivel.mjs         62 comprobaciones (nuevo)
+qa/sesion.mjs                    inicio de sesión compartido por las baterías
+```
+
+---
 
 **Modificados**
 
@@ -307,4 +490,122 @@ app/docente/page.tsx            portada de autoría
 app/estudiante/leccion/page.tsx sólo suben a la lección las reglas publicadas
 app/api/registro/route.ts       comentario de roles al día
 package.json                    `qa:hito1` incorporado a `npm test`
+```
+
+---
+
+## 12. Tercera observación: la taxonomía curricular
+
+> "El campo actual Nivel (Básico, Intermedio, Avanzado) sólo indica complejidad
+> relativa interna, pero no el nivel educativo del estudiante."
+
+Exacto, y ahí estaba el fondo del problema. El sistema tenía **un solo eje** y lo
+usaba para dos cosas incompatibles: graduar la dificultad y decidir qué
+contenidos le tocan a cada alumno. Por eso un chico de secundaria que respondía
+bien acababa recibiendo derivadas: "avanzado" no significa "universitario",
+significa "lo más difícil de lo tuyo".
+
+### Los dos ejes, separados
+
+| Eje | Qué dice | Quién lo pone |
+| --- | --- | --- |
+| **Etapa + curso** | Dónde está el alumno: Secundaria 3.er año, Superior 2.º ciclo | El alumno, al configurar su perfil |
+| **Nivel** (Básico/Intermedio/Avanzado) | Cuánto cuesta un contenido dentro de su etapa | El docente al crearlo; el diagnóstico al medir |
+
+`EtapaEducativa` es un enum nuevo —PRIMARIA (1.º a 6.º grado), SECUNDARIA (1.º a
+5.º año), SUPERIOR (1.º a 10.º ciclo)— y viaja en el modelo de **temas,
+ejercicios, preguntas del diagnóstico y perfil del alumno**.
+
+### El alcance se lee "a partir de"
+
+Un contenido declara `etapa` y `cursoMin`. La factorización, marcada como
+Secundaria 3.º, se plantea desde 3.º de secundaria **y también en Superior**: lo
+que se estudia antes sigue valiendo después, como en cualquier temario. Lo que
+no ocurre nunca es lo contrario:
+
+```
+Secundaria 3.er año  →  derivadas: NO   ·  factorización: sí  ·  transversal: sí
+Secundaria 1.er año  →  derivadas: NO   ·  factorización: no  ·  transversal: sí
+Superior 2.º ciclo   →  derivadas: sí   ·  factorización: sí  ·  transversal: sí
+Primaria 5.º grado   →  derivadas: NO   ·  factorización: no  ·  transversal: sí
+```
+
+Un contenido sin etapa es **transversal** y le llega a cualquiera. Es lo que
+permitió introducir la taxonomía sin dejar a nadie sin temario mientras el
+profesorado clasifica lo suyo.
+
+### La pantalla de configuración
+
+`/estudiante/nivel-educativo`, en dos pasos —etapa y curso— tal como estaba
+planteada: tarjetas para PRIMARIA / SECUNDARIA / SUPERIOR y los cursos que
+corresponden a cada una, con el resumen ("Estás configurando tu nivel como:
+Secundaria · 3.er Año") antes de finalizar.
+
+Se pregunta **una vez**, después del registro y antes de la evaluación inicial, y
+se puede volver a ella al cambiar de curso. El registro dejó de pedir "ciclo" y
+"grado" en texto libre: de ese dato depende todo lo que el alumno recibe, y
+escondido al final de un formulario de alta se rellenaba a la ligera.
+
+Un alumno sin etapa declarada no recibe una prueba de un temario que no es el
+suyo: se le lleva a configurarla. Las cuentas del PMV 1, que tienen el curso en
+texto, se interpretan automáticamente ("Secundaria" + "3.º" → SECUNDARIA 3).
+
+### En el panel docente
+
+- El formulario de tema tiene **Alcance curricular**: etapa y curso a partir del
+  cual se plantea, con la explicación de en qué se diferencia del nivel.
+- Los **subtemas heredan el alcance** del tema padre, igual que el motor.
+- Los **ejercicios heredan el alcance de su tema**: es el tema quien sabe a qué
+  alumnos va dirigido, y duplicar el dato sólo daría ocasión de que se
+  contradigan.
+- El listado del currículo muestra el alcance de cada tema y **filtra por
+  etapa**; el banco muestra el alcance heredado de cada ejercicio.
+
+### El contenido sembrado, clasificado
+
+Las 18 preguntas del catálogo declaran su etapa y su curso, y las 394 del banco
+determinista heredan el alcance de su motor:
+
+| Motor | A partir de |
+| --- | --- |
+| Aritmética | Primaria 1.º |
+| Fracciones | Primaria 4.º |
+| Ecuaciones lineales | Secundaria 1.º |
+| Factorización | Secundaria 3.º |
+| **Derivadas** | **Superior 1.º** |
+
+### Comprobado
+
+`npm run qa:diagnostico-nivel` — **85 comprobaciones** — registra alumnos reales
+contra el servidor, les configura la etapa por la pantalla nueva y comprueba lo
+que se pidió:
+
+```
+✓ el servidor reconoce su etapa y su curso
+✓ NO le aparece ninguna pregunta de derivadas (el fallo reportado)
+✓ un alumno de superior recibe dificultad avanzada, y en su prueba SÍ hay derivadas
+✓ un alumno de primaria no ve ni derivadas ni factorización
+✓ una cuenta antigua con el curso en texto también se clasifica
+✓ un curso imposible se rechaza (secundaria no tiene 8.º año)
+✓ sin etapa declarada, el servidor pide configurarla
+```
+
+Y, de paso, la batería del banco descubrió que el evaluador aritmético heredado
+calculaba mal las potencias —`2^3 + 1` daba 4— y no sabía leer `5·(-3)`. Ahora se
+contrasta con el analizador nuevo: si discrepan manda el que tiene gramática, y
+si coinciden se conserva la fracción exacta del heredado.
+
+### Ficheros de esta ampliación
+
+```
+lib/curriculo/etapas.ts                       la taxonomía y el alcance (nuevo)
+components/configurador-nivel-educativo.tsx   la pantalla de dos pasos (nuevo)
+app/estudiante/nivel-educativo/page.tsx       su ruta (nuevo)
+app/api/estudiante/nivel-educativo/route.ts   guardar etapa y curso (nuevo)
+prisma/migrations/20260902140000_taxonomia_curricular
+lib/diagnostico/seleccion.ts   filtra por etapa además de por nivel
+lib/diagnostico/prueba.ts      consulta y compone con el curso del alumno
+lib/leccion/correccion.ts      aritmética contrastada entre los dos motores
+components/docente/*           alcance en el formulario, la tabla y el banco
+qa/diagnostico-nivel.mjs       85 comprobaciones
 ```

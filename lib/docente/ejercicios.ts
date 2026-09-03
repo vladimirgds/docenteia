@@ -15,6 +15,8 @@ export const SELECCION_EJERCICIO = {
   pasos: true,
   nivel: true,
   motor: true,
+  etapa: true,
+  cursoMin: true,
   estado: true,
   origen: true,
   validado: true,

@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     // no lo corrige.
     const tema = await prisma.nodoConocimiento.findUnique({
       where: { id: datos.nodoId },
-      select: { id: true, motor: true, titulo: true },
+      select: { id: true, motor: true, titulo: true, etapa: true, cursoMin: true },
     });
     if (!tema) return noEncontrado("El tema");
     const motor = tema.motor as Motor | null;
@@ -112,6 +112,11 @@ export async function POST(req: Request) {
       data: {
         nodoId: datos.nodoId,
         motor,
+        // El alcance curricular se hereda del tema, igual que el motor: es el
+        // tema quien sabe a qué alumnos va dirigido, y duplicar el dato en cada
+        // ejercicio sólo daría ocasión de que se contradigan.
+        etapa: tema.etapa,
+        cursoMin: tema.cursoMin,
         nivel: datos.nivel,
         enunciado: datos.enunciado,
         respuestaCorrecta: campos.respuestaCorrecta,

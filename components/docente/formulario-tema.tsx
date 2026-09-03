@@ -19,6 +19,12 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { pedir } from "@/lib/docente/cliente";
 import {
+  ETAPAS,
+  describirAlcance,
+  etapaPorValor,
+  etiquetaCurso,
+} from "@/lib/curriculo/etapas";
+import {
   DESCRIPCION_ESTADO,
   ESTADOS,
   ETIQUETA_ESTADO,
@@ -73,6 +79,8 @@ export interface TemaEdicion {
   padreId: string | null;
   motor: string | null;
   nivel: string | null;
+  etapa: string | null;
+  cursoMin: number | null;
   orden: number;
   estado: Estado;
   objetivos: string[];
@@ -110,6 +118,8 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
   const [padreId, setPadreId] = useState(tema?.padreId ?? "");
   const [motor, setMotor] = useState(tema?.motor ?? "");
   const [nivel, setNivel] = useState(tema?.nivel ?? "");
+  const [etapa, setEtapa] = useState(tema?.etapa ?? "");
+  const [cursoMin, setCursoMin] = useState(tema?.cursoMin ? String(tema.cursoMin) : "");
   const [orden, setOrden] = useState(String(tema?.orden ?? 0));
   const [estado, setEstado] = useState<Estado>(tema?.estado ?? "BORRADOR");
   const [objetivos, setObjetivos] = useState<string[]>(tema?.objetivos ?? [""]);
@@ -117,6 +127,7 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
   const [reglas, setReglas] = useState<ReglaFormulario[]>(tema?.reglas ?? []);
 
   const editando = Boolean(tema);
+  const etapaElegida = etapaPorValor(etapa || undefined);
 
   const actualizarRegla = (indice: number, cambio: Partial<ReglaFormulario>) =>
     setReglas((actuales) => actuales.map((r, i) => (i === indice ? { ...r, ...cambio } : r)));
@@ -155,6 +166,8 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
       padreId: padreId || null,
       motor: motor || null,
       nivel: nivel || null,
+      etapa: etapa || null,
+      cursoMin: cursoMin ? Number(cursoMin) : null,
       orden: Number(orden) || 0,
       estado,
       objetivos: objetivos.map((o) => o.trim()).filter(Boolean),
@@ -344,6 +357,71 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
               mano.
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Alcance curricular ───────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Alcance curricular</CardTitle>
+          <CardDescription>
+            A partir de qué punto del sistema educativo se plantea este tema. Es distinto del
+            nivel: el nivel dice <em>cuánto cuesta</em> dentro de su etapa, y esto dice{" "}
+            <em>a qué alumnos les toca</em>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="etapa">Etapa educativa</Label>
+            <Select
+              id="etapa"
+              value={etapa}
+              onChange={(e) => {
+                setEtapa(e.target.value);
+                // El curso se reinicia: un 5.º de secundaria no es un 5.º ciclo
+                // de superior, y arrastrarlo dejaría un alcance que nadie eligió.
+                setCursoMin("");
+              }}
+              disabled={!puedeEditar}
+            >
+              <option value="">Cualquier etapa (transversal)</option>
+              {ETAPAS.map((e) => (
+                <option key={e.valor} value={e.valor}>
+                  {e.nombre} — {e.rango}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="cursoMin">
+              A partir de{etapaElegida ? ` (${etapaElegida.unidad.toLowerCase()})` : ""}
+            </Label>
+            <Select
+              id="cursoMin"
+              value={cursoMin}
+              onChange={(e) => setCursoMin(e.target.value)}
+              disabled={!puedeEditar || !etapaElegida}
+            >
+              <option value="">Desde el principio de la etapa</option>
+              {Array.from({ length: etapaElegida?.cursos ?? 0 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {etiquetaCurso(etapaElegida!.valor, n)}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <p className="text-sm text-muted-foreground sm:col-span-2">
+            {etapa ? (
+              <>
+                Se plantea <strong>{describirAlcance({ etapa: etapa as never, cursoMin: cursoMin ? Number(cursoMin) : null })}</strong>{" "}
+                en adelante. Los alumnos de etapas anteriores no lo verán.
+              </>
+            ) : (
+              "Sin etapa, el tema se considera transversal y puede llegarle a cualquier alumno."
+            )}
+          </p>
         </CardContent>
       </Card>
 

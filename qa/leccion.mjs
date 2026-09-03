@@ -29,7 +29,7 @@ import {
   pareceMatematica,
   planoALatex,
   separarProsaYMatematicas,
-} from "../lib/matematicas.ts";
+} from "../lib/matematicas/index.ts";
 import {
   esFaseConocida,
   esFaseDeConcepto,
@@ -2971,11 +2971,19 @@ console.log("\n · El diagnóstico registra las debilidades detectadas");
     readFileSync(new URL("../prisma/seed-data/preguntas-diagnostico.json", import.meta.url), "utf8"),
   );
   const preguntas = Array.isArray(banco) ? banco : banco.preguntas ?? [];
-  check(
-    "el diagnóstico son entre 3 y 5 preguntas",
-    preguntas.length >= 3 && preguntas.length <= 5,
-    `preguntas: ${preguntas.length}`,
-  );
+  // MVP 2: el banco está partido por niveles, así que lo que tiene que estar
+  // entre 3 y 5 es la prueba de CADA nivel, no el fichero entero. Un alumno
+  // sigue respondiendo como mucho cinco preguntas; lo que cambió es que son las
+  // de su nivel.
+  const nivelesDiag = [...new Set(preguntas.map((p) => String(p.nivel ?? "SIN_NIVEL")))];
+  for (const nivel of nivelesDiag) {
+    const delNivel = preguntas.filter((p) => String(p.nivel ?? "SIN_NIVEL") === nivel);
+    check(
+      `el nivel ${nivel} tiene al menos 3 preguntas sembradas`,
+      delNivel.length >= 3,
+      `preguntas: ${delNivel.length}`,
+    );
+  }
   const temasDiag = new Set(preguntas.map((p) => String(p.tema)));
   check("cubre aritmética", temasDiag.has("aritmetica"));
   check(

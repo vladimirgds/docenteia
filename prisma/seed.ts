@@ -95,6 +95,22 @@ const ARBOL: Array<{
   },
 ];
 
+/**
+ * DESDE QUÉ PUNTO DEL SISTEMA EDUCATIVO se plantea cada familia del motor.
+ *
+ * Es la taxonomía curricular aplicada al contenido de fábrica. Se lee "a partir
+ * de": la factorización entra en 3.º de secundaria y sigue valiendo después;
+ * las derivadas son de Superior y por eso no le aparecen a un alumno de
+ * secundaria, que es exactamente el fallo que esta clasificación cierra.
+ */
+const ALCANCE_POR_MOTOR: Record<TemaEnum, { etapa: "PRIMARIA" | "SECUNDARIA" | "SUPERIOR"; cursoMin: number }> = {
+  ARITMETICA: { etapa: "PRIMARIA", cursoMin: 1 },
+  FRACCIONES: { etapa: "PRIMARIA", cursoMin: 4 },
+  ECUACIONES_LINEALES: { etapa: "SECUNDARIA", cursoMin: 1 },
+  FACTORIZACION: { etapa: "SECUNDARIA", cursoMin: 3 },
+  DERIVADAS: { etapa: "SUPERIOR", cursoMin: 1 },
+};
+
 // Credenciales de demostración. Están documentadas en el README y DEBEN
 // cambiarse antes de cualquier despliegue público; se pueden sobrescribir por
 // variables de entorno para no fijarlas en el código de un entorno real.
@@ -144,6 +160,7 @@ async function main() {
         descripcion: raiz.descripcion,
         materiaId: matematicas.id,
         estado: "PUBLICADO",
+        ...ALCANCE_POR_MOTOR[raiz.tema],
       },
       create: {
         clave: raiz.clave,
@@ -152,6 +169,7 @@ async function main() {
         descripcion: raiz.descripcion,
         materiaId: matematicas.id,
         estado: "PUBLICADO",
+        ...ALCANCE_POR_MOTOR[raiz.tema],
       },
     });
     raicesPorMotor.set(raiz.tema, padre.id);
@@ -166,6 +184,7 @@ async function main() {
           orden: i,
           materiaId: matematicas.id,
           estado: "PUBLICADO",
+          ...ALCANCE_POR_MOTOR[raiz.tema],
         },
         create: {
           clave: hijo.clave,
@@ -176,6 +195,7 @@ async function main() {
           orden: i,
           materiaId: matematicas.id,
           estado: "PUBLICADO",
+          ...ALCANCE_POR_MOTOR[raiz.tema],
         },
       });
       nodos++;
@@ -198,6 +218,9 @@ async function main() {
       update: {
         orden: p.orden,
         tema: p.tema,
+        nivel: p.nivel,
+        etapa: p.etapa,
+        cursoMin: p.cursoMin,
         enunciado: p.enunciado,
         opciones: p.opciones,
         respuestaCorrecta: p.respuestaCorrecta,
@@ -207,6 +230,9 @@ async function main() {
         clave: p.clave,
         orden: p.orden,
         tema: p.tema,
+        nivel: p.nivel,
+        etapa: p.etapa,
+        cursoMin: p.cursoMin,
         enunciado: p.enunciado,
         opciones: p.opciones,
         respuestaCorrecta: p.respuestaCorrecta,
@@ -222,7 +248,13 @@ async function main() {
     data: { activa: false },
   });
 
-  console.log(`  ✓ Diagnóstico: ${preguntas.length} preguntas activas`);
+  const porNivel = new Map<string, number>();
+  for (const p of preguntas) {
+    const clave = p.nivel ?? "sin nivel";
+    porNivel.set(clave, (porNivel.get(clave) ?? 0) + 1);
+  }
+  const reparto = [...porNivel].map(([n, c]) => `${c} ${n.toLowerCase()}`).join(" · ");
+  console.log(`  ✓ Diagnóstico: ${preguntas.length} preguntas activas (${reparto})`);
   if (retiradas.count > 0) {
     console.log(`    (${retiradas.count} pregunta(s) anterior(es) desactivada(s), historial intacto)`);
   }
@@ -302,6 +334,7 @@ async function main() {
         validado: true,
         estado: "PUBLICADO",
         nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
+        ...ALCANCE_POR_MOTOR[e.tema as TemaEnum],
         metadatos: { nivelMotor: e.nivelMotor },
       },
       create: {
@@ -313,6 +346,7 @@ async function main() {
         validado: true,
         estado: "PUBLICADO",
         nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
+        ...ALCANCE_POR_MOTOR[e.tema as TemaEnum],
         metadatos: { nivelMotor: e.nivelMotor },
       },
     });

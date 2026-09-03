@@ -300,6 +300,8 @@ Todas están documentadas con más detalle en [`.env.example`](.env.example).
 | `npm test`            | Ejecuta la suite de validación completa.              |
 | `npm run qa:diagnostico` | Valida el banco de preguntas (no necesita servidor).|
 | `npm run qa:hito1`    | Valida la autoría docente y el validador matemático.  |
+| `npm run qa:matematicas` | Valida el analizador, la derivación y la equivalencia.|
+| `npm run qa:diagnostico-nivel` | Valida que cada alumno recibe la prueba de su nivel.|
 | `npm run legacy:start`| Arranca el prototipo Express original (puerto 3001).  |
 
 ---
@@ -416,6 +418,8 @@ components/             Componentes de UI (shadcn/ui) y KaTeX
   docente/                MVP 2: gestor curricular, formularios y validación
 lib/                    prisma · rbac · diagnóstico · utilidades
   docente/                MVP 2: validador matemático, parámetros, currículo
+  matematicas/            MVP 2: analizador de expresiones, derivación
+                          simbólica y equivalencia de respuestas
 prisma/                 schema.prisma · migraciones · semilla
 src/                    NÚCLEO HEREDADO: classifier · preLight · lsgPrompt ·
                         geminiClient · queryCore  (+ declaraciones .d.ts)
@@ -507,6 +511,36 @@ Con plantillas parametrizadas recorre **todas** las combinaciones cuando son 240
 o menos, y una muestra **reproducible** cuando son más. Si el tema no declara
 motor, el ejercicio se guarda **marcado como no verificado** y se explica por
 qué: nunca se inventa un veredicto. La IA no interviene en ningún punto.
+
+### Derivadas con exponenciales y logaritmos
+
+El motor del PMV 1 sólo sabía derivar polinomios, porque leía las expresiones
+con expresiones regulares. `lib/matematicas/` las lee como una gramática: de ahí
+salen `e^x`, `ln(x)`, `sqrt`, seno y coseno, y con ellos las reglas del
+**producto**, del **cociente** y de la **cadena**, que se componen entre sí.
+
+Y la corrección compara **funciones, no cadenas**: `e^x + 2x` y `2x + e^x` son
+la misma respuesta. Sólo donde la forma es el ejercicio —una factorización— se
+sigue exigiendo la forma.
+
+### Dos ejes: dónde está el alumno y cuánto cuesta el contenido
+
+- **Etapa + curso** (Primaria 1.º-6.º, Secundaria 1.º-5.º, Superior 1.º-10.º)
+  dicen dónde está el alumno en el sistema educativo y deciden **qué contenidos
+  existen para él**. Se configuran en `/estudiante/nivel-educativo`, en dos pasos.
+- **Nivel** (Básico, Intermedio, Avanzado) dice cuánto cuesta un contenido dentro
+  de su etapa. Lo mide el diagnóstico.
+
+Cada tema y cada ejercicio declaran su **alcance**: la etapa y el curso a partir
+del cual se plantean. Así, una derivada marcada como Superior no le aparece a un
+alumno de secundaria por muy avanzado que vaya en lo suyo, y un universitario sí
+recibe la factorización de secundaria, que tiene estudiada.
+
+Las preguntas salen del catálogo sembrado (cinco por nivel, de opción múltiple)
+y del **banco del profesorado**: los ejercicios publicados y verificados de ese
+nivel entran en la prueba como preguntas de respuesta abierta, corregidas por el
+mismo motor determinista. El nivel definitivo lo sigue decidiendo el resultado,
+con la regla de corte de siempre.
 
 ### El tema y su motor
 

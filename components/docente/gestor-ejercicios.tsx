@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { planoALatex } from "@/lib/matematicas";
+import { describirAlcance } from "@/lib/curriculo/etapas";
 import { pedir } from "@/lib/docente/cliente";
 import {
   ESTADOS,
@@ -49,6 +50,11 @@ export interface TemaOpcion {
   titulo: string;
   motor: string | null;
   estado: Estado;
+  /** Nivel del tema: lo hereda el ejercicio que se cree dentro. */
+  nivel: string | null;
+  /** Alcance curricular del tema: también se hereda. */
+  etapa: string | null;
+  cursoMin: number | null;
 }
 
 export interface EjercicioVista {
@@ -61,6 +67,8 @@ export interface EjercicioVista {
   pistas: string[];
   nivel: string;
   motor: string | null;
+  etapa: string | null;
+  cursoMin: number | null;
   estado: Estado;
   origen: string;
   validado: boolean;
@@ -121,6 +129,7 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
   const [filtroTema, setFiltroTema] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroValidado, setFiltroValidado] = useState("");
+  const [filtroNivel, setFiltroNivel] = useState("");
 
   const temaActual = temas.find((t) => t.id === form.nodoId) ?? null;
 
@@ -129,11 +138,12 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
       ejercicios.filter((e) => {
         if (filtroTema && e.nodoId !== filtroTema) return false;
         if (filtroEstado && e.estado !== filtroEstado) return false;
+        if (filtroNivel && e.nivel !== filtroNivel) return false;
         if (filtroValidado === "si" && !e.validado) return false;
         if (filtroValidado === "no" && e.validado) return false;
         return true;
       }),
-    [ejercicios, filtroTema, filtroEstado, filtroValidado],
+    [ejercicios, filtroTema, filtroEstado, filtroNivel, filtroValidado],
   );
 
   const cambiar = (cambio: Partial<Formulario>) => {
@@ -288,6 +298,21 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               {temaActual?.motor
                 ? `Se validará con el motor "${etiquetaMotor(temaActual.motor)}", que hereda del tema.`
                 : "El tema elegido no tiene motor: tendrás que escribir tú la respuesta y el ejercicio se guardará sin verificar."}
+              {temaActual && (
+                <>
+                  {" "}
+                  Alcance curricular heredado del tema:{" "}
+                  <strong>
+                    {temaActual.etapa
+                      ? describirAlcance({
+                          etapa: temaActual.etapa as never,
+                          cursoMin: temaActual.cursoMin,
+                        })
+                      : "cualquier etapa"}
+                  </strong>
+                  .
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -296,7 +321,16 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               <Select
                 id="tema"
                 value={form.nodoId}
-                onChange={(e) => cambiar({ nodoId: e.target.value })}
+                onChange={(e) => {
+                  // El ejercicio hereda el nivel del tema. Clasificar es lo que
+                  // decide a qué alumnos les llega, y es justo el paso que se
+                  // olvida cuando hay que elegirlo a mano cada vez.
+                  const elegido = temas.find((t) => t.id === e.target.value);
+                  cambiar({
+                    nodoId: e.target.value,
+                    ...(elegido?.nivel ? { nivel: elegido.nivel as Nivel } : {}),
+                  });
+                }}
                 disabled={!puedeEditar}
               >
                 {temas.map((t) => (
@@ -608,7 +642,7 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Select value={filtroTema} onChange={(e) => setFiltroTema(e.target.value)}>
               <option value="">Todos los temas</option>
               {temas.map((t) => (
@@ -629,6 +663,14 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               <option value="">Verificados y sin verificar</option>
               <option value="si">Sólo verificados por el motor</option>
               <option value="no">Sólo sin verificar</option>
+            </Select>
+            <Select value={filtroNivel} onChange={(e) => setFiltroNivel(e.target.value)}>
+              <option value="">Cualquier nivel</option>
+              {NIVELES.map((n) => (
+                <option key={n} value={n}>
+                  {ETIQUETA_NIVEL_CURRICULO[n as Nivel]}
+                </option>
+              ))}
             </Select>
           </div>
 
@@ -656,6 +698,19 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                       <td className="py-3">
                         <div className="font-medium">{e.enunciado}</div>
                         <div className="flex flex-wrap gap-1 pt-1">
+                          {e.etapa && (
+                            <Badge variant="contorno">
+                              {describirAlcance({ etapa: e.etapa as never, cursoMin: e.cursoMin })}
+                            </Badge>
+                          )}
+                          {e.estado === "PUBLICADO" && e.validado && !e.plantilla && (
+                            <Badge
+                              variant="exito"
+                              title="Publicado, verificado y sin huecos: puede aparecer en la evaluación inicial de un alumno de este nivel"
+                            >
+                              Entra en el diagnóstico
+                            </Badge>
+                          )}
                           {e.plantilla && <Badge variant="contorno">Plantilla</Badge>}
                           {e.origen === "DOCENTE" && <Badge variant="contorno">Autoría docente</Badge>}
                           {e.autor && (
@@ -741,6 +796,11 @@ function PanelInforme({ informe }: { informe: InformeValidacion }) {
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={tono}>{titulo}</Badge>
           {informe.motor && <Badge variant="contorno">{etiquetaMotor(informe.motor)}</Badge>}
+          {informe.reglas.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              Reglas aplicadas: {informe.reglas.join(" · ")}
+            </span>
+          )}
           {informe.totalCombinaciones > 1 && (
             <span className="text-sm text-muted-foreground">
               {informe.comprobadas} comprobada(s) ·{" "}

@@ -173,6 +173,10 @@ export const reglaSchema = z.object({
   orden: z.number().int().min(0).max(200).optional(),
 });
 
+/** Etapas educativas, para los desplegables del panel. */
+export const ETAPAS_CURRICULO = ["PRIMARIA", "SECUNDARIA", "SUPERIOR"] as const;
+export type EtapaCurriculo = (typeof ETAPAS_CURRICULO)[number];
+
 export const temaSchema = z.object({
   titulo: z.string().trim().min(3, "El título es demasiado corto").max(160),
   descripcion: textoCorto(1000).optional().nullable(),
@@ -180,6 +184,16 @@ export const temaSchema = z.object({
   padreId: z.string().min(1).max(40).optional().nullable(),
   motor: z.enum(MOTORES).optional().nullable(),
   nivel: z.enum(NIVELES).optional().nullable(),
+  /**
+   * A partir de qué punto del sistema educativo se plantea el tema.
+   *
+   * Es el otro eje, y no es el mismo que `nivel`: `nivel` dice cuánto cuesta
+   * dentro de su etapa, y esto dice a qué alumnos les toca. Sin él, "avanzado"
+   * acababa significando "universitario" y a un alumno de secundaria le
+   * llegaban derivadas.
+   */
+  etapa: z.enum(ETAPAS_CURRICULO).optional().nullable(),
+  cursoMin: z.number().int().min(1).max(10).optional().nullable(),
   orden: z.number().int().min(0).max(999).optional(),
   estado: z.enum(ESTADOS).optional(),
   objetivos: z.array(z.string().trim().min(1).max(240)).max(20).optional(),

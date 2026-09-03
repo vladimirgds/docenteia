@@ -4,6 +4,10 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { clasificarNivel } from "@/lib/diagnostico/clasificar";
+import { armarPrueba, perfilParaPrueba } from "@/lib/diagnostico/prueba";
+import { partirId } from "@/lib/diagnostico/seleccion";
+import { compararRespuesta } from "@/lib/matematicas/equivalencia";
+import { describirCurso } from "@/lib/curriculo/etapas";
 
 /**
  * Cómo se etiqueta una debilidad detectada por el diagnóstico.
@@ -16,11 +20,12 @@ import { clasificarNivel } from "@/lib/diagnostico/clasificar";
 const TIPO_ERROR_DIAGNOSTICO = "diagnostico_inicial";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/diagnostico
  *
- * Devuelve el banco de preguntas activo, ordenado.
+ * Devuelve la prueba compuesta para ESTE alumno.
  *
  * IMPORTANTE: `respuestaCorrecta` NO se incluye en la respuesta. La corrección
  * es competencia exclusiva del servidor; si la clave viajara al navegador, el
@@ -32,42 +37,39 @@ export async function GET() {
     return NextResponse.json({ error: "No autenticado." }, { status: 401 });
   }
 
-  const preguntas = await prisma.preguntaDiagnostico.findMany({
-    where: { activa: true },
-    orderBy: { orden: "asc" },
-    select: {
-      id: true,
-      clave: true,
-      orden: true,
-      tema: true,
-      enunciado: true,
-      expresion: true,
-      opciones: true,
-    },
+  const perfil = await perfilParaPrueba(sesion.user.perfilId);
+  const { nivel, items, origen, alumno } = await armarPrueba({
+    nivelActual: perfil?.nivelActual ?? null,
+    etapa: perfil?.etapa ?? null,
+    curso: perfil?.curso ?? null,
+    ciclo: perfil?.ciclo ?? null,
+    grado: perfil?.grado ?? null,
   });
 
-  if (preguntas.length === 0) {
+  if (items.length === 0) {
     return NextResponse.json(
       {
-        error:
-          "El banco de preguntas está vacío. Ejecuta la semilla: npm run db:seed",
+        error: alumno.etapa
+          ? `Todavía no hay preguntas para ${describirCurso(alumno.etapa, alumno.curso)}. Publica ejercicios de esa etapa desde el panel docente, o ejecuta la semilla: npm run db:seed`
+          : "Configura antes tu etapa educativa para poder componer tu evaluación.",
+        etapaSinConfigurar: !alumno.etapa,
       },
       { status: 503 },
     );
   }
 
-  // Si ya hizo el diagnóstico, se informa: la interfaz muestra el resultado en
-  // lugar de volver a preguntar.
-  const perfil = sesion.user.perfilId
-    ? await prisma.perfilEstudiante.findUnique({
-        where: { id: sesion.user.perfilId },
-        select: { nivelActual: true, nivelAsignadoEn: true },
-      })
-    : null;
-
   return NextResponse.json({
-    preguntas,
-    total: preguntas.length,
+    // Se mantiene el nombre `preguntas` para no romper a quien ya consuma la
+    // API; lo que cambia es que cada una trae su `tipo`.
+    preguntas: items,
+    total: items.length,
+    /** Nivel de dificultad con el que se ha armado la prueba, y de dónde sale. */
+    nivelDePartida: nivel,
+    origenDelNivel: origen,
+    /** Taxonomía curricular del alumno: lo que acota qué contenidos entran. */
+    etapa: alumno.etapa,
+    cursoEscolar: alumno.curso,
+    curso: alumno.etapa ? describirCurso(alumno.etapa, alumno.curso) : null,
     yaCompletado: Boolean(perfil?.nivelActual),
     nivelActual: perfil?.nivelActual ?? null,
     nivelAsignadoEn: perfil?.nivelAsignadoEn ?? null,
@@ -93,6 +95,10 @@ const envioSchema = z.object({
  * Corrige el intento, clasifica el nivel con la regla de corte determinista
  * (0–2 BÁSICO · 3–4 INTERMEDIO · 5 AVANZADO) y lo persiste en el perfil.
  * En ningún punto interviene la IA.
+ *
+ * La prueba se RECOMPONE aquí, en el servidor, y sólo se admiten las respuestas
+ * de las preguntas que esa composición produce. No se acepta la lista que envía
+ * el navegador: si se aceptara, bastaría con mandar sólo las fáciles.
  */
 export async function POST(req: Request) {
   const sesion = await auth();
@@ -133,22 +139,25 @@ export async function POST(req: Request) {
   }
   const { respuestas } = parsed.data;
 
-  // Se cargan las preguntas activas CON su clave, del lado del servidor.
-  const preguntas = await prisma.preguntaDiagnostico.findMany({
-    where: { activa: true },
-    orderBy: { orden: "asc" },
-    select: { id: true, tema: true, respuestaCorrecta: true },
-  });
-  if (preguntas.length === 0) {
-    return NextResponse.json(
-      { error: "El banco de preguntas está vacío." },
-      { status: 503 },
-    );
+  const perfil = await perfilParaPrueba(perfilId);
+  if (!perfil) {
+    return NextResponse.json({ error: "El perfil académico ya no existe." }, { status: 409 });
   }
 
-  const porId = new Map(preguntas.map((p) => [p.id, p]));
+  const { items } = await armarPrueba({
+    nivelActual: perfil.nivelActual,
+    etapa: perfil.etapa,
+    curso: perfil.curso,
+    ciclo: perfil.ciclo,
+    grado: perfil.grado,
+  });
+  if (items.length === 0) {
+    return NextResponse.json({ error: "No hay preguntas para tu nivel." }, { status: 503 });
+  }
 
-  // Se exige que el envío cubra exactamente el banco activo: ni preguntas
+  const porId = new Map(items.map((i) => [i.id, i]));
+
+  // Se exige que el envío cubra exactamente la prueba compuesta: ni preguntas
   // desconocidas, ni respuestas repetidas, ni un diagnóstico a medias que
   // luego se clasificaría con un recuento que no significa nada.
   const idsEnviados = new Set(respuestas.map((r) => r.preguntaId));
@@ -165,50 +174,80 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (idsEnviados.size !== preguntas.length) {
+  if (idsEnviados.size !== items.length) {
     return NextResponse.json(
       {
-        error: `El diagnóstico está incompleto: se esperaban ${preguntas.length} respuestas y llegaron ${idsEnviados.size}.`,
+        error: `El diagnóstico está incompleto: se esperaban ${items.length} respuestas y llegaron ${idsEnviados.size}.`,
       },
       { status: 400 },
     );
   }
 
+  // ── Las claves, del lado del servidor ─────────────────────────────────────
+  const idsCatalogo = items.flatMap((i) => (i.origen === "catalogo" ? [partirId(i.id)!.id] : []));
+  const idsBanco = items.flatMap((i) => (i.origen === "banco" ? [partirId(i.id)!.id] : []));
+
+  const [clavesCatalogo, clavesBanco] = await Promise.all([
+    idsCatalogo.length
+      ? prisma.preguntaDiagnostico.findMany({
+          where: { id: { in: idsCatalogo } },
+          select: { id: true, respuestaCorrecta: true },
+        })
+      : Promise.resolve([]),
+    idsBanco.length
+      ? prisma.ejercicio.findMany({
+          where: { id: { in: idsBanco } },
+          select: { id: true, respuestaCorrecta: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const claveDe = new Map<string, string>();
+  for (const p of clavesCatalogo) claveDe.set(`catalogo:${p.id}`, p.respuestaCorrecta);
+  for (const e of clavesBanco) claveDe.set(`banco:${e.id}`, e.respuestaCorrecta);
+
   // ── Corrección determinista ───────────────────────────────────────────────
   const corregidas = respuestas.map((r) => {
-    const pregunta = porId.get(r.preguntaId)!;
+    const item = porId.get(r.preguntaId)!;
+    const esperada = claveDe.get(r.preguntaId) ?? "";
+
+    // Opción múltiple: se compara el IDENTIFICADOR de la opción elegida.
+    // Respuesta abierta: se compara como en la práctica, aceptando formas
+    // equivalentes —"e^x + 2x" y "2x + e^x" son la misma respuesta—.
     const correcta =
-      r.respuestaDada.trim().toLowerCase() ===
-      pregunta.respuestaCorrecta.trim().toLowerCase();
-    return { ...r, tema: pregunta.tema, correcta };
+      item.tipo === "opcion_multiple"
+        ? r.respuestaDada.trim().toLowerCase() === esperada.trim().toLowerCase()
+        : compararRespuesta(r.respuestaDada, esperada).correcto;
+
+    return { ...r, item, correcta };
   });
 
   const aciertos = corregidas.filter((r) => r.correcta).length;
-  const nivel = clasificarNivel(aciertos, preguntas.length);
+  const nivel = clasificarNivel(aciertos, items.length);
 
   try {
     const resultado = await prisma.$transaction(async (tx) => {
-      const perfil = await tx.perfilEstudiante.findUnique({
-        where: { id: perfilId },
-        select: { nivelActual: true },
-      });
-      if (!perfil) throw new Error("PERFIL_NO_ENCONTRADO");
-
       const intento = await tx.intentoDiagnostico.create({
         data: {
           perfilId,
           aciertos,
-          totalPreguntas: preguntas.length,
+          totalPreguntas: items.length,
           nivelResultante: nivel,
           completado: true,
           finalizadoEn: new Date(),
           respuestas: {
-            create: corregidas.map((r) => ({
-              preguntaId: r.preguntaId,
-              respuestaDada: r.respuestaDada,
-              correcta: r.correcta,
-              tiempoMs: r.tiempoMs ?? null,
-            })),
+            create: corregidas.map((r) => {
+              const partes = partirId(r.item.id)!;
+              return {
+                // Cada respuesta apunta a su origen: la pregunta del catálogo o
+                // el ejercicio del banco del que salió.
+                preguntaId: partes.origen === "catalogo" ? partes.id : null,
+                ejercicioId: partes.origen === "banco" ? partes.id : null,
+                respuestaDada: r.respuestaDada,
+                correcta: r.correcta,
+                tiempoMs: r.tiempoMs ?? null,
+              };
+            }),
           },
         },
         select: { id: true },
@@ -228,18 +267,22 @@ export async function POST(req: Request) {
       // Se acumulan por tema: si vuelve a fallar lo mismo en la práctica, sube
       // la cuenta en lugar de abrir otra entrada.
       for (const fallo of corregidas.filter((r) => !r.correcta)) {
+        // Un ejercicio del banco sin motor no tiene tema del motor al que
+        // atribuir la debilidad; se cuenta en el recuento, pero no se inventa
+        // una etiqueta para él.
+        if (!fallo.item.tema) continue;
         await tx.registroError.upsert({
           where: {
             perfilId_tema_tipoError: {
               perfilId,
-              tema: fallo.tema,
+              tema: fallo.item.tema,
               tipoError: TIPO_ERROR_DIAGNOSTICO,
             },
           },
           update: { ocurrencias: { increment: 1 }, detalle: fallo.respuestaDada.slice(0, 200) },
           create: {
             perfilId,
-            tema: fallo.tema,
+            tema: fallo.item.tema,
             tipoError: TIPO_ERROR_DIAGNOSTICO,
             detalle: fallo.respuestaDada.slice(0, 200),
           },
@@ -252,7 +295,7 @@ export async function POST(req: Request) {
           nivelAnterior: perfil.nivelActual,
           nivelNuevo: nivel,
           motivo: "DIAGNOSTICO_INICIAL",
-          detalle: `${aciertos} de ${preguntas.length} aciertos en el diagnóstico inicial.`,
+          detalle: `${aciertos} de ${items.length} aciertos en el diagnóstico inicial.`,
         },
       });
 
@@ -263,23 +306,14 @@ export async function POST(req: Request) {
       ok: true,
       intentoId: resultado.id,
       aciertos,
-      total: preguntas.length,
+      total: items.length,
       nivel,
       // Se devuelve qué temas falló, no cuál era la respuesta correcta: el
       // alumno debe aprenderlas, no copiarlas.
-      temasFallados: corregidas.filter((r) => !r.correcta).map((r) => r.tema),
+      temasFallados: corregidas.filter((r) => !r.correcta && r.item.tema).map((r) => r.item.tema),
     });
   } catch (e) {
-    if (e instanceof Error && e.message === "PERFIL_NO_ENCONTRADO") {
-      return NextResponse.json(
-        { error: "El perfil académico ya no existe." },
-        { status: 409 },
-      );
-    }
     console.error("[diagnostico] fallo al guardar el intento:", e);
-    return NextResponse.json(
-      { error: "No se pudo guardar el diagnóstico." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "No se pudo guardar el diagnóstico." }, { status: 500 });
   }
 }
