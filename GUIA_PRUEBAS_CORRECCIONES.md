@@ -1,6 +1,6 @@
 # Guía de pruebas — correcciones del HITO 1
 
-Cinco correcciones, una por cada cosa reportada tras verificar el hito:
+Seis correcciones, una por cada cosa reportada tras verificar el hito:
 
 1. **Derivadas con `e^x` y `ln(x)`** — el motor las daba por "no comprobable".
 2. **La prueba diagnóstica daba derivadas** a un alumno de 3.º de secundaria.
@@ -8,6 +8,8 @@ Cinco correcciones, una por cada cosa reportada tras verificar el hito:
 4. **La lección listaba todos los temas** sin discriminar la etapa del alumno.
 5. **El formulario de reglas**: notación LaTeX, jerarquía del nivel y la casilla
    de práctica sin motor.
+6. **La vista de ejercicios**: "Nivel" renombrado a Dificultad, el alcance
+   heredado a la vista y grado propio opcional por ejercicio.
 
 Cada apartado de esta guía se puede comprobar en unos minutos, y al final están
 las baterías automáticas por si prefieres verlo sin tocar la interfaz.
@@ -19,7 +21,7 @@ las baterías automáticas por si prefieres verlo sin tocar la interfaz.
 ```bash
 git fetch && git checkout entrega/hito1-correcciones
 npm install
-npm run db:deploy      # IMPORTANTE: hay dos migraciones nuevas
+npm run db:deploy      # IMPORTANTE: hay migraciones nuevas
 npm run db:seed        # recarga el catálogo, ya clasificado por etapa
 npm run dev
 ```
@@ -243,12 +245,71 @@ en la edición y también cuando un tema pierde su motor.
 
 ---
 
+## 6 · Dificultad, alcance visible y grado propio del ejercicio
+
+Tres ajustes en **/docente/ejercicios**, pedidos tras revisar la vista.
+
+### 6.1 · "Nivel" pasa a llamarse "Dificultad"
+
+El selector decía *Nivel* con Básico / Intermedio / Avanzado, que se confundía
+con el nivel educativo del alumno. Ahora se llama **Dificultad** —en el
+formulario, en el filtro y en la columna del banco—, y lo mismo en el formulario
+de temas y de reglas. El nivel educativo tiene su propio sitio: el **alcance
+curricular**.
+
+El campo en base de datos no cambia; lo que cambia es cómo se llama donde se lee.
+
+### 6.2 · El alcance heredado, a la vista
+
+Estaba en letra pequeña dentro del subtítulo. Ahora, encima del formulario:
+
+```
+[ Tema: Aritmética básica ] → [ Alcance: Primaria · 1.er Grado ]  heredado del tema
+```
+
+Cuando el ejercicio lleva grado propio, la píldora cambia de color y el texto
+pasa a *"ajustado para este ejercicio"*.
+
+### 6.3 · Grado propio del ejercicio (opcional)
+
+**El problema:** un tema *Perímetros* con alcance Primaria · 3.er Grado obligaba
+a que todos sus ejercicios fueran de 3.º. Uno con decimales pensado para 5.º se
+le mostraba igualmente a un alumno de 3.º, y la única salida era duplicar el
+tema —*Perímetros 3.º*, *Perímetros 5.º*— y partir el catálogo.
+
+**Cómo se prueba:**
+
+1. Crea un tema con alcance **Primaria · 3.er Grado** y entra en *Ejercicios*.
+2. Con el tema elegido aparece el bloque **"Personalizar el grado mínimo para
+   este ejercicio"**. Sin marcarlo, el ejercicio hereda: la píldora dice
+   *Primaria · 3.er Grado · heredado del tema*.
+3. Márcalo y elige **5.º Grado**: el desplegable sólo ofrece 3.º en adelante,
+   dentro de la etapa del tema. Guarda.
+4. En el banco, ese ejercicio muestra su píldora en verde con **· propio**; los
+   demás siguen mostrando el heredado.
+5. Cambia ahora el alcance del tema a 4.º: los heredados le siguen
+   automáticamente y el de 5.º se queda donde lo pusiste.
+
+**Los dos límites**, y el porqué de cada uno:
+
+| Intento | Resultado |
+| --- | --- |
+| Grado **mayor** que el del tema | Se acepta: el ejercicio pide más madurez |
+| Grado **menor** que el del tema | Se rechaza: llegaría a alumnos a los que el tema entero no les corresponde |
+| **Otra etapa** | Se rechaza: cambiar de etapa es cambiar de tema |
+| **El mismo** grado que el tema | Se guarda como heredado, no como copia |
+
+Esa última fila es la que mantiene viva la herencia: si se guardara una copia,
+al mover el tema sus ejercicios se quedarían con el valor viejo.
+
+---
+
 ## Comprobación automática
 
 ```bash
 npm run qa:diagnostico-nivel   # 94 comprobaciones · etapa, curso, prueba y lección
 npm run qa:matematicas         # 100 comprobaciones · derivadas y equivalencia
-npm run qa:hito1               # 116 comprobaciones · autoría docente
+npm run qa:hito1               # 124 comprobaciones · autoría docente
 ```
 
 Las dos primeras registran alumnos reales contra el servidor (necesitan
@@ -270,11 +331,11 @@ La suite completa —incluida la del PMV 1, sin regresiones— está en verde:
 | --- | --- |
 | `qa/diagnostico-nivel.mjs` | 94 · 0 |
 | `qa/matematicas.mjs` | 100 · 0 |
-| `qa/hito1.mjs` | 116 · 0 |
+| `qa/hito1.mjs` | 124 · 0 |
 | `qa/diagnostico.mjs` | 416 · 0 |
 | `qa/leccion.mjs` | 811 · 0 |
 | `qa/paso1.mjs` · `qa/frontend.mjs` | 72 · 0 · 10 · 0 |
-| **Total** | **1.619 comprobaciones · 0 fallos** |
+| **Total** | **1.627 comprobaciones · 0 fallos** |
 
 ---
 

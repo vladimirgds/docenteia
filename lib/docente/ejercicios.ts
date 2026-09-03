@@ -25,7 +25,11 @@ export const SELECCION_EJERCICIO = {
   creadoEn: true,
   actualizadoEn: true,
   nodoId: true,
-  nodo: { select: { id: true, titulo: true, clave: true, motor: true } },
+  // El alcance del tema viaja con el ejercicio: sin él no se puede resolver el
+  // efectivo, porque el del ejercicio a null significa "el de mi tema".
+  nodo: {
+    select: { id: true, titulo: true, clave: true, motor: true, etapa: true, cursoMin: true },
+  },
   autor: { select: { id: true, nombre: true } },
 } satisfies Prisma.EjercicioSelect;
 

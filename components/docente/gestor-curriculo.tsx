@@ -407,7 +407,7 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
                     <th className="pb-2 font-medium">Asignatura</th>
                     <th className="pb-2 font-medium">Motor</th>
                     <th className="pb-2 font-medium">Alcance</th>
-                    <th className="pb-2 font-medium">Nivel</th>
+                    <th className="pb-2 font-medium">Dificultad</th>
                     <th className="pb-2 font-medium">Contenido</th>
                     <th className="pb-2 font-medium">Estado</th>
                     <th className="pb-2 font-medium sr-only">Acciones</th>

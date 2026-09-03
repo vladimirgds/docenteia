@@ -18,7 +18,12 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { planoALatex } from "@/lib/matematicas";
-import { describirAlcance } from "@/lib/curriculo/etapas";
+import {
+  alcanceEfectivo,
+  cursosPermitidosParaAfinar,
+  describirAlcance,
+  etiquetaCurso,
+} from "@/lib/curriculo/etapas";
 import { pedir } from "@/lib/docente/cliente";
 import {
   ESTADOS,
@@ -73,7 +78,13 @@ export interface EjercicioVista {
   origen: string;
   validado: boolean;
   nodoId: string | null;
-  nodo: { id: string; titulo: string; motor: string | null } | null;
+  nodo: {
+    id: string;
+    titulo: string;
+    motor: string | null;
+    etapa: string | null;
+    cursoMin: number | null;
+  } | null;
   autor: { nombre: string } | null;
 }
 
@@ -95,6 +106,8 @@ interface Formulario {
   id: string | null;
   nodoId: string;
   nivel: Nivel;
+  /** Grado mínimo propio. A null, hereda el del tema. */
+  cursoMin: number | null;
   enunciado: string;
   respuestaCorrecta: string;
   plantilla: boolean;
@@ -108,6 +121,7 @@ const VACIO: Formulario = {
   id: null,
   nodoId: "",
   nivel: "BASICO",
+  cursoMin: null,
   enunciado: "",
   respuestaCorrecta: "",
   plantilla: false,
@@ -132,6 +146,12 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
   const [filtroNivel, setFiltroNivel] = useState("");
 
   const temaActual = temas.find((t) => t.id === form.nodoId) ?? null;
+  // El alcance que regirá para este ejercicio: el suyo si lo ha afinado, el de
+  // su tema si no. Es lo que se enseña en la cabecera.
+  const alcanceDelEjercicio = alcanceEfectivo(
+    { etapa: (form.cursoMin === null ? null : temaActual?.etapa) as never, cursoMin: form.cursoMin },
+    { etapa: temaActual?.etapa as never, cursoMin: temaActual?.cursoMin ?? null },
+  );
 
   const listados = useMemo(
     () =>
@@ -157,6 +177,9 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
   const cuerpoActual = () => ({
     nodoId: form.nodoId,
     nivel: form.nivel,
+    // A null se hereda el alcance del tema; con valor, manda el del ejercicio.
+    etapa: form.cursoMin === null ? null : (temaActual?.etapa ?? null),
+    cursoMin: form.cursoMin,
     enunciado: form.enunciado.trim(),
     respuestaCorrecta: form.plantilla ? null : form.respuestaCorrecta.trim() || null,
     plantilla: form.plantilla,
@@ -222,6 +245,7 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
       id: e.id,
       nodoId: e.nodoId ?? "",
       nivel: (e.nivel as Nivel) ?? "BASICO",
+      cursoMin: e.etapa ? e.cursoMin : null,
       enunciado: e.enunciado,
       respuestaCorrecta: e.respuestaCorrecta,
       plantilla: e.plantilla,
@@ -298,22 +322,26 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               {temaActual?.motor
                 ? `Se validará con el motor "${etiquetaMotor(temaActual.motor)}", que hereda del tema.`
                 : "El tema elegido no tiene motor: tendrás que escribir tú la respuesta y el ejercicio se guardará sin verificar."}
-              {temaActual && (
-                <>
-                  {" "}
-                  Alcance curricular heredado del tema:{" "}
-                  <strong>
-                    {temaActual.etapa
-                      ? describirAlcance({
-                          etapa: temaActual.etapa as never,
-                          cursoMin: temaActual.cursoMin,
-                        })
-                      : "cualquier etapa"}
-                  </strong>
-                  .
-                </>
-              )}
             </CardDescription>
+
+            {/* A QUIÉN LE LLEGA, a la vista y no en letra pequeña: es el dato
+                que decide qué alumnos verán el ejercicio, y estaba escondido en
+                el subtítulo. */}
+            {temaActual && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Badge variant="contorno">Tema: {temaActual.titulo}</Badge>
+                <span aria-hidden className="text-muted-foreground">→</span>
+                <Badge variant={alcanceDelEjercicio.propio ? "exito" : "neutro"}>
+                  Alcance:{" "}
+                  {alcanceDelEjercicio.etapa
+                    ? describirAlcance(alcanceDelEjercicio).replace("Desde ", "")
+                    : "cualquier etapa"}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {alcanceDelEjercicio.propio ? "ajustado para este ejercicio" : "heredado del tema"}
+                </span>
+              </div>
+            )}
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -328,6 +356,9 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                   const elegido = temas.find((t) => t.id === e.target.value);
                   cambiar({
                     nodoId: e.target.value,
+                    // El ajuste de grado se descarta al cambiar de tema: "3.º"
+                    // no significa lo mismo colgando de otro sitio.
+                    cursoMin: null,
                     ...(elegido?.nivel ? { nivel: elegido.nivel as Nivel } : {}),
                   });
                 }}
@@ -344,7 +375,10 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="nivel-ej">Nivel</Label>
+              {/* "Nivel" se confundía con el nivel educativo del alumno, que es
+                  otra cosa y vive en el alcance curricular. Aquí se gradúa la
+                  DIFICULTAD dentro del tema. */}
+              <Label htmlFor="nivel-ej">Dificultad</Label>
               <Select
                 id="nivel-ej"
                 value={form.nivel}
@@ -358,6 +392,53 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                 ))}
               </Select>
             </div>
+
+            {/* ── Ajuste opcional del alcance ────────────────────────────────
+                Heredar del tema es lo que se quiere casi siempre, pero dentro de
+                un tema de 3.º puede haber un ejercicio pensado para 5.º. Sin
+                esto, la única salida era duplicar el tema y partir el temario. */}
+            {temaActual?.etapa && (
+              <div className="space-y-2 rounded-md border bg-muted/20 p-3 sm:col-span-2">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4"
+                    checked={form.cursoMin !== null}
+                    onChange={(e) =>
+                      cambiar({ cursoMin: e.target.checked ? (temaActual.cursoMin ?? 1) : null })
+                    }
+                    disabled={!puedeEditar}
+                  />
+                  <span>
+                    Personalizar el grado mínimo para este ejercicio
+                    <span className="block text-xs text-muted-foreground">
+                      Sin marcar, hereda el del tema. Sólo se puede subir dentro de la misma etapa:
+                      un ejercicio puede pedir más madurez que su tema, nunca menos.
+                    </span>
+                  </span>
+                </label>
+
+                {form.cursoMin !== null && (
+                  <Select
+                    aria-label="Grado mínimo del ejercicio"
+                    className="max-w-xs"
+                    value={String(form.cursoMin)}
+                    onChange={(e) => cambiar({ cursoMin: Number(e.target.value) })}
+                    disabled={!puedeEditar}
+                  >
+                    {cursosPermitidosParaAfinar({
+                      etapa: temaActual.etapa as never,
+                      cursoMin: temaActual.cursoMin,
+                    }).map((n) => (
+                      <option key={n} value={n}>
+                        {etiquetaCurso(temaActual.etapa as never, n)}
+                        {n === (temaActual.cursoMin ?? 1) ? " (igual que el tema)" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="enunciado-ej">
@@ -665,7 +746,7 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               <option value="no">Sólo sin verificar</option>
             </Select>
             <Select value={filtroNivel} onChange={(e) => setFiltroNivel(e.target.value)}>
-              <option value="">Cualquier nivel</option>
+              <option value="">Cualquier dificultad</option>
               {NIVELES.map((n) => (
                 <option key={n} value={n}>
                   {ETIQUETA_NIVEL_CURRICULO[n as Nivel]}
@@ -685,7 +766,7 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 font-medium">Enunciado</th>
                     <th className="pb-2 font-medium">Tema</th>
-                    <th className="pb-2 font-medium">Nivel</th>
+                    <th className="pb-2 font-medium">Dificultad</th>
                     <th className="pb-2 font-medium">Respuesta</th>
                     <th className="pb-2 font-medium">Verificación</th>
                     <th className="pb-2 font-medium">Estado</th>
@@ -698,11 +779,30 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                       <td className="py-3">
                         <div className="font-medium">{e.enunciado}</div>
                         <div className="flex flex-wrap gap-1 pt-1">
-                          {e.etapa && (
-                            <Badge variant="contorno">
-                              {describirAlcance({ etapa: e.etapa as never, cursoMin: e.cursoMin })}
-                            </Badge>
-                          )}
+                          {(() => {
+                            // El alcance que rige: el suyo si lo afinó, el de su
+                            // tema si no. Se distingue con el color, porque
+                            // saber cuál de los dos es cambia lo que el docente
+                            // toca para corregirlo.
+                            const alcance = alcanceEfectivo(
+                              { etapa: e.etapa as never, cursoMin: e.cursoMin },
+                              { etapa: e.nodo?.etapa as never, cursoMin: e.nodo?.cursoMin ?? null },
+                            );
+                            if (!alcance.etapa) return null;
+                            return (
+                              <Badge
+                                variant={alcance.propio ? "exito" : "contorno"}
+                                title={
+                                  alcance.propio
+                                    ? "Grado ajustado para este ejercicio, por encima del de su tema"
+                                    : "Heredado del tema"
+                                }
+                              >
+                                {describirAlcance(alcance)}
+                                {alcance.propio ? " · propio" : ""}
+                              </Badge>
+                            );
+                          })()}
                           {e.estado === "PUBLICADO" && e.validado && !e.plantilla && (
                             <Badge
                               variant="exito"

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { ejercicioActualizacionSchema, type Motor } from "@/lib/docente/curriculo";
+import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
   SELECCION_EJERCICIO,
   camposDeValidacion,
@@ -48,7 +49,17 @@ export async function PATCH(req: Request, { params }: Contexto) {
       });
       if (!tema) return noEncontrado("El tema");
       motor = tema.motor as Motor | null;
-      alcance = { etapa: tema.etapa, cursoMin: tema.cursoMin };
+
+      // Si la petición trae alcance propio se valida contra el tema; si no lo
+      // trae, se conserva el que ya tuviera el ejercicio (que puede ser nulo,
+      // es decir, heredado).
+      const pedido =
+        datos.etapa !== undefined || datos.cursoMin !== undefined
+          ? { etapa: datos.etapa ?? null, cursoMin: datos.cursoMin ?? null }
+          : { etapa: actual.etapa, cursoMin: actual.cursoMin };
+      const resuelto = resolverAlcancePropio(pedido, tema);
+      if (!resuelto.ok) return conflicto(resuelto.error);
+      alcance = { etapa: resuelto.etapa, cursoMin: resuelto.cursoMin };
     }
 
     // ── Se revalida SIEMPRE, aunque el cambio parezca inocente ───────────────

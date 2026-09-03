@@ -1,7 +1,12 @@
 import type { EtapaEducativa, NivelAcademico } from "@prisma/client";
 
 import { prisma } from "../prisma.ts";
-import { cursoDelPerfil, nivelDePartida, type CursoDelAlumno } from "../curriculo/etapas.ts";
+import {
+  alcanceEfectivo,
+  cursoDelPerfil,
+  nivelDePartida,
+  type CursoDelAlumno,
+} from "../curriculo/etapas.ts";
 import { componerDiagnostico, type ItemDiagnostico } from "./seleccion.ts";
 
 /**
@@ -89,14 +94,23 @@ export async function armarPrueba(perfil: PerfilParaPrueba): Promise<PruebaCompu
         plantilla: true,
         etapa: true,
         cursoMin: true,
+        // El alcance del tema, para resolver el del ejercicio: a null, hereda.
+        nodo: { select: { etapa: true, cursoMin: true } },
       },
     }),
   ]);
 
+  // Cada ejercicio se presenta con su alcance EFECTIVO —el suyo si lo afinó, el
+  // de su tema si no—, que es el que decide a qué alumnos les corresponde.
+  const bancoConAlcance = banco.map((e) => {
+    const alcance = alcanceEfectivo(e, e.nodo);
+    return { ...e, etapa: alcance.etapa, cursoMin: alcance.cursoMin };
+  });
+
   return {
     nivel,
     alumno,
-    items: componerDiagnostico({ catalogo, banco, comodines, alumno }),
+    items: componerDiagnostico({ catalogo, banco: bancoConAlcance, comodines, alumno }),
     origen: perfil.nivelActual
       ? "diagnostico_previo"
       : alumno.etapa

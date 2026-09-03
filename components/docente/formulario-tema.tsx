@@ -299,14 +299,16 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="nivel">Nivel</Label>
+            {/* Dificultad, no nivel educativo: eso es la etapa, y se decide en
+                el bloque de alcance curricular. */}
+            <Label htmlFor="nivel">Dificultad</Label>
             <Select
               id="nivel"
               value={nivel}
               onChange={(e) => setNivel(e.target.value)}
               disabled={!puedeEditar}
             >
-              <option value="">Sin nivel</option>
+              <option value="">Sin dificultad asignada</option>
               {NIVELES.map((n) => (
                 <option key={n} value={n}>
                   {ETIQUETA_NIVEL_CURRICULO[n as Nivel]}
@@ -327,6 +329,10 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
               disabled={!puedeEditar}
             />
             <p className="text-xs text-muted-foreground">Menor número, más arriba en el listado.</p>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              La <strong>dificultad</strong> gradúa lo que cuesta el tema dentro de su etapa; a qué
+              alumnos les llega lo decide el <strong>alcance curricular</strong>, más abajo.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -646,7 +652,7 @@ export function FormularioTema({ materias, posiblesPadres, tema, puedeEditar }: 
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor={`nivel-regla-${i}`}>Nivel</Label>
+                  <Label htmlFor={`nivel-regla-${i}`}>Dificultad</Label>
                   <Select
                     id={`nivel-regla-${i}`}
                     value={regla.nivel}

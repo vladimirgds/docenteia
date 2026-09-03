@@ -154,6 +154,51 @@ export function cubreAlAlumno(alcance: AlcanceCurricular, alumno: CursoDelAlumno
   return alcance.cursoMin == null || alumno.curso >= alcance.cursoMin;
 }
 
+/**
+ * El alcance que de verdad rige para un contenido que puede heredarlo.
+ *
+ * Un ejercicio hereda el alcance de su tema, y ésa es la regla que quiere el 95 %
+ * de los casos: si el tema es de 3.º de primaria, sus ejercicios lo son. Pero
+ * heredar SIEMPRE obliga a partir el temario cuando dentro de un mismo tema hay
+ * material de distinta madurez —"Perímetros" con figuras sencillas en 3.º y con
+ * decimales en 5.º—, y el profesor acaba creando "Perímetros 3.º" y "Perímetros
+ * 5.º" para algo que es un solo tema.
+ *
+ * Por eso el alcance propio es OPCIONAL: a null se hereda, y con valor manda el
+ * suyo. `propio` dice cuál de las dos cosas ha pasado, que es lo que la interfaz
+ * necesita para distinguir "heredado del tema" de "ajustado a mano".
+ */
+export function alcanceEfectivo(
+  propio: Partial<AlcanceCurricular> | null | undefined,
+  delTema: Partial<AlcanceCurricular> | null | undefined,
+): AlcanceCurricular & { propio: boolean } {
+  if (propio?.etapa) {
+    return { etapa: propio.etapa, cursoMin: propio.cursoMin ?? null, propio: true };
+  }
+  return {
+    etapa: delTema?.etapa ?? null,
+    cursoMin: delTema?.cursoMin ?? null,
+    propio: false,
+  };
+}
+
+/**
+ * Qué cursos puede elegir un ejercicio que quiere afinar el alcance de su tema.
+ *
+ * Siempre dentro de la ETAPA del tema y nunca por debajo de su curso: un
+ * ejercicio puede pedir más madurez que el tema al que pertenece —el de
+ * decimales, dentro de un tema que empieza en 3.º— pero no menos, porque
+ * entonces le llegaría a alumnos a los que el tema entero no les corresponde.
+ */
+export function cursosPermitidosParaAfinar(
+  delTema: Partial<AlcanceCurricular> | null | undefined,
+): number[] {
+  const datos = etapaPorValor(delTema?.etapa ?? undefined);
+  if (!datos) return [];
+  const desde = Math.max(1, delTema?.cursoMin ?? 1);
+  return Array.from({ length: datos.cursos }, (_, i) => i + 1).filter((n) => n >= desde);
+}
+
 /** "Desde Secundaria · 3.er Año", "Desde Superior", "Cualquier etapa". */
 export function describirAlcance(alcance: AlcanceCurricular): string {
   const datos = etapaPorValor(alcance.etapa ?? undefined);

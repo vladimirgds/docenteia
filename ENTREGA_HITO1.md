@@ -215,7 +215,7 @@ la aplicación compilada en modo producción:
 
 | Batería | Resultado |
 | --- | --- |
-| `npm run qa:hito1` — **nueva** | **116 comprobaciones · 0 fallidas** |
+| `npm run qa:hito1` — **nueva** | **124 comprobaciones · 0 fallidas** |
 | `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
 | `npm run qa:diagnostico-nivel` — **nueva** | **94 comprobaciones · 0 fallidas** |
 | `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
@@ -717,3 +717,60 @@ Ocho comprobaciones nuevas en `npm run qa:hito1` (116 en total): la barra doble
 se corrige al guardar —enunciado y ejemplo—, el nivel vacío se guarda como
 heredado, un tema con motor admite la práctica, uno sin motor la rechaza aunque
 se pida por API, y quitarle el motor a un tema desmarca las suyas.
+
+---
+
+## 15. Sexta observación: dificultad, alcance visible y grado propio
+
+Tres ajustes sobre `/docente/ejercicios`, y el tercero es un cambio de modelo.
+
+### "Nivel" se llama Dificultad
+
+El selector decía *Nivel* y competía con el nivel educativo del alumno, que es
+otra cosa. Renombrado a **Dificultad** en el formulario, el filtro y la columna
+del banco, y también en el formulario de temas y reglas. La columna de base de
+datos sigue siendo `nivel`: lo que cambia es cómo se llama donde se lee, que es
+donde estaba la confusión.
+
+### El alcance heredado, a la vista
+
+Estaba en el subtítulo, en letra pequeña. Ahora encabeza el formulario como dos
+píldoras —`Tema: Aritmética básica → Alcance: Primaria · 1.er Grado`— con el
+texto que dice si es heredado o ajustado. Es el dato que decide qué alumnos verán
+el ejercicio; no puede estar escondido.
+
+### Grado propio del ejercicio
+
+**El problema, tal como lo planteó el cliente:** un tema *Perímetros* desde 3.º
+de primaria obligaba a que todos sus ejercicios fueran de 3.º. Uno con decimales
+pensado para 5.º se le mostraba igual a un alumno de 3.º, y la única salida era
+duplicar el tema y fragmentar el catálogo.
+
+Ahora el alcance del ejercicio es una EXCEPCIÓN, no una copia:
+
+- **A null hereda** el de su tema. Es el caso normal, y es herencia viva: al
+  mover el tema, sus ejercicios le siguen.
+- **Con valor manda el suyo**, dentro de dos límites: la misma etapa —cambiar de
+  etapa es cambiar de tema— y nunca por debajo del curso del tema, porque
+  llegaría a alumnos a los que el tema entero no les corresponde.
+- **Pedir el mismo grado que el tema se guarda como heredado.** Si se guardara la
+  copia, al mover el tema ese ejercicio se quedaría con el valor viejo, que es
+  justo lo que la herencia evita.
+
+El formulario lo ofrece como *"Personalizar el grado mínimo para este ejercicio"*,
+con el desplegable acotado a los cursos permitidos; el banco lo distingue con el
+color de la píldora y un `· propio`.
+
+La migración `20260903100000_alcance_propio_del_ejercicio` deshace las copias que
+existían: donde el ejercicio coincidía con su tema, vuelve a heredar.
+
+Y el filtrado usa el alcance **efectivo** —el propio si lo hay, el del tema si
+no— tanto en la evaluación inicial como en la lección.
+
+### Comprobado
+
+Ocho comprobaciones nuevas en `npm run qa:hito1` (124 en total): heredar por
+defecto, subir el grado dentro de la etapa, rechazar bajarlo, rechazar el cambio
+de etapa, guardar como heredado cuando se pide el mismo, y —lo que prueba que la
+herencia sigue viva— mover el tema y ver que el heredado le sigue mientras el
+propio se queda donde su autor lo puso.

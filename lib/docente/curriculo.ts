@@ -211,9 +211,26 @@ export type EntradaRegla = z.infer<typeof reglaSchema>;
 export type EntradaTema = z.infer<typeof temaSchema>;
 
 export const ejercicioSchema = z.object({
-  /** Un ejercicio siempre pertenece a un tema: es lo que le da motor y nivel. */
+  /** Un ejercicio siempre pertenece a un tema: es lo que le da motor y alcance. */
   nodoId: z.string().min(1, "Falta el tema al que pertenece el ejercicio").max(40),
+  /**
+   * DIFICULTAD del ejercicio dentro de su tema.
+   *
+   * En la base sigue llamándose `nivel`; en la interfaz se llama Dificultad
+   * desde que quedó claro que "Nivel" se confundía con el nivel educativo del
+   * alumno, que es otra cosa y vive en el alcance curricular.
+   */
   nivel: z.enum(NIVELES),
+  /**
+   * Alcance PROPIO del ejercicio, opcional.
+   *
+   * A null hereda el de su tema, que es lo que quiere casi siempre. Con valor
+   * manda el suyo, para el ejercicio que dentro de un tema de 3.º está pensado
+   * para 5.º y no debería bajar. Se valida contra el tema: misma etapa y curso
+   * no inferior al suyo.
+   */
+  etapa: z.enum(ETAPAS_CURRICULO).optional().nullable(),
+  cursoMin: z.number().int().min(1).max(10).optional().nullable(),
   enunciado: z.string().trim().min(1, "Falta el enunciado").max(300),
   respuestaCorrecta: textoCorto(200).optional().nullable(),
   plantilla: z.boolean().optional(),

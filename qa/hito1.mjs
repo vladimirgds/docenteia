@@ -746,6 +746,141 @@ if (!salud) {
       (exponencial?.informe?.errores ?? [])[0],
     );
 
+    // 5c. EL ALCANCE PROPIO DEL EJERCICIO.
+    //
+    // Un tema de 3.º de secundaria puede contener un ejercicio pensado para 5.º
+    // sin obligar a duplicar el tema. Se afina hacia arriba, nunca hacia abajo,
+    // y siempre dentro de la etapa del tema.
+    const rTemaAlcance = await api("/api/docente/temas", {
+      method: "POST",
+      body: JSON.stringify({
+        titulo: `QA Perímetros ${sufijo}`,
+        materiaId,
+        motor: "ARITMETICA",
+        etapa: "PRIMARIA",
+        cursoMin: 3,
+        estado: "PUBLICADO",
+      }),
+    });
+    const temaAlcance = (await rTemaAlcance.json().catch(() => ({})))?.tema ?? null;
+    check("se crea un tema con alcance desde 3.º de primaria", Boolean(temaAlcance?.id));
+
+    if (temaAlcance?.id) {
+      // Sin pedir nada: hereda, y se guarda como heredado (nulo), no como copia.
+      const rHeredado = await api("/api/docente/ejercicios", {
+        method: "POST",
+        body: JSON.stringify({
+          nodoId: temaAlcance.id,
+          nivel: "BASICO",
+          enunciado: "12 + 7",
+          respuestaCorrecta: "19",
+        }),
+      });
+      const heredado = (await rHeredado.json().catch(() => ({})))?.ejercicio ?? null;
+      check(
+        "un ejercicio sin alcance propio lo hereda del tema",
+        rHeredado.status === 201 && heredado?.etapa === null && heredado?.cursoMin === null,
+        `etapa: ${heredado?.etapa} · curso: ${heredado?.cursoMin}`,
+      );
+
+      // Afinado a 5.º: se guarda como propio.
+      const rPropio = await api("/api/docente/ejercicios", {
+        method: "POST",
+        body: JSON.stringify({
+          nodoId: temaAlcance.id,
+          nivel: "AVANZADO",
+          enunciado: "12.5 + 7.25",
+          respuestaCorrecta: "19.75",
+          etapa: "PRIMARIA",
+          cursoMin: 5,
+        }),
+      });
+      const propio = (await rPropio.json().catch(() => ({})))?.ejercicio ?? null;
+      check(
+        "un ejercicio puede pedir un grado mayor que el de su tema",
+        rPropio.status === 201 && propio?.etapa === "PRIMARIA" && propio?.cursoMin === 5,
+        `HTTP ${rPropio.status} · etapa: ${propio?.etapa} · curso: ${propio?.cursoMin}`,
+      );
+
+      // Por debajo del tema, no: llegaría a alumnos a los que el tema no llega.
+      const rMenor = await api("/api/docente/ejercicios", {
+        method: "POST",
+        body: JSON.stringify({
+          nodoId: temaAlcance.id,
+          nivel: "BASICO",
+          enunciado: "3 + 4",
+          respuestaCorrecta: "7",
+          etapa: "PRIMARIA",
+          cursoMin: 1,
+        }),
+      });
+      check(
+        "pero NO uno menor que el de su tema",
+        rMenor.status === 409,
+        `HTTP ${rMenor.status}`,
+      );
+
+      // Ni cambiar de etapa: para eso está crearlo en un tema de esa etapa.
+      const rOtraEtapa = await api("/api/docente/ejercicios", {
+        method: "POST",
+        body: JSON.stringify({
+          nodoId: temaAlcance.id,
+          nivel: "BASICO",
+          enunciado: "9 + 4",
+          respuestaCorrecta: "13",
+          etapa: "SUPERIOR",
+          cursoMin: 1,
+        }),
+      });
+      check("ni cambiar de etapa", rOtraEtapa.status === 409, `HTTP ${rOtraEtapa.status}`);
+
+      // Igualar el del tema es heredar, no fijar una copia que se quede vieja.
+      const rIgual = await api("/api/docente/ejercicios", {
+        method: "POST",
+        body: JSON.stringify({
+          nodoId: temaAlcance.id,
+          nivel: "BASICO",
+          enunciado: "20 + 6",
+          respuestaCorrecta: "26",
+          etapa: "PRIMARIA",
+          cursoMin: 3,
+        }),
+      });
+      const igual = (await rIgual.json().catch(() => ({})))?.ejercicio ?? null;
+      check(
+        "pedir el mismo grado que el tema se guarda como heredado",
+        rIgual.status === 201 && igual?.etapa === null,
+        `etapa: ${igual?.etapa}`,
+      );
+
+      // Y la herencia es viva: al mover el tema, el heredado le sigue y el
+      // propio se queda donde su autor lo puso.
+      await api(`/api/docente/temas/${temaAlcance.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ cursoMin: 4 }),
+      });
+      const banco = await (
+        await api(`/api/docente/ejercicios?nodoId=${temaAlcance.id}`)
+      ).json();
+      const trasMover = (banco?.ejercicios ?? []).find((e) => e.id === heredado?.id);
+      const propioTrasMover = (banco?.ejercicios ?? []).find((e) => e.id === propio?.id);
+      check(
+        "al mover el tema, el ejercicio heredado le sigue",
+        trasMover?.etapa === null && trasMover?.nodo?.cursoMin === 4,
+        `curso del tema: ${trasMover?.nodo?.cursoMin}`,
+      );
+      check(
+        "y el que tenía grado propio lo conserva",
+        propioTrasMover?.cursoMin === 5,
+        `curso: ${propioTrasMover?.cursoMin}`,
+      );
+
+      for (const ej of banco?.ejercicios ?? []) {
+        await api(`/api/docente/ejercicios/${ej.id}`, { method: "DELETE" });
+      }
+      await api(`/api/docente/temas/${temaAlcance.id}`, { method: "DELETE" });
+    }
+
     // 6. Duplicado
     const rRepetido = await api("/api/docente/ejercicios", {
       method: "POST",

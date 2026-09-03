@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { ESTADOS, ejercicioSchema, type Estado, type Motor } from "@/lib/docente/curriculo";
+import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
   SELECCION_EJERCICIO,
   camposDeValidacion,
@@ -87,6 +88,11 @@ export async function POST(req: Request) {
       return conflicto(`El tema "${tema.titulo}" ya tiene un ejercicio con ese mismo enunciado.`);
     }
 
+    // El alcance propio, si lo pide, se valida contra el del tema: misma etapa y
+    // curso no inferior. Sin él, se hereda (se guarda a null).
+    const alcance = resolverAlcancePropio(datos, tema);
+    if (!alcance.ok) return conflicto(alcance.error);
+
     const informe = validarEjercicio({
       enunciado: datos.enunciado,
       respuestaCorrecta: datos.respuestaCorrecta,
@@ -112,11 +118,11 @@ export async function POST(req: Request) {
       data: {
         nodoId: datos.nodoId,
         motor,
-        // El alcance curricular se hereda del tema, igual que el motor: es el
-        // tema quien sabe a qué alumnos va dirigido, y duplicar el dato en cada
-        // ejercicio sólo daría ocasión de que se contradigan.
-        etapa: tema.etapa,
-        cursoMin: tema.cursoMin,
+        // El alcance se guarda SÓLO si el docente lo ha afinado; a null significa
+        // "el de mi tema", de modo que al cambiar el tema sus ejercicios lo siguen
+        // en lugar de quedarse con una copia vieja.
+        etapa: alcance.etapa,
+        cursoMin: alcance.cursoMin,
         nivel: datos.nivel,
         enunciado: datos.enunciado,
         respuestaCorrecta: campos.respuestaCorrecta,
