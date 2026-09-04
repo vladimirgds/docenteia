@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.836 comprobaciones automáticas, 0
-fallos**, de las cuales **209 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.841 comprobaciones automáticas, 0
+fallos**, de las cuales **214 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 191 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 209
+node qa/hito2.mjs                                  # sin servidor: 196 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 214
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 209 | 0 |
+| `qa/hito2.mjs` (este hito) | 214 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.836** | **0** |
+| **Total** | **1.841** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 209 comprobaciones del hito |
+| `qa/hito2.mjs` | 214 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -520,3 +520,30 @@ navegador que no avisa del arranque no deja pasos sin pintar; que las reglas de
 revelado dejan escrito lo ya calculado paso a paso; que sólo se dibuja el foco
 en curso; y que los mandos actúan sobre la locución del tutor cuando es él quien
 habla. Suite completa: **1.836 comprobaciones, 0 fallos**.
+
+---
+
+## 15. La cuenta que dibuja el motor
+
+En el despliegue seguía viéndose el bloque **DESARROLLO** con la suma resuelta
+—412 con sus llevadas— mientras la pizarra animada iba por el primer paso, pese
+a la corrección de la sección 13.
+
+**Por qué.** El motor no escribe el desarrollo como `234 + 178 = 412`: lo
+**dibuja** en columna, en varias líneas. El guion sólo sabía leer la forma de una
+línea, así que esa línea no contaba como animable: no se ocultaba arriba, y
+abajo entraba como un simple bloque de texto en lugar de animarse.
+
+**Qué ocurre ahora.** El guion lee las dos formas —`operacionDeLinea()`, que ya
+usaba la pizarra clásica—, de modo que:
+
+- el desarrollo dibujado **desaparece de arriba** mientras la animación lo va
+  contando, y vuelve al terminar;
+- **es la misma escena** que el enunciado, así que el contador deja de decir
+  "línea 1/4" repitiendo la misma cuenta;
+- y una cuenta dibujada a medias —el motor escribe una sola columna del
+  resultado— se anima igual, entera y bien.
+
+`qa/hito2.mjs` sube a **214 comprobaciones**; las nuevas fijan que la cuenta
+dibujada produce exactamente los mismos focos que la escrita en una línea y que
+enunciado y desarrollo son una sola escena. Suite completa: **1.841, 0 fallos**.

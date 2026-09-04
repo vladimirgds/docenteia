@@ -320,6 +320,40 @@ titulo("A1. La cuenta se resuelve PASO A PASO, no de golpe");
   );
 }
 
+titulo("A1a. La cuenta que DIBUJA el motor también se anima");
+
+{
+  // Cómo llega el desarrollo de una lección de aritmética: el motor no escribe
+  // "234 + 178 = 412", dibuja la cuenta en columna. Leyendo sólo la forma de una
+  // línea, ese desarrollo se quedaba fuera de la animación, y la pizarra de
+  // arriba seguía enseñando la suma resuelta mientras la de abajo empezaba.
+  const dibujada = ["  234", "+ 178", "-----", "  412"].join("\n");
+
+  check("la cuenta dibujada se reconoce como animable", esAnimable(dibujada));
+
+  const escena = escenaDeColumna(dibujada, "e");
+  check("y produce una escena de columna", escena?.clase === "columna");
+  check(
+    "con los mismos focos que la escrita en una línea",
+    JSON.stringify(escena.focos) ===
+      JSON.stringify(escenaDeColumna("234 + 178", "e").focos),
+  );
+
+  const aMedias = ["  234", "+ 178", "-----", "    2"].join("\n");
+  check(
+    "el dibujo a medias —una sola columna resuelta— también se anima entero",
+    esAnimable(aMedias) && escenaDeColumna(aMedias, "e").focos.length === 4,
+  );
+
+  // Y como es la misma cuenta que el enunciado, no se repite como escena.
+  const guion = guionDeLeccion(["234 + 178", dibujada]);
+  check(
+    "el enunciado y la cuenta dibujada son una sola escena",
+    guion.length === 1,
+    `${guion.length} escenas`,
+  );
+}
+
 titulo("A1b. Lo destapado se queda escrito, y se declara con una regla CSS");
 
 {

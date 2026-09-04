@@ -1,4 +1,9 @@
-import { leerSumaOResta, marcasDeColumna, type OperacionEnColumna } from "./columna.ts";
+import {
+  leerSumaOResta,
+  marcasDeColumna,
+  operacionDeLinea,
+  type OperacionEnColumna,
+} from "./columna.ts";
 import { planoALatex } from "../matematicas/index.ts";
 
 /**
@@ -90,7 +95,12 @@ function marcar(clase: string, contenido: string): string {
  * señalando.
  */
 export function escenaDeColumna(texto: string, id: string): Escena | null {
-  const op = leerSumaOResta(texto);
+  // Se aceptan las dos formas en que llega una cuenta: escrita en una línea
+  // ("234 + 178") y DIBUJADA en columna por el motor, que es como viene en el
+  // desarrollo de la lección. Leyendo sólo la primera, el desarrollo se quedaba
+  // fuera de la animación: la pizarra de arriba enseñaba la suma ya resuelta
+  // mientras la de abajo iba por el primer paso.
+  const op = operacionDeLinea(texto);
   if (!op) return null;
 
   const ancho = Math.max(String(op.a).length, String(op.b).length, String(op.resultado).length);
@@ -527,7 +537,7 @@ export function guionDeLeccion(lineas: readonly string[]): Escena[] {
 
 /** Qué hace única a una escena: la cuenta que resuelve, no cómo está escrita. */
 function identidadDeEscena(escena: Escena): string {
-  const op = leerSumaOResta(escena.texto);
+  const op = operacionDeLinea(escena.texto);
   if (op) return `columna:${op.a}${op.operador}${op.b}`;
   return `${escena.clase}:${normalizar(escena.texto).replace(/\s+/g, "")}`;
 }
