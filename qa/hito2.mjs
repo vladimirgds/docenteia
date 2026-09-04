@@ -27,12 +27,14 @@ import { readFileSync } from "node:fs";
 import katex from "katex";
 
 import {
+  esAnimable,
   escenaDeColumna,
   escenaDeDespeje,
   escenaDeLinea,
   escenaDePolinomio,
   escenaDeTexto,
   guionDeLeccion,
+  situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
 import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import {
@@ -486,6 +488,96 @@ titulo("B. Toda escena se compone con KaTeX y conserva sus marcas");
   );
 }
 
+titulo("B2. La pizarra sigue a la voz del tutor");
+
+{
+  // El cliente lo vio en la captura: la locución iba por "sumamos las decenas"
+  // y la pizarra seguía en el paso 1, sin ningún foco, esperando a que alguien
+  // pulsara Reproducir. La pizarra tiene que colocarse donde va la voz.
+  const guion = guionDeLeccion(["234 + 178", "234 + 178 = 412"]);
+
+  check(
+    "el enunciado y su desarrollo son la MISMA cuenta: una sola escena",
+    guion.length === 1,
+    `${guion.length} escenas`,
+  );
+
+  // Las frases son las del tutor, no las del guion: escribe "escribimos" donde
+  // el guion dice "escribo", y aun así tiene que reconocerlas.
+  const recorrido = [
+    ["Vamos a sumar 234 más 178, columna por columna.", -1],
+    ["Sumamos las unidades: 4 + 8 = 12. Como pasa de 9, escribimos 2 y llevamos 1.", 0],
+    ["Sumamos las decenas: 3 + 7 + 1 que llevábamos = 11. Como pasa de 9, escribimos 1 y llevamos 1.", 1],
+    ["Sumamos las centenas: 2 + 1 + 1 que llevábamos = 4.", 2],
+    ["El resultado es 412.", 3],
+  ];
+
+  let escenaActual = 0;
+  for (const [dicho, focoEsperado] of recorrido) {
+    const destino = situacionParaNarracion(guion, dicho, escenaActual);
+    if (destino) escenaActual = destino.escena;
+    check(
+      `"${dicho.slice(0, 34)}…" coloca la pizarra en el paso ${focoEsperado + 2}`,
+      destino?.foco === focoEsperado,
+      destino ? `foco ${destino.foco}` : "sin situación",
+    );
+  }
+
+  const columna = guion[0];
+  check(
+    "y ese foco es el de la columna que se está operando",
+    columna.focos[0].clase === "pz-col-2" &&
+      columna.focos[1].clase === "pz-col-1" &&
+      columna.focos[2].clase === "pz-col-0",
+  );
+
+  check(
+    "una frase que no habla de la cuenta no mueve la pizarra",
+    situacionParaNarracion(guion, "Ahora practica tú con otro ejemplo.", 0) === null,
+  );
+  check("ni una frase vacía", situacionParaNarracion(guion, "   ", 0) === null);
+
+  // Una línea de prosa no puede robarle el turno a la columna: no tiene nada
+  // que señalar, y su narración encaja al 100 % con lo que dice el tutor.
+  const conProsa = guionDeLeccion(["234 + 178", "Sumamos las unidades"]);
+  const destino = situacionParaNarracion(
+    conProsa,
+    "Sumamos las unidades: 4 + 8 = 12. Como pasa de 9, escribimos 2 y llevamos 1.",
+    0,
+  );
+  check(
+    "con una línea de prosa parecida delante, gana la columna que se opera",
+    destino?.escena === 0 && destino?.foco === 0,
+    JSON.stringify(destino),
+  );
+}
+
+{
+  // El otro punto del cliente: el bloque DESARROLLO de arriba enseñaba la suma
+  // ya resuelta mientras abajo corría la animación.
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+
+  check("la lección sabe qué líneas anima la pizarra", aula.includes("esAnimable"));
+  check(
+    "y mientras la animación no termina, no las compone arriba",
+    aula.includes("desarrolloVisible") && aula.includes("desarrollo={desarrolloVisible}"),
+  );
+  check(
+    "en cuanto termina la animación —o la lección— el desarrollo vuelve entero",
+    /if \(animacionCompleta \|\| !controles\.playing\) return desarrollo;/.test(aula),
+  );
+  check(
+    "las aclaraciones se siguen viendo: no destripan el resultado",
+    /linea\.aclaracion \|\| !esAnimable/.test(aula),
+  );
+  check("y la pizarra recibe lo que el tutor está diciendo", aula.includes("narracion={subtitulo}"));
+
+  check(
+    "esAnimable distingue una cuenta de una frase",
+    esAnimable("234 + 178 = 412") && !esAnimable("Sumamos las unidades"),
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // C. El sincronizador
 // ═════════════════════════════════════════════════════════════════════════════
@@ -725,6 +817,44 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
 }
 
 {
+  // Situar es lo que usa el seguimiento de la voz: coloca la pizarra sin
+  // hablar y sin poner en marcha ningún temporizador. Si hablara, serían dos
+  // voces a la vez sobre la misma lección.
+  const r = relojFalso();
+  const voz = locutorFalso();
+  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+
+  s.situar(1, 2);
+  check("situar coloca la pizarra donde va la voz", s.instantanea().escena === 1);
+  check("en el foco pedido", s.instantanea().foco === 2);
+  check("sin decir una palabra", voz.dichos.length === 0);
+  check("y sin arrancar ningún temporizador", r.pendientes() === 0);
+  check("la lección no se pone en marcha por situarla", s.instantanea().estado === "inicio");
+
+  s.situar(0, -1);
+  check("puede volver a la entrada de una escena", s.instantanea().foco === -1);
+  s.situar(9, 0);
+  check("una escena que no existe se ignora", s.instantanea().escena === 0);
+  s.situar(0, 99);
+  check(
+    "y un foco fuera de rango se recorta al último de la escena",
+    s.instantanea().foco === s.instantanea().segmentos - 2,
+    `${s.instantanea().foco}`,
+  );
+
+  // Con el repaso reproduciéndose manda él: seguir la voz del tutor entonces
+  // sería tirar de la lección desde dos sitios a la vez.
+  s.reproducir();
+  const donde = s.instantanea();
+  s.situar(1, 1);
+  check(
+    "mientras el repaso se reproduce solo, el seguimiento no interfiere",
+    s.instantanea().escena === donde.escena && s.instantanea().foco === donde.foco,
+  );
+  s.detener();
+}
+
+{
   const s = crearSincronizador({ escenas: [], locutor: null, reloj: relojFalso().reloj });
   s.reproducir();
   check("una lección sin escenas termina sin romperse", s.instantanea().estado === "final");
@@ -868,6 +998,14 @@ titulo("D. Máquina de estados del avatar");
   check(
     "las piezas por destapar arrancan invisibles",
     /\.pz-animada \[class\*="pz-rev-"\] \{[^}]*opacity: 0/.test(estilos),
+  );
+  check(
+    "la columna operada se ilumina con fondo, no solo con borde",
+    /\.pz-fondo \{[^}]*fill:/.test(estilos) && panel.includes('className="pz-fondo"'),
+  );
+  check(
+    "y en proyección ese fondo pesa más, para verse de lejos",
+    /\.modo-proyeccion \.pz-fondo \{[^}]*fill:/.test(estilos),
   );
   check(
     "y se destapan cambiando una opacidad, sin recomponer la fórmula",

@@ -93,6 +93,14 @@ export interface Sincronizador {
   avanzar(): void;
   retroceder(): void;
   irAEscena(indice: number): void;
+  /**
+   * Coloca la pizarra en un punto concreto SIN reproducir nada.
+   *
+   * Es lo que usa el seguimiento de la voz: cuando quien habla es el tutor de
+   * la lección, la pizarra sólo tiene que ponerse donde él va. Hablar aquí
+   * sería una segunda voz encima de la suya.
+   */
+  situar(escena: number, foco: number): void;
   /** Enciende o apaga el audio en marcha, sin perder el sitio. */
   usarAudio(activo: boolean): void;
   detener(): void;
@@ -364,6 +372,22 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       if (estado === "final") estado = "pausado";
       avisar();
       if (estado === "reproduciendo") lanzar();
+    },
+
+    situar(indice: number, destino: number) {
+      if (indice < 0 || indice >= escenas.length) return;
+      // Mientras la pizarra se reproduce por su cuenta manda ella: seguir a la
+      // voz del tutor entonces sería tirar de la lección desde dos sitios.
+      if (estado === "reproduciendo" || estado === "pausado") return;
+
+      const textos = segmentosDe(escenas[indice]);
+      const siguiente = Math.max(-1, Math.min(destino, textos.length - 2));
+      if (escena === indice && segmento === siguiente + 1) return;
+
+      limpiar();
+      escena = indice;
+      segmento = siguiente + 1;
+      avisar();
     },
 
     usarAudio(activo: boolean) {

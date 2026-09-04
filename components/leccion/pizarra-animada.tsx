@@ -16,7 +16,12 @@ import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { TextoMatematico } from "@/components/math";
 import { Button } from "@/components/ui/button";
 import { useSincronizadorLeccion } from "@/components/leccion/sincronizador-leccion";
-import { guionDeLeccion, type Escena, type Foco } from "@/lib/leccion/animacion";
+import {
+  guionDeLeccion,
+  situacionParaNarracion,
+  type Escena,
+  type Foco,
+} from "@/lib/leccion/animacion";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import { cn } from "@/lib/utils";
 import type { TTS } from "@/public/tts.js";
@@ -250,6 +255,28 @@ function Resaltado({
       data-tipo={foco.tipo}
       style={{ opacity: opacidad, transition: "opacity 220ms ease-in-out" }}
     >
+      {/* El fondo va DEBAJO del trazo y encima de la fórmula: es lo que hace que
+          la columna operada se ilumine, y no sólo se enmarque. Como la capa no
+          recibe eventos, la fórmula se sigue pudiendo seleccionar. */}
+      {foco.tipo === "ovalo" ? (
+        <ellipse
+          cx={caja.x + caja.ancho / 2}
+          cy={caja.y + caja.alto / 2}
+          rx={caja.ancho / 2 + 2}
+          ry={caja.alto / 2 + 2}
+          className="pz-fondo"
+        />
+      ) : (
+        <rect
+          x={caja.x}
+          y={caja.y}
+          width={caja.ancho}
+          height={caja.alto}
+          rx={6}
+          className="pz-fondo"
+        />
+      )}
+
       {foco.tipo === "ovalo" ? (
         <ellipse
           cx={caja.x + caja.ancho / 2}
@@ -314,14 +341,27 @@ export function PanelAnimado({
   lineas,
   tts,
   vozActiva = true,
+  narracion,
   alCambiarAvatar,
   alTomarLaVoz,
+  alProgresar,
   className,
 }: {
   /** Las líneas de la lección, en la notación plana del motor. */
   lineas: readonly string[];
   tts?: TTS | null;
   vozActiva?: boolean;
+  /**
+   * Lo que el tutor de la lección está diciendo AHORA.
+   *
+   * Con esto la pizarra se coloca sola donde va la voz, sin que el alumno tenga
+   * que darle a Reproducir: si se oye "sumamos las decenas", el recuadro está
+   * sobre las decenas. Si el alumno reproduce el repaso por su cuenta, manda él
+   * y el seguimiento se aparta.
+   */
+  narracion?: string | null;
+  /** Avisa de por dónde va la animación y de si ya ha terminado. */
+  alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean }) => void;
   /** El aula usa esto para poner al avatar a explicar, pensar o celebrar. */
   alCambiarAvatar?: (estado: EstadoPedagogico) => void;
   /**
@@ -347,6 +387,28 @@ export function PanelAnimado({
   useEffect(() => {
     alCambiarAvatar?.(estado.avatar);
   }, [estado.avatar, alCambiarAvatar]);
+
+  // La pizarra sigue a la voz del tutor. Es lo que ata el resaltado a lo que se
+  // está oyendo: sin esto, la locución iba por las decenas y el recuadro seguía
+  // en el primer paso, esperando a que alguien pulsara Reproducir.
+  useEffect(() => {
+    if (!narracion) return;
+    const destino = situacionParaNarracion(escenas, narracion, estado.escena);
+    if (!destino) return;
+    mandos.situar(destino.escena, destino.foco);
+  }, [narracion, escenas, estado.escena, mandos]);
+
+  // Lo que la lección necesita saber: si la animación ya lo ha destapado todo.
+  // Mientras no lo haya hecho, la pizarra de arriba no puede adelantar el
+  // resultado.
+  const terminado =
+    escenas.length === 0 ||
+    estado.estado === "final" ||
+    (estado.escena === escenas.length - 1 && estado.foco >= estado.segmentos - 2);
+
+  useEffect(() => {
+    alProgresar?.({ escena: estado.escena, foco: estado.foco, terminado });
+  }, [alProgresar, estado.escena, estado.foco, terminado]);
 
   // La tecla Escape y el botón del navegador también salen de pantalla
   // completa: el estado se lee del documento, no de lo que pulsamos nosotros.

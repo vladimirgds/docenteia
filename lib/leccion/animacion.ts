@@ -498,12 +498,133 @@ export function escenaDeLinea(texto: string, id: string): Escena {
   );
 }
 
-/** El guion completo de una lección, una escena por línea con contenido. */
+/**
+ * El guion completo de una lección, una escena por línea con contenido.
+ *
+ * Las repeticiones se descartan: el motor escribe el enunciado ("234 + 178") y
+ * luego el desarrollo de la misma cuenta ("234 + 178 = 412"), que son la misma
+ * operación y producen la misma escena. Sin este filtro la pizarra decía "línea
+ * 1 de 2" y repetía la cuenta entera, y seguir la voz se volvía ambiguo porque
+ * dos escenas encajaban igual de bien.
+ */
 export function guionDeLeccion(lineas: readonly string[]): Escena[] {
-  return lineas
-    .map((l) => String(l ?? "").trim())
-    .filter(Boolean)
-    .map((linea, i) => escenaDeLinea(linea, `escena-${i}`));
+  const escenas: Escena[] = [];
+  const vistas = new Set<string>();
+
+  for (const cruda of lineas) {
+    const linea = String(cruda ?? "").trim();
+    if (!linea) continue;
+
+    const escena = escenaDeLinea(linea, `escena-${escenas.length}`);
+    const identidad = identidadDeEscena(escena);
+    if (vistas.has(identidad)) continue;
+    vistas.add(identidad);
+    escenas.push(escena);
+  }
+
+  return escenas;
+}
+
+/** Qué hace única a una escena: la cuenta que resuelve, no cómo está escrita. */
+function identidadDeEscena(escena: Escena): string {
+  const op = leerSumaOResta(escena.texto);
+  if (op) return `columna:${op.a}${op.operador}${op.b}`;
+  return `${escena.clase}:${normalizar(escena.texto).replace(/\s+/g, "")}`;
+}
+
+/** ¿Esta línea se anima con focos, o es texto que sólo se lee? */
+export function esAnimable(texto: string): boolean {
+  return escenaDeLinea(String(texto ?? ""), "prueba").focos.length > 0;
+}
+
+// ── Seguir la voz del tutor ──────────────────────────────────────────────────
+
+/**
+ * DÓNDE ESTÁ LA LECCIÓN, SEGÚN LO QUE EL TUTOR ACABA DE DECIR.
+ *
+ * La pizarra animada no vive aparte del tutor: cuando él dice "sumamos las
+ * decenas", el recuadro tiene que estar sobre las decenas. Antes había que
+ * darle a Reproducir en el panel para que se moviera, así que la voz iba por un
+ * lado y la pizarra por otro —justo lo que el cliente vio en la captura.
+ *
+ * Se compara lo dicho con la narración de cada foco: coinciden las cifras, la
+ * posición decimal y los verbos. No hace falta que el tutor use nuestras
+ * palabras exactas —él dice "escribimos 1 y llevamos 1" y el guion "escribo 1 y
+ * llevo 1"— porque se puntúa por solapamiento, no por igualdad.
+ */
+export interface Situacion {
+  escena: number;
+  /** Foco encendido; -1 es la entrada de la escena. */
+  foco: number;
+}
+
+/** Por debajo de esto no se mueve nada: mejor quieto que saltando al azar. */
+const UMBRAL_SEGUIMIENTO = 0.45;
+
+export function situacionParaNarracion(
+  escenas: readonly Escena[],
+  narracion: string,
+  escenaActual = 0,
+): Situacion | null {
+  const dicho = normalizar(narracion);
+  if (!dicho.trim() || escenas.length === 0) return null;
+
+  let eleccion: Situacion | null = null;
+  let mejorPuntuacion = 0;
+
+  for (let indice = 0; indice < escenas.length; indice++) {
+    const escena = escenas[indice];
+    const candidatos: Array<{ foco: number; texto: string; claves: string[] }> = [
+      { foco: -1, texto: escena.narracion, claves: [] },
+      ...escena.focos.map((f, i) => ({ foco: i, texto: f.narracion, claves: clavesDeFoco(f) })),
+    ];
+
+    for (const candidato of candidatos) {
+      let puntos = solapamiento(candidato.texto, dicho);
+      if (candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
+      // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
+      // escena por un decimal es peor que quedarse.
+      if (indice === escenaActual) puntos += 0.05;
+      // Una escena de prosa no puede señalar nada. Como su narración ES la
+      // frase entera, encajaba al 100 % y le robaba el turno a la columna que
+      // el tutor estaba explicando de verdad.
+      if (escena.focos.length === 0) puntos -= 0.2;
+
+      if (puntos >= UMBRAL_SEGUIMIENTO && puntos > mejorPuntuacion) {
+        mejorPuntuacion = puntos;
+        eleccion = { escena: indice, foco: candidato.foco };
+      }
+    }
+  }
+
+  return eleccion;
+}
+
+/** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */
+function clavesDeFoco(foco: Foco): string[] {
+  if (foco.tipo === "tachado") return ["cancel", "quitamos", "restamos", "ambos lados", "los dos lados"];
+  if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
+  if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];
+  if (foco.clase === "pz-resultado") return ["resultado", "en total"];
+  if (foco.clase.startsWith("pz-coef")) return ["coeficiente"];
+  if (foco.clase.startsWith("pz-exp")) return ["exponente"];
+  return [];
+}
+
+/** Qué parte de lo que diría el guion aparece en lo que ha dicho el tutor. */
+function solapamiento(narracion: string, dicho: string): number {
+  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
+  if (piezas.length === 0) return 0;
+  const aciertos = piezas.filter((pieza) => dicho.includes(pieza)).length;
+  return aciertos / piezas.length;
+}
+
+/** Sin tildes, en minúsculas: el tutor no siempre acentúa igual que el guion. */
+function normalizar(texto: string): string {
+  return String(texto ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
 }
 
 /** Primera letra en mayúscula, para que la locución empiece como una frase. */

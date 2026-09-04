@@ -19,6 +19,7 @@ import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/ps
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
+import { esAnimable } from "@/lib/leccion/animacion";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import {
   Pizarra,
@@ -818,6 +819,33 @@ export function Aula({
     return textos;
   }, [ejercicio, desarrollo]);
 
+  /**
+   * EL DESARROLLO NO PUEDE ADELANTAR EL RESULTADO.
+   *
+   * Lo señaló el cliente: arriba, en la pizarra de siempre, aparecía la suma
+   * entera resuelta —412 con sus llevadas— mientras abajo la animación iba por
+   * el primer paso. Con la solución a la vista, el paso a paso no explica nada.
+   *
+   * Así que mientras la animación no haya destapado todo, las líneas que ella
+   * anima no se componen arriba. Las de prosa sí: esas no destripan nada. En
+   * cuanto termina, el desarrollo completo vuelve, que es lo que el alumno
+   * necesita para repasar.
+   */
+  const [animacionCompleta, setAnimacionCompleta] = useState(true);
+  const alProgresarAnimacion = useCallback(
+    ({ terminado }: { terminado: boolean }) => setAnimacionCompleta(terminado),
+    [],
+  );
+
+  const desarrolloVisible = useMemo(() => {
+    // Sólo se retiene mientras el tutor está explicando. Si la lección ya ha
+    // terminado, el desarrollo se compone entero pase lo que pase con la
+    // animación: preferible un resultado repetido a un alumno esperando algo
+    // que no va a llegar.
+    if (animacionCompleta || !controles.playing) return desarrollo;
+    return desarrollo.filter((linea) => linea.aclaracion || !esAnimable(linea.texto));
+  }, [desarrollo, animacionCompleta, controles.playing]);
+
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
   const [reglaDetectada, setReglaDetectada] = useState<ReglaVista | null>(null);
@@ -995,7 +1023,7 @@ export function Aula({
           <Pizarra
             fases={fases}
             ejercicio={ejercicio}
-            desarrollo={desarrollo}
+            desarrollo={desarrolloVisible}
             faseDelContenido={faseDelContenido}
             resaltado={resaltado}
             reglas={reglasDelTema}
@@ -1010,7 +1038,11 @@ export function Aula({
             lineas={lineasAnimadas}
             tts={tts}
             vozActiva={vozActiva}
+            // Lo que el tutor está diciendo: con esto la pizarra se coloca
+            // sola donde va la voz, sin esperar a que nadie pulse Reproducir.
+            narracion={subtitulo}
             alCambiarAvatar={alCambiarAvatar}
+            alProgresar={alProgresarAnimacion}
             // El sintetizador es uno solo: cuando el repaso animado se pone a
             // hablar, el tutor de la lección calla. Sin esto se solapan las dos
             // voces y no se entiende ninguna de las dos.

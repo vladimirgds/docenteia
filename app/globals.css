@@ -224,6 +224,23 @@
   stroke: hsl(213 94% 72%);
 }
 
+/* El fondo de la columna operada. El cliente lo pidió así —"que la columna se
+   ilumine con fondo o borde"—, y es lo que distingue de un vistazo la columna
+   en la que se está trabajando de las que ya han pasado. Equivale al
+   `bg-blue-100 ring-2 ring-blue-500` de la interfaz, pero dibujado en la capa
+   SVG: no toca la fórmula, así que no hay recomposición ni parpadeo. */
+.pz-fondo {
+  fill: hsl(217 91% 60% / 0.16);
+}
+
+.dark .pz-fondo {
+  fill: hsl(213 94% 72% / 0.2);
+}
+
+.pz-resaltado[data-tipo="tachado"] .pz-fondo {
+  fill: hsl(0 84% 60% / 0.13);
+}
+
 /* La cancelación se pinta en rojo: es la única marca que dice "esto se va". */
 .pz-resaltado[data-tipo="tachado"] .pz-trazo {
   stroke: hsl(0 72% 45%);
@@ -344,6 +361,15 @@
 
 .modo-proyeccion .pz-resaltado[data-tipo="tachado"] .pz-trazo {
   stroke: hsl(0 90% 68%);
+}
+
+/* Sobre pizarra oscura el fondo tiene que pesar más para leerse de lejos. */
+.modo-proyeccion .pz-fondo {
+  fill: hsl(45 96% 60% / 0.22);
+}
+
+.modo-proyeccion .pz-resaltado[data-tipo="tachado"] .pz-fondo {
+  fill: hsl(0 90% 68% / 0.2);
 }
 
 .modo-proyeccion .pz-etiqueta {

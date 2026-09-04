@@ -32,6 +32,8 @@ export interface MandosLeccion {
   avanzar(): void;
   retroceder(): void;
   irAEscena(indice: number): void;
+  /** Sitúa la pizarra donde va la voz del tutor, sin reproducir nada. */
+  situar(escena: number, foco: number): void;
   detener(): void;
 }
 
@@ -132,6 +134,7 @@ export function useSincronizadorLeccion({
       avanzar: () => maquina.current?.avanzar(),
       retroceder: () => maquina.current?.retroceder(),
       irAEscena: (i: number) => maquina.current?.irAEscena(i),
+      situar: (escena: number, foco: number) => maquina.current?.situar(escena, foco),
       detener: () => maquina.current?.detener(),
     }),
     [],

@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.791 comprobaciones automáticas, 0
-fallos**, de las cuales **164 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.818 comprobaciones automáticas, 0
+fallos**, de las cuales **191 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 146 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 164
+node qa/hito2.mjs                                  # sin servidor: 173 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 191
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 164 | 0 |
+| `qa/hito2.mjs` (este hito) | 191 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.791** | **0** |
+| **Total** | **1.818** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 164 comprobaciones del hito |
+| `qa/hito2.mjs` | 191 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -373,4 +373,75 @@ cifra de cada columna y cada llevada se destapan en el paso que las calcula
 en el paso de entrada no hay nada destapado, que la solución del despeje llega
 la última, y que el tema de proyección escala con `vw`, reserva lienzo, deja
 sitio al avatar y usa pizarra oscura. Suite completa: **1.791 comprobaciones, 0
+fallos**.
+
+---
+
+## 13. Segunda revisión del cliente: el andamiaje pedagógico
+
+Dos observaciones más sobre el despliegue, y las dos apuntaban a lo mismo: la
+lección enseñaba el resultado antes de explicarlo.
+
+### 1. El bloque «Desarrollo» destripaba la solución
+
+**El problema.** Arriba, en la pizarra de siempre, aparecía la suma entera
+resuelta —412 con sus llevadas— desde el primer paso. Con la solución a la
+vista, la animación de abajo no explica nada.
+
+**Qué ocurre ahora.** Mientras el tutor está explicando y la animación no ha
+destapado todo, el bloque «Desarrollo» **no compone las líneas que la pizarra
+animada está animando**. Las de prosa sí, porque no adelantan nada. En cuanto
+la animación llega al final —o termina la lección— el desarrollo completo
+vuelve, que es lo que el alumno necesita para repasar.
+
+Se decide con `esAnimable()`: una línea que produce focos es una línea que la
+animación va a contar paso a paso, así que arriba no se adelanta.
+
+### 2. La pizarra no seguía a la voz
+
+**El problema.** La locución y el subtítulo iban por *«Sumamos las decenas: 3 +
+7 + 1 que llevábamos = 11…»* y la pizarra animada seguía en el paso 1, sin
+ningún foco, esperando a que alguien pulsara **Reproducir**. Voz y pizarra
+contaban cosas distintas.
+
+**Qué ocurre ahora.** La pizarra **se coloca sola donde va el tutor**. El aula
+le pasa lo que se está diciendo y el guion decide a qué escena y a qué foco
+corresponde:
+
+| El tutor dice | La pizarra |
+| --- | --- |
+| «Vamos a sumar 234 más 178…» | sólo los sumandos |
+| «Sumamos las unidades: 4 + 8 = 12…» | caja sobre las unidades; aparecen el 2 y la llevada |
+| «Sumamos las decenas: 3 + 7 + 1…» | la caja se mueve a las decenas; aparecen el 1 y la llevada |
+| «Sumamos las centenas…» | caja sobre las centenas |
+| «El resultado es 412» | óvalo sobre el resultado |
+
+No hace falta que el tutor use las palabras del guion: se puntúa por
+solapamiento de cifras y términos, de modo que *«escribimos 1 y llevamos 1»*
+reconoce el paso que el guion narra como *«escribo 1 y llevo 1»*. Si nada encaja
+con claridad, la pizarra **se queda donde está** en lugar de saltar al azar. Y
+si el alumno reproduce el repaso por su cuenta, manda él: el seguimiento se
+aparta para no tirar de la lección desde dos sitios.
+
+Para que el seguimiento no fuera ambiguo, el guion ahora **descarta escenas
+repetidas**: el enunciado (`234 + 178`) y su desarrollo (`234 + 178 = 412`) son
+la misma cuenta, y antes producían dos escenas idénticas —de ahí el «línea 1/2»
+de la captura.
+
+### 3. La columna operada se ilumina
+
+Como pedía el mensaje, el resaltado ya no es sólo un borde: la columna en curso
+lleva **fondo de color** además del trazo (el equivalente a `bg-blue-100 ring-2
+ring-blue-500`, en ámbar sobre la pizarra oscura de proyección). Se dibuja en la
+capa SVG, así que sigue sin recomponerse la fórmula.
+
+### Comprobado
+
+`qa/hito2.mjs` pasa de 164 a **191 comprobaciones**. Las nuevas recorren el
+diálogo real del tutor —las cinco frases de la captura— y fijan que cada una
+coloca la pizarra en el paso que le corresponde; que una frase ajena no la
+mueve; que una línea de prosa parecida no le roba el turno a la columna que se
+está operando; que `situar()` coloca sin hablar ni programar temporizadores y se
+aparta si el repaso se reproduce solo; y que el desarrollo de arriba no compone
+lo que la animación está contando. Suite completa: **1.818 comprobaciones, 0
 fallos**.
