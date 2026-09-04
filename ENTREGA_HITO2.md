@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.818 comprobaciones automáticas, 0
-fallos**, de las cuales **191 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.836 comprobaciones automáticas, 0
+fallos**, de las cuales **209 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 173 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 191
+node qa/hito2.mjs                                  # sin servidor: 191 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 209
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 191 | 0 |
+| `qa/hito2.mjs` (este hito) | 209 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.818** | **0** |
+| **Total** | **1.836** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 191 comprobaciones del hito |
+| `qa/hito2.mjs` | 209 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -445,3 +445,78 @@ está operando; que `situar()` coloca sin hablar ni programar temporizadores y s
 aparta si el repaso se reproduce solo; y que el desarrollo de arriba no compone
 lo que la animación está contando. Suite completa: **1.818 comprobaciones, 0
 fallos**.
+
+---
+
+## 14. Tercera revisión: sincronización guiada por eventos de voz
+
+El cliente probó el despliegue y señaló tres cosas. Las tres estaban.
+
+### 1. El avance se guiaba por temporizadores, no por la voz
+
+**El problema.** El foco cambiaba de columna con un temporizador propio, así que
+en cuanto la locución tardaba un poco —y en su equipo no hay voz `es-ES`, con lo
+que el ritmo lo marcaba otro reloj— la pizarra iba por su cuenta.
+
+**Qué ocurre ahora.** El resaltado se enciende con el evento `onstart` REAL de
+`SpeechSynthesisUtterance`, no al encolar la locución:
+
+- `public/tts.js` acepta `onStart` en `speak()` y lo dispara desde
+  `utterance.onstart` (y también si la locución acaba sin haber avisado, para no
+  dejarse un paso sin pintar).
+- El sincronizador separa **el segmento que se está diciendo** del **segmento
+  que la pizarra muestra**: mientras el navegador prepara la voz, la pizarra
+  sigue en el paso anterior. El paso salta cuando empieza a sonar.
+- `onend` sigue siendo lo que encadena el paso siguiente.
+
+Un movimiento manual —avanzar, repetir, situar— iguala los dos al instante: ahí
+no hay ninguna voz que esperar.
+
+Y si el sintetizador se cuelga una vez, **ya no se le vuelve a esperar** en el
+resto de la lección: se pasa a temporizador y se dice en pantalla. Antes se le
+encolaba cada paso y la pizarra avanzaba a golpe de rescate, siempre por detrás.
+
+### 2. Dos motores de audio, dos índices de paso
+
+**El problema.** El avatar decía una cosa y la tarjeta del paso a paso mostraba
+otra, porque cada uno llevaba su propia reproducción.
+
+**Qué ocurre ahora.** Manda **quien esté hablando**. Con el tutor en marcha, los
+botones de la pizarra actúan sobre él —`Pausar` pausa SU locución, y la pizarra
+se detiene con él porque la va siguiendo—; con la lección parada, el panel
+reproduce el repaso por su cuenta. Nunca los dos a la vez. El aula le pasa al
+panel el estado del tutor (`leccionEnMarcha`, `leccionPausada`) y sus mandos.
+
+### 3. La zona bajo la raya se quedaba vacía
+
+**El problema.** Las cifras del resultado y las llevadas no aparecían nunca,
+aunque el guion las tuviera marcadas para su paso.
+
+**La causa.** El revelado se hacía **escribiendo `style.opacity` sobre los nodos
+de KaTeX**. Cualquier repintado del bloque se llevaba por delante esos estilos
+escritos a mano, y las cifras no volvían.
+
+**Qué ocurre ahora.** El revelado se declara con una **regla CSS** —
+`#pizarra .pz-rev-0, #pizarra .pz-rev-1 { opacity: 1 }`— que el navegador vuelve
+a aplicar siempre. Sigue sin recomponerse la fórmula, así que el parpadeo que
+prohíbe el pliego tampoco vuelve. La regla la genera `reglasDeRevelado()`, que
+está en `lib/` y tiene sus propias pruebas: en el paso de las unidades sólo está
+destapado el 2; en el de las decenas, el 2 y el 1; en el de las centenas, los
+tres. **Lo escrito se queda escrito.**
+
+### 4. Un solo recuadro, el de la columna que se opera
+
+En la captura se veían las tres columnas marcadas a la vez y dos rótulos de
+llevada pisándose. Era el rastro de los pasos anteriores, que en pantalla se
+leía como "todo resaltado". Ahora hay **un único recuadro encendido**, el de la
+columna en curso; lo que queda de los pasos anteriores son las cifras ya
+escritas, como en una cuenta hecha a mano.
+
+### Comprobado
+
+`qa/hito2.mjs` pasa de 191 a **209 comprobaciones**. Las nuevas fijan que la
+pizarra no se mueve hasta que la voz suena y que salta en cuanto suena; que un
+navegador que no avisa del arranque no deja pasos sin pintar; que las reglas de
+revelado dejan escrito lo ya calculado paso a paso; que sólo se dibuja el foco
+en curso; y que los mandos actúan sobre la locución del tutor cuando es él quien
+habla. Suite completa: **1.836 comprobaciones, 0 fallos**.

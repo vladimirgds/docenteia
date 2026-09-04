@@ -837,6 +837,22 @@ export function Aula({
     [],
   );
 
+  /**
+   * Los mandos del tutor, para que la pizarra animada pueda usarlos.
+   *
+   * El sintetizador es uno solo, y el índice de paso también tiene que serlo:
+   * pausar desde la pizarra pausa la locución del tutor —y la pizarra se para
+   * con él, porque lo va siguiendo—, en lugar de abrir una segunda
+   * reproducción que cuente algo distinto.
+   */
+  const mandosLeccion = useMemo(
+    () => ({
+      pausar: () => pseRef.current?.pause(),
+      reanudar: () => void pseRef.current?.play(),
+    }),
+    [],
+  );
+
   const desarrolloVisible = useMemo(() => {
     // Sólo se retiene mientras el tutor está explicando. Si la lección ya ha
     // terminado, el desarrollo se compone entero pase lo que pase con la
@@ -1043,6 +1059,12 @@ export function Aula({
             narracion={subtitulo}
             alCambiarAvatar={alCambiarAvatar}
             alProgresar={alProgresarAnimacion}
+            // Un solo mando de reproducción: mientras el tutor explica, los
+            // botones de la pizarra actúan sobre ÉL, no sobre una segunda
+            // reproducción en paralelo.
+            leccionEnMarcha={controles.playing}
+            leccionPausada={controles.paused}
+            mandosLeccion={mandosLeccion}
             // El sintetizador es uno solo: cuando el repaso animado se pone a
             // hablar, el tutor de la lección calla. Sin esto se solapan las dos
             // voces y no se entiende ninguna de las dos.

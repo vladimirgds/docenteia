@@ -37,8 +37,15 @@ export type EstadoPedagogico = "IDLE" | "EXPLICANDO" | "CELEBRANDO" | "APOYO" | 
 export interface Locutor {
   /** ¿Hay voz utilizable ahora mismo? */
   disponible(): boolean;
-  /** Resuelve cuando termina de decirlo; rechaza si no ha podido. */
-  hablar(texto: string): Promise<void>;
+  /**
+   * Resuelve cuando termina de decirlo; rechaza si no ha podido.
+   *
+   * `alEmpezar` se dispara con el evento `onstart` REAL del sintetizador. Es lo
+   * que ata el resaltado a la voz: entre encolar la locución y oírla puede
+   * pasar medio segundo, y encender el foco al encolarla desacompasa la
+   * pizarra de lo que se oye.
+   */
+  hablar(texto: string, opciones?: { alEmpezar?: () => void }): Promise<void>;
   cancelar(): void;
   pausar?(): void;
   reanudar?(): void;
@@ -133,6 +140,16 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
   let escena = 0;
   /** Segmento dentro de la escena: 0 es la entrada, 1..n son los focos. */
   let segmento = 0;
+  /**
+   * El segmento que la pizarra está MOSTRANDO.
+   *
+   * Se separa del anterior porque el resaltado se enciende con el evento
+   * `onstart` de la locución, no al encolarla: mientras el navegador prepara la
+   * voz, la pizarra sigue enseñando el paso anterior. Un movimiento manual
+   * —avanzar, repetir, situar— iguala los dos al instante, porque ahí no hay
+   * ninguna voz que esperar.
+   */
+  let visible = 0;
   let audio = opciones.audio !== false;
   // El modo se conoce antes de empezar: la interfaz avisa de que va a leer con
   // temporizador ANTES de darle al play, no cuando ya está en marcha.
@@ -153,7 +170,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
     return {
       estado,
       escena,
-      foco: segmento - 1,
+      foco: visible - 1,
       modo,
       escenas: escenas.length,
       segmentos: segmentosDe(escenas[escena]).length,
@@ -195,17 +212,35 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
     }
 
     const mia = ++ficha;
+
+    /**
+     * Enciende el paso en la pizarra. Lo llama el evento `onstart` de la voz,
+     * de modo que el recuadro aparece cuando empieza a sonar la frase.
+     */
+    const mostrar = () => {
+      if (mia !== ficha || visible === segmento) return;
+      visible = segmento;
+      avisar();
+    };
+
     const seguir = () => {
       if (mia !== ficha || estado !== "reproduciendo") return;
+      // Si la voz terminó sin haber avisado de que empezaba, se enseña ahora:
+      // más vale tarde que dejarse un paso sin pintar.
+      mostrar();
       siguienteSegmento();
     };
 
     const porTemporizador = () => {
       modo = "temporizador";
+      mostrar();
       cancelarEspera = reloj.programar(seguir, duracionEstimada(texto));
     };
 
-    if (!audio || !locutor || !locutor.disponible()) {
+    // Una voz que ya ha fallado no se vuelve a esperar en toda la lección: si
+    // el sintetizador se colgó una vez, volver a encolarle cada paso deja la
+    // pizarra avanzando a golpe de rescate, siempre un paso por detrás.
+    if (!audio || !locutor || !locutor.disponible() || vozCaida) {
       porTemporizador();
       return;
     }
@@ -213,7 +248,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
     modo = "voz";
     let resuelta = false;
     locutor
-      .hablar(texto)
+      .hablar(texto, { alEmpezar: mostrar })
       .then(() => {
         resuelta = true;
         seguir();
@@ -225,6 +260,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
         // deja constancia, para que la interfaz pueda decirlo.
         vozCaida = true;
         modo = "temporizador";
+        mostrar();
         avisar();
         cancelarEspera = reloj.programar(seguir, duracionEstimada(texto));
       });
@@ -241,23 +277,34 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       } catch {
         /* la voz ya no responde: no hay nada que cancelar */
       }
+      mostrar();
       avisar();
       seguir();
     }, duracionEstimada(texto) * 2);
     cancelarEspera = rescate;
   }
 
+  /**
+   * Pasa al siguiente segmento.
+   *
+   * Aquí NO se avisa del cambio: en el avance automático, la pizarra se
+   * enciende cuando la voz empieza a decirlo (`mostrar()` dentro de `lanzar`),
+   * no cuando se decide decirlo. Avisar aquí adelantaría el resaltado a la
+   * locución, que es justo el desajuste que hay que evitar.
+   */
   function siguienteSegmento() {
     const textos = segmentosDe(escenas[escena]);
     if (segmento + 1 < textos.length) {
       segmento++;
-      avisar();
       lanzar();
       return;
     }
     if (escena + 1 < escenas.length) {
       escena++;
       segmento = 0;
+      // De escena sí se avisa: cambia la fórmula que hay que componer, y eso
+      // tiene que pasar antes de que empiece a hablar de ella.
+      visible = 0;
       avisar();
       lanzar();
       return;
@@ -278,6 +325,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       if (estado === "final") {
         escena = 0;
         segmento = 0;
+        visible = 0;
       }
       if (escenas.length === 0) {
         estado = "final";
@@ -345,6 +393,8 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
         terminar();
         return;
       }
+      // Movimiento manual: se ve al instante, sin esperar a ninguna voz.
+      visible = segmento;
       // El avance manual deja la lección en marcha si lo estaba, y quieta si
       // el alumno la había parado para leer con calma.
       avisar();
@@ -359,6 +409,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
         escena--;
         segmento = 0;
       }
+      visible = segmento;
       if (estado === "final") estado = "pausado";
       avisar();
       if (estado === "reproduciendo") lanzar();
@@ -369,6 +420,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       limpiar();
       escena = indice;
       segmento = 0;
+      visible = 0;
       if (estado === "final") estado = "pausado";
       avisar();
       if (estado === "reproduciendo") lanzar();
@@ -382,11 +434,12 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
 
       const textos = segmentosDe(escenas[indice]);
       const siguiente = Math.max(-1, Math.min(destino, textos.length - 2));
-      if (escena === indice && segmento === siguiente + 1) return;
+      if (escena === indice && visible === siguiente + 1) return;
 
       limpiar();
       escena = indice;
       segmento = siguiente + 1;
+      visible = segmento;
       avisar();
     },
 
@@ -410,6 +463,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       estado = "inicio";
       escena = 0;
       segmento = 0;
+      visible = 0;
       avisar();
     },
 

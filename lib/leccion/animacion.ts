@@ -537,6 +537,21 @@ export function esAnimable(texto: string): boolean {
   return escenaDeLinea(String(texto ?? ""), "prueba").focos.length > 0;
 }
 
+/**
+ * Las reglas CSS que destapan lo ya calculado, hasta el paso `foco` incluido.
+ *
+ * El guion marca cada pieza pendiente con `pz-rev-N` y la hoja de estilos las
+ * arranca invisibles; esto declara visibles las que ya han salido. Se hace con
+ * una REGLA y no tocando el DOM: los estilos escritos a mano sobre los nodos de
+ * KaTeX se pierden en cuanto algo repinta el bloque, y entonces las cifras no
+ * aparecen nunca —que es exactamente lo que se vio en el navegador del cliente.
+ */
+export function reglasDeRevelado(id: string, foco: number): string {
+  if (foco < 0 || !id) return "";
+  const visibles = Array.from({ length: foco + 1 }, (_, i) => `#${id} .pz-rev-${i}`);
+  return `${visibles.join(",")}{opacity:1}`;
+}
+
 // ── Seguir la voz del tutor ──────────────────────────────────────────────────
 
 /**
@@ -569,8 +584,14 @@ export function situacionParaNarracion(
   const dicho = normalizar(narracion);
   if (!dicho.trim() || escenas.length === 0) return null;
 
+  // Se buscan por separado la mejor escena CON algo que señalar y la mejor sin
+  // nada. Una línea de prosa cuya narración es la frase entera encaja al 100 %
+  // y le robaba el turno a la columna que el tutor estaba explicando; entre las
+  // dos, gana siempre la que puede enseñar el paso.
   let eleccion: Situacion | null = null;
   let mejorPuntuacion = 0;
+  let respaldo: Situacion | null = null;
+  let mejorRespaldo = 0;
 
   for (let indice = 0; indice < escenas.length; indice++) {
     const escena = escenas[indice];
@@ -585,19 +606,25 @@ export function situacionParaNarracion(
       // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
       // escena por un decimal es peor que quedarse.
       if (indice === escenaActual) puntos += 0.05;
-      // Una escena de prosa no puede señalar nada. Como su narración ES la
-      // frase entera, encajaba al 100 % y le robaba el turno a la columna que
-      // el tutor estaba explicando de verdad.
-      if (escena.focos.length === 0) puntos -= 0.2;
 
-      if (puntos >= UMBRAL_SEGUIMIENTO && puntos > mejorPuntuacion) {
+      if (puntos < UMBRAL_SEGUIMIENTO) continue;
+
+      if (escena.focos.length === 0) {
+        if (puntos > mejorRespaldo) {
+          mejorRespaldo = puntos;
+          respaldo = { escena: indice, foco: candidato.foco };
+        }
+        continue;
+      }
+
+      if (puntos > mejorPuntuacion) {
         mejorPuntuacion = puntos;
         eleccion = { escena: indice, foco: candidato.foco };
       }
     }
   }
 
-  return eleccion;
+  return eleccion ?? respaldo;
 }
 
 /** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */
@@ -611,9 +638,16 @@ function clavesDeFoco(foco: Foco): string[] {
   return [];
 }
 
-/** Qué parte de lo que diría el guion aparece en lo que ha dicho el tutor. */
+/**
+ * Qué parte de lo que diría el guion aparece en lo que ha dicho el tutor.
+ *
+ * Sólo cuentan las palabras largas y los números de dos cifras o más. Un "2"
+ * suelto aparece en casi cualquier frase con números —"234 + 178 = 412" tiene
+ * un 2, un 1 y un 4—, así que contarlo como prueba hacía que el cierre del
+ * ejemplo se pareciera al paso de las centenas más que al del resultado.
+ */
 function solapamiento(narracion: string, dicho: string): number {
-  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
+  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d{2,}/g) ?? [];
   if (piezas.length === 0) return 0;
   const aciertos = piezas.filter((pieza) => dicho.includes(pieza)).length;
   return aciertos / piezas.length;

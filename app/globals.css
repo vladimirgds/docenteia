@@ -224,6 +224,18 @@
   stroke: hsl(213 94% 72%);
 }
 
+/* El recuadro entra con un fundido corto. Sólo hay UNO encendido —el de la
+   columna que se está operando—, así que la entrada tiene que notarse: es la
+   señal de que el foco se ha movido. */
+@keyframes pz-entra-foco {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pz-resaltado {
+  animation: pz-entra-foco 200ms ease-out;
+}
+
 /* El fondo de la columna operada. El cliente lo pidió así —"que la columna se
    ilumine con fondo o borde"—, y es lo que distingue de un vistazo la columna
    en la que se está trabajando de las que ya han pasado. Equivale al

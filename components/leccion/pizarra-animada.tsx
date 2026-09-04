@@ -10,7 +10,15 @@ import {
   Play,
   RotateCcw,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { TextoMatematico } from "@/components/math";
@@ -18,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useSincronizadorLeccion } from "@/components/leccion/sincronizador-leccion";
 import {
   guionDeLeccion,
+  reglasDeRevelado,
   situacionParaNarracion,
   type Escena,
   type Foco,
@@ -71,6 +80,8 @@ export function PizarraAnimada({
 }) {
   const contenedor = useRef<HTMLDivElement | null>(null);
   const [cajas, setCajas] = useState<Record<string, Caja>>({});
+  // `useId` trae dos puntos, que en un selector CSS significan otra cosa.
+  const idPizarra = `pz-${useId().replace(/:/g, "")}`;
 
   const html = useMemo(() => {
     if (!escena?.latex) return null;
@@ -136,29 +147,6 @@ export function PizarraAnimada({
     medir();
   }, [medir, html]);
 
-  /**
-   * LO QUE SE VA DESTAPANDO.
-   *
-   * La cuenta empieza con los dos sumandos y nada más; cada columna suelta su
-   * cifra del resultado y su llevada cuando le toca. El guion lo dice con una
-   * clase `pz-rev-N` por pieza: aquí sólo se comparan números y se cambia una
-   * opacidad.
-   *
-   * Se hace tocando el DOM y no rehaciendo el HTML A PROPÓSITO: recomponer la
-   * fórmula en cada paso es exactamente el parpadeo que el pliego pide evitar.
-   * Y como las piezas ocultas siguen ocupando su sitio, las cajas medidas al
-   * montar la escena valen igual cuando aparecen.
-   */
-  useEffect(() => {
-    const raiz = contenedor.current;
-    if (!raiz) return;
-    for (const pieza of raiz.querySelectorAll<HTMLElement>("[class*='pz-rev-']")) {
-      const marca = /pz-rev-(\d+)/.exec(pieza.getAttribute("class") ?? "");
-      if (!marca) continue;
-      pieza.style.opacity = foco >= Number(marca[1]) ? "1" : "0";
-    }
-  }, [html, foco]);
-
   useEffect(() => {
     const raiz = contenedor.current;
     if (!raiz) return;
@@ -187,7 +175,24 @@ export function PizarraAnimada({
         className,
       )}
     >
-      <div ref={contenedor} className="relative inline-block min-w-full">
+      <div ref={contenedor} id={idPizarra} className="relative inline-block min-w-full">
+        {/*
+          LO QUE SE VA DESTAPANDO.
+
+          La cuenta empieza con los dos sumandos y nada más; cada columna suelta
+          su cifra del resultado y su llevada cuando le toca. El guion marca cada
+          pieza con `pz-rev-N` y la hoja de estilos las arranca invisibles; aquí
+          se declaran visibles las que ya han salido.
+
+          Va como REGLA CSS y no tocando el DOM a mano. Una versión anterior
+          recorría los nodos poniéndoles `style.opacity`, y en el navegador del
+          cliente las cifras no aparecían nunca: cualquier repintado del bloque
+          se llevaba por delante los estilos escritos a mano. Una regla, en
+          cambio, la vuelve a aplicar el navegador siempre, y sigue sin
+          recomponer la fórmula: no hay parpadeo.
+        */}
+        <style>{reglasDeRevelado(idPizarra, foco)}</style>
+
         {html ? (
           <span className="pz-formula" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
@@ -206,18 +211,18 @@ export function PizarraAnimada({
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
           aria-hidden="true"
         >
+          {/*
+            UN solo resaltado encendido: el de la columna que se está operando.
+            Dejar tenues los anteriores parecía buena idea —el camino recorrido—
+            pero en pantalla se leía como si todas las columnas estuvieran
+            marcadas a la vez, y los rótulos de llevada se pisaban unos a otros.
+            Lo que queda de los pasos anteriores son las cifras ya escritas, que
+            es como se ve una cuenta hecha a mano.
+          */}
           {escena.focos.map((f, i) => {
             const caja = cajas[f.clase];
-            if (!caja) return null;
-            return (
-              <Resaltado
-                key={`${f.clase}-${i}`}
-                foco={f}
-                caja={caja}
-                encendido={i === foco}
-                pasado={i < foco}
-              />
-            );
+            if (!caja || i !== foco) return null;
+            return <Resaltado key={`${f.clase}-${i}`} foco={f} caja={caja} />;
           })}
         </svg>
       </div>
@@ -236,25 +241,9 @@ export function PizarraAnimada({
  * Los que ya han pasado se quedan tenues en lugar de desaparecer: al llegar a
  * la última columna, el alumno ve el camino recorrido por la cuenta.
  */
-function Resaltado({
-  foco,
-  caja,
-  encendido,
-  pasado,
-}: {
-  foco: Foco;
-  caja: Caja;
-  encendido: boolean;
-  pasado: boolean;
-}) {
-  const opacidad = encendido ? 1 : pasado ? 0.28 : 0;
-
+function Resaltado({ foco, caja }: { foco: Foco; caja: Caja }) {
   return (
-    <g
-      className="pz-resaltado"
-      data-tipo={foco.tipo}
-      style={{ opacity: opacidad, transition: "opacity 220ms ease-in-out" }}
-    >
+    <g className="pz-resaltado" data-tipo={foco.tipo}>
       {/* El fondo va DEBAJO del trazo y encima de la fórmula: es lo que hace que
           la columna operada se ilumine, y no sólo se enmarque. Como la capa no
           recibe eventos, la fórmula se sigue pudiendo seleccionar. */}
@@ -345,6 +334,9 @@ export function PanelAnimado({
   alCambiarAvatar,
   alTomarLaVoz,
   alProgresar,
+  leccionEnMarcha = false,
+  leccionPausada = false,
+  mandosLeccion,
   className,
 }: {
   /** Las líneas de la lección, en la notación plana del motor. */
@@ -362,6 +354,18 @@ export function PanelAnimado({
   narracion?: string | null;
   /** Avisa de por dónde va la animación y de si ya ha terminado. */
   alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean }) => void;
+  /**
+   * UN SOLO MANDO DE REPRODUCCIÓN.
+   *
+   * Mientras el tutor está explicando, quien manda es la lección: pausar aquí
+   * tiene que parar SU voz, no abrir una reproducción paralela. Por eso el panel
+   * recibe el estado del tutor y sus mandos, y sólo reproduce por su cuenta
+   * cuando la lección está parada. Sin esto había dos motores de audio y dos
+   * índices de paso, y acababan contando cosas distintas.
+   */
+  leccionEnMarcha?: boolean;
+  leccionPausada?: boolean;
+  mandosLeccion?: { pausar: () => void; reanudar: () => void };
   /** El aula usa esto para poner al avatar a explicar, pensar o celebrar. */
   alCambiarAvatar?: (estado: EstadoPedagogico) => void;
   /**
@@ -491,7 +495,22 @@ export function PanelAnimado({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {enMarcha ? (
+        {/*
+          El botón actúa sobre QUIEN ESTÉ HABLANDO. Con el tutor en marcha,
+          pausa al tutor —y la pizarra se para con él, porque lo va siguiendo—;
+          con la lección parada, reproduce el repaso animado. Nunca los dos.
+        */}
+        {leccionEnMarcha && !leccionPausada ? (
+          <Button size="sm" variant="outline" onClick={() => mandosLeccion?.pausar()}>
+            <Pause className="h-4 w-4" />
+            Pausar
+          </Button>
+        ) : leccionPausada ? (
+          <Button size="sm" variant="outline" onClick={() => mandosLeccion?.reanudar()}>
+            <Play className="h-4 w-4" />
+            Reanudar
+          </Button>
+        ) : enMarcha ? (
           <Button size="sm" variant="outline" onClick={mandos.pausar}>
             <Pause className="h-4 w-4" />
             Pausar

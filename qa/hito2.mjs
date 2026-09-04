@@ -34,6 +34,7 @@ import {
   escenaDePolinomio,
   escenaDeTexto,
   guionDeLeccion,
+  reglasDeRevelado,
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
 import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
@@ -319,6 +320,43 @@ titulo("A1. La cuenta se resuelve PASO A PASO, no de golpe");
   );
 }
 
+titulo("A1b. Lo destapado se queda escrito, y se declara con una regla CSS");
+
+{
+  // El resultado parcial tiene que quedarse en la pizarra: al llegar a las
+  // centenas siguen escritos el 2 de las unidades y el 1 de las decenas.
+  check("en la entrada no hay ninguna cifra destapada", reglasDeRevelado("pz1", -1) === "");
+  check(
+    "en el paso de las unidades se destapa lo suyo y nada más",
+    reglasDeRevelado("pz1", 0) === "#pz1 .pz-rev-0{opacity:1}",
+    reglasDeRevelado("pz1", 0),
+  );
+  check(
+    "en las decenas siguen visibles las unidades",
+    reglasDeRevelado("pz1", 1) === "#pz1 .pz-rev-0,#pz1 .pz-rev-1{opacity:1}",
+    reglasDeRevelado("pz1", 1),
+  );
+  check(
+    "y en las centenas, las tres cifras ya escritas",
+    reglasDeRevelado("pz1", 2) === "#pz1 .pz-rev-0,#pz1 .pz-rev-1,#pz1 .pz-rev-2{opacity:1}",
+    reglasDeRevelado("pz1", 2),
+  );
+  check("sin identificador no se emite regla suelta", reglasDeRevelado("", 3) === "");
+
+  const panel = readFileSync(
+    new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el revelado se declara con una regla, no escribiendo estilos en los nodos",
+    panel.includes("<style>{reglasDeRevelado(") && !/\.style\.opacity\s*=/.test(panel),
+  );
+  check(
+    "y sólo se enciende el foco de la columna que se está operando",
+    /if \(!caja \|\| i !== foco\) return null;/.test(panel),
+  );
+}
+
 titulo("A2. Polinomios, despejes y prosa");
 
 {
@@ -531,6 +569,15 @@ titulo("B2. La pizarra sigue a la voz del tutor");
       columna.focos[2].clase === "pz-col-0",
   );
 
+  // El cierre del ejemplo lleva la pizarra al resultado, no a la última
+  // columna: las cifras sueltas de "234 + 178 = 412" no son prueba de nada.
+  const cierre = situacionParaNarracion(guion, "Así, 234 + 178 = 412. Ahora te toca a ti.", 0);
+  check(
+    "al cerrar el ejemplo, el óvalo va sobre el resultado",
+    cierre?.foco === guion[0].focos.length - 1,
+    JSON.stringify(cierre),
+  );
+
   check(
     "una frase que no habla de la cuenta no mueve la pizarra",
     situacionParaNarracion(guion, "Ahora practica tú con otro ejemplo.", 0) === null,
@@ -607,12 +654,25 @@ function relojFalso() {
   };
 }
 
-/** Un locutor de mentira, con el comportamiento que pida cada prueba. */
+/**
+ * Un locutor de mentira, con el comportamiento que pida cada prueba.
+ *
+ * Imita al sintetizador de verdad: `empezarPendiente()` dispara el `onstart` de
+ * la locución —el momento en que EMPIEZA a sonar— y `resolverPendiente()`, el
+ * `onend`. Entre uno y otro, la pizarra tiene que estar enseñando ese paso y no
+ * el siguiente.
+ */
 function locutorFalso({ modo = "ok" } = {}) {
   const dichos = [];
   let resolver = null;
+  let empezar = null;
   return {
     dichos,
+    empezarPendiente() {
+      const e = empezar;
+      empezar = null;
+      e?.();
+    },
     resolverPendiente() {
       const r = resolver;
       resolver = null;
@@ -620,10 +680,14 @@ function locutorFalso({ modo = "ok" } = {}) {
     },
     locutor: {
       disponible: () => modo !== "ausente",
-      hablar(texto) {
+      hablar(texto, opciones = {}) {
         dichos.push(texto);
+        empezar = opciones.alEmpezar ?? null;
         if (modo === "falla") return Promise.reject(new Error("sin voz"));
         if (modo === "colgado") return new Promise(() => {});
+        // Por defecto se comporta como un navegador normal: avisa del arranque
+        // en cuanto la voz suena.
+        if (modo === "ok") empezar?.();
         return new Promise((res) => {
           resolver = res;
         });
@@ -755,6 +819,57 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
     "diciendo lo que ese foco resalta",
     voz.dichos[1] === GUION[0].focos[0].narracion,
     voz.dichos[1],
+  );
+}
+
+{
+  // EL RESALTADO SE ENCIENDE CON EL EVENTO DE VOZ, no al encolar la locución.
+  // Entre una cosa y otra el navegador puede tardar, y ahí es donde se veía el
+  // desajuste: la pizarra iba por delante de lo que se oía.
+  const r = relojFalso();
+  const voz = locutorFalso({ modo: "silencioso" });
+  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+
+  s.reproducir();
+  check("la locución se encola en cuanto se reproduce", voz.dichos.length === 1);
+  check(
+    "pero la pizarra no se mueve hasta que la voz suena",
+    s.instantanea().foco === -1,
+    `foco ${s.instantanea().foco}`,
+  );
+
+  voz.empezarPendiente();
+  check("al sonar la voz, se enciende ese paso", s.instantanea().foco === -1);
+
+  voz.resolverPendiente();
+  await Promise.resolve();
+  check("al terminar, se encola el siguiente", voz.dichos.length === 2);
+  check(
+    "y la pizarra sigue en el paso anterior hasta que suene",
+    s.instantanea().foco === -1,
+    `foco ${s.instantanea().foco}`,
+  );
+
+  voz.empezarPendiente();
+  check(
+    "en cuanto suena, el foco salta al paso nuevo",
+    s.instantanea().foco === 0,
+    `foco ${s.instantanea().foco}`,
+  );
+}
+
+{
+  // Si el navegador nunca avisa del arranque, el paso se enseña igual al
+  // terminar: más vale tarde que dejarse un paso sin pintar.
+  const r = relojFalso();
+  const voz = locutorFalso({ modo: "silencioso" });
+  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+  s.reproducir();
+  voz.resolverPendiente();
+  await Promise.resolve();
+  check(
+    "sin evento de arranque, el paso se enseña al terminar la locución",
+    s.instantanea().foco === -1 || s.instantanea().foco === 0,
   );
 }
 
@@ -1008,8 +1123,25 @@ titulo("D. Máquina de estados del avatar");
     /\.modo-proyeccion \.pz-fondo \{[^}]*fill:/.test(estilos),
   );
   check(
-    "y se destapan cambiando una opacidad, sin recomponer la fórmula",
-    panel.includes("pz-rev-") && panel.includes("style.opacity"),
+    "y se destapan con una regla CSS, sin recomponer la fórmula",
+    panel.includes("reglasDeRevelado") && !/\.style\.opacity\s*=/.test(panel),
+  );
+
+  // Un solo motor de audio: con el tutor explicando, los botones de la pizarra
+  // actúan sobre él, no sobre una segunda reproducción en paralelo.
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  check(
+    "la pizarra recibe el estado de reproducción del tutor",
+    panel.includes("leccionEnMarcha") && panel.includes("leccionPausada"),
+  );
+  check(
+    "y sus mandos, para pausar la MISMA locución",
+    panel.includes("mandosLeccion?.pausar()") && panel.includes("mandosLeccion?.reanudar()"),
+  );
+  check(
+    "el aula se los pasa desde el motor de la lección",
+    /pausar: \(\) => pseRef\.current\?\.pause\(\)/.test(aula) &&
+      aula.includes("leccionEnMarcha={controles.playing}"),
   );
   check(
     "la pantalla completa se pide con la API del navegador",

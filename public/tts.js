@@ -214,7 +214,7 @@ export class TTS {
    * @param {{ signal?: AbortSignal }} [opts]
    */
   speak(text, opts = {}) {
-    const { signal } = opts;
+    const { signal, onStart } = opts;
     // Lo que se DICE se normaliza (variables y símbolos → palabras); la pantalla/subtítulos
     // muestran el texto ORIGINAL (esto no los toca: solo afecta a la locución).
     const spoken = normalizeForSpeech(text);
@@ -223,8 +223,11 @@ export class TTS {
     // dispare `onvoiceschanged`, el tutor no cambiará de voz a mitad de la lección.
     if (this.voice) this._fijada = true;
 
-    // Sin voz real: retardo proporcional (subtítulos temporizados).
+    // Sin voz real: retardo proporcional (subtítulos temporizados). Aquí no hay
+    // evento que esperar, así que el "arranque" es inmediato: el resaltado se
+    // enciende a la vez que aparece el subtítulo.
     if (!this.enabled || !this.voice) {
+      try { onStart?.(); } catch {}
       return new Promise((resolve) => {
         const ms = Math.min(22000, Math.max(1200, spoken.length * 60));
         const t = setTimeout(resolve, ms);
@@ -241,17 +244,31 @@ export class TTS {
       signal?.addEventListener("abort", () => { aborted = true; try { this.synth.cancel(); } catch {} }, { once: true });
       const speakNext = (i) => {
         if (aborted || i >= chunks.length) return resolve();
-        this._speakOne(chunks[i], () => aborted).then(() => speakNext(i + 1));
+        // El arranque se avisa una sola vez, con el primer trozo: los demás son
+        // continuación de la misma frase.
+        this._speakOne(chunks[i], () => aborted, i === 0 ? onStart : null).then(() =>
+          speakNext(i + 1),
+        );
       };
       speakNext(0);
     });
   }
 
   // Habla UN trozo corto. Resuelve al terminar (o al abortar). Keepalive contra el corte de Chrome.
-  _speakOne(chunk, isAborted) {
+  // Habla UN trozo. `onStart` se dispara con el evento `onstart` REAL de la
+  // locución, no antes: es lo que permite encender el resaltado justo cuando
+  // empieza a sonar la palabra, y no cuando nosotros la encolamos (entre una
+  // cosa y otra el navegador puede tardar cientos de milisegundos).
+  _speakOne(chunk, isAborted, onStart) {
     return new Promise((resolve) => {
       if (isAborted()) return resolve();
       let done = false, keep = null, guard = null;
+      let arrancado = false;
+      const arrancar = () => {
+        if (arrancado || isAborted()) return;
+        arrancado = true;
+        try { onStart?.(); } catch {}
+      };
       const finish = () => {
         if (done) return; done = true;
         if (keep) clearInterval(keep);
@@ -265,8 +282,9 @@ export class TTS {
         if (this.voice) u.voice = this.voice;
         u.rate = this.rate;
         u.pitch = this.pitch;
-        u.onend = finish;
-        u.onerror = finish;
+        u.onstart = arrancar;
+        u.onend = () => { arrancar(); finish(); };
+        u.onerror = () => { arrancar(); finish(); };
         this.synth.speak(u);
         // Keepalive: Chrome detiene la locución tras ~15 s; pause+resume la mantiene viva.
         keep = setInterval(() => {
@@ -274,7 +292,7 @@ export class TTS {
           try { this.synth.pause(); this.synth.resume(); } catch {}
         }, 9000);
         // Failsafe AMPLIO (por si onend nunca llega): proporcional, SIN tope bajo que corte la voz.
-        guard = setTimeout(finish, Math.max(5000, chunk.length * 150));
+        guard = setTimeout(() => { arrancar(); finish(); }, Math.max(5000, chunk.length * 150));
       } catch { finish(); }
     });
   }
