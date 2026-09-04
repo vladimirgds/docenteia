@@ -42,6 +42,7 @@ import {
   avatarDe,
   crearSincronizador,
   duracionEstimada,
+  PAUSA_ENTRE_PASOS,
 } from "../lib/leccion/sincronizacion.ts";
 import {
   DESDE_MOTOR,
@@ -826,7 +827,12 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
 {
   const r = relojFalso();
   const voz = locutorFalso();
-  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+  const s = crearSincronizador({
+    escenas: GUION,
+    locutor: voz.locutor,
+    reloj: r.reloj,
+    pausaEntrePasos: 0,
+  });
 
   check("con voz disponible, el modo es voz", s.instantanea().modo === "voz");
   s.reproducir();
@@ -862,7 +868,12 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
   // desajuste: la pizarra iba por delante de lo que se oía.
   const r = relojFalso();
   const voz = locutorFalso({ modo: "silencioso" });
-  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+  const s = crearSincronizador({
+    escenas: GUION,
+    locutor: voz.locutor,
+    reloj: r.reloj,
+    pausaEntrePasos: 0,
+  });
 
   s.reproducir();
   check("la locución se encola en cuanto se reproduce", voz.dichos.length === 1);
@@ -897,7 +908,12 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
   // terminar: más vale tarde que dejarse un paso sin pintar.
   const r = relojFalso();
   const voz = locutorFalso({ modo: "silencioso" });
-  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+  const s = crearSincronizador({
+    escenas: GUION,
+    locutor: voz.locutor,
+    reloj: r.reloj,
+    pausaEntrePasos: 0,
+  });
   s.reproducir();
   voz.resolverPendiente();
   await Promise.resolve();
@@ -905,6 +921,41 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
     "sin evento de arranque, el paso se enseña al terminar la locución",
     s.instantanea().foco === -1 || s.instantanea().foco === 0,
   );
+}
+
+{
+  // PAUSA DIDÁCTICA ENTRE COLUMNAS. La locución de una columna no empalma con
+  // la de la siguiente: entre las dos hay medio segundo largo para que el
+  // alumno vea la cifra recién escrita.
+  const r = relojFalso();
+  const voz = locutorFalso();
+  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+
+  s.reproducir();
+  const dichosAlEmpezar = voz.dichos.length;
+  voz.resolverPendiente();
+  await Promise.resolve();
+
+  check(
+    "al terminar una locución no se lanza la siguiente de inmediato",
+    voz.dichos.length === dichosAlEmpezar,
+    `${voz.dichos.length} locuciones`,
+  );
+  check("se programa la pausa didáctica", r.pendientes() === 1);
+
+  r.correr();
+  check(
+    "y pasada la pausa entra el paso siguiente",
+    voz.dichos.length === dichosAlEmpezar + 1,
+    `${voz.dichos.length} locuciones`,
+  );
+  check("con la pausa por defecto en 600 ms", PAUSA_ENTRE_PASOS === 600);
+
+  // Pausar durante la pausa no debe dejar la locución siguiente en camino.
+  s.pausar();
+  const antes = voz.dichos.length;
+  r.correr();
+  check("una pausa del alumno cancela también la espera entre pasos", voz.dichos.length === antes);
 }
 
 {
@@ -934,7 +985,12 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
   // seguridad, la pizarra se queda congelada para siempre.
   const r = relojFalso();
   const voz = locutorFalso({ modo: "colgado" });
-  const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
+  const s = crearSincronizador({
+    escenas: GUION,
+    locutor: voz.locutor,
+    reloj: r.reloj,
+    pausaEntrePasos: 0,
+  });
   s.reproducir();
   check("con la voz colgada hay un temporizador de rescate armado", r.pendientes() === 1);
 
@@ -1176,6 +1232,31 @@ titulo("D. Máquina de estados del avatar");
     "el aula se los pasa desde el motor de la lección",
     /pausar: \(\) => pseRef\.current\?\.pause\(\)/.test(aula) &&
       aula.includes("leccionEnMarcha={controles.playing}"),
+  );
+
+  // La respuesta al diagnóstico del cliente: el avance de columna NO lo lleva
+  // ningún temporizador fijo. Se encadena con el fin de la locución.
+  const maquina = readFileSync(
+    new URL("../lib/leccion/sincronizacion.ts", import.meta.url),
+    "utf8",
+  );
+  check(
+    "ni la pizarra ni el sincronizador avanzan con setInterval",
+    !panel.includes("setInterval") && !maquina.includes("setInterval"),
+  );
+  check(
+    "el paso se encadena con el fin de la locución, no con un reloj propio",
+    maquina.includes(".hablar(texto, { alEmpezar: mostrar })") &&
+      /\.then\(\(\) => \{\s*resuelta = true;\s*seguir\(\);/.test(maquina),
+  );
+  check(
+    "si el tutor retoma la palabra, el repaso se calla",
+    /if \(leccionEnMarcha && !leccionPausada && estado\.estado === "reproduciendo"\)/.test(panel) &&
+      panel.includes("mandos.detener()"),
+  );
+  check(
+    "y al tomar la voz el repaso corta lo que el tutor tuviera en la boca",
+    aula.includes("ttsRef.current?.cancel()"),
   );
   check(
     "la pantalla completa se pide con la API del navegador",

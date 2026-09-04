@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.841 comprobaciones automáticas, 0
-fallos**, de las cuales **214 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.850 comprobaciones automáticas, 0
+fallos**, de las cuales **223 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 196 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 214
+node qa/hito2.mjs                                  # sin servidor: 205 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 223
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 214 | 0 |
+| `qa/hito2.mjs` (este hito) | 223 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.841** | **0** |
+| **Total** | **1.850** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 214 comprobaciones del hito |
+| `qa/hito2.mjs` | 223 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -547,3 +547,54 @@ usaba la pizarra clásica—, de modo que:
 `qa/hito2.mjs` sube a **214 comprobaciones**; las nuevas fijan que la cuenta
 dibujada produce exactamente los mismos focos que la escrita en una línea y que
 enunciado y desarrollo son una sola escena. Suite completa: **1.841, 0 fallos**.
+
+---
+
+## 16. Dos voces peleando por el sintetizador
+
+El cliente describió el síntoma con precisión: *"el marcado va a toda velocidad
+y se desfasa de la locución"*. Su diagnóstico apuntaba a un
+`setInterval(..., 2600)` en `pizarra-animada.tsx`.
+
+**Ese temporizador no existe en el código.** No hay ni un `setInterval` en la
+pizarra ni en el sincronizador, ni ninguna constante de 2,6 s: el avance se
+encadena con el fin de la locución (`onend`) y el resaltado se enciende con su
+`onstart`, como se explica en la sección 14. La suite lo comprueba explícitamente
+para que quede fijado.
+
+**Pero el síntoma era real, y la causa es la que el cliente señala en su punto
+2: dos audios peleando por el foco del navegador.** Podían sonar a la vez el
+tutor de la lección y el repaso animado, y como cada locución empieza
+cancelando la anterior (`speechSynthesis.cancel()`), se cancelaban entre ellas:
+cada cancelación dispara el `onend` de la otra, las dos daban su paso por
+terminado al instante y el resaltado salía disparado por las columnas mientras
+el audio apenas había empezado a hablar. Exactamente lo que se veía.
+
+### Un solo dueño del sintetizador
+
+- Si el tutor vuelve a hablar —porque se reanuda la lección o llega un ejemplo
+  nuevo— **el repaso animado calla** y pasa a seguirlo.
+- Si el alumno reproduce el repaso, **el tutor calla**: se le pausa y además se
+  corta lo que tuviera en la boca (`pause()` no hace nada si la lección no
+  estaba en marcha, y esa locución a medias seguía sonando por debajo).
+- Los botones de reproducción actúan siempre sobre quien está hablando, como ya
+  se describió en la sección 14.
+
+### Pausa didáctica entre columnas
+
+Añadida la pausa de **600 ms** que pedía el mensaje: la locución de una columna
+ya no empalma con la de la siguiente, de modo que el alumno ve la cifra recién
+escrita antes de que el foco se mueva. Es un valor configurable
+(`PAUSA_ENTRE_PASOS`), y la espera se cancela si el alumno pausa.
+
+El ritmo de la voz ya era el que pedía el mensaje: `rate = 0.95`, y el idioma
+sale de la propia voz elegida (con la voz mexicana instalada en su equipo,
+`es-MX`; `es-ES` es el respaldo cuando no hay ninguna).
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **223 comprobaciones**. Las nuevas fijan que ni la pizarra
+ni el sincronizador usan `setInterval`, que el encadenado sale del fin de la
+locución, que el repaso se calla cuando el tutor retoma la palabra, que al tomar
+la voz se corta la del tutor, y que entre columna y columna hay una pausa que se
+cancela al pausar. Suite completa: **1.850 comprobaciones, 0 fallos**.

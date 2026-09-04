@@ -1066,9 +1066,14 @@ export function Aula({
             leccionPausada={controles.paused}
             mandosLeccion={mandosLeccion}
             // El sintetizador es uno solo: cuando el repaso animado se pone a
-            // hablar, el tutor de la lección calla. Sin esto se solapan las dos
-            // voces y no se entiende ninguna de las dos.
-            alTomarLaVoz={() => pseRef.current?.pause()}
+            // hablar, el tutor de la lección calla. Se le pausa Y se corta lo
+            // que tuviera en la boca: si la lección no estaba reproduciéndose,
+            // `pause()` no hace nada, y una locución a medias seguiría sonando
+            // por debajo del repaso.
+            alTomarLaVoz={() => {
+              pseRef.current?.pause();
+              ttsRef.current?.cancel();
+            }}
           />
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus

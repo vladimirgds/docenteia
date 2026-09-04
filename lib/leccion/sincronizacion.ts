@@ -87,6 +87,8 @@ export interface OpcionesSincronizador {
   reloj?: Reloj;
   /** El alumno ha apagado el audio: se reproduce con temporizador, sin fallo. */
   audio?: boolean;
+  /** Pausa entre pasos; las pruebas la ponen a cero para no esperar. */
+  pausaEntrePasos?: number;
   alCambiar?: (estado: Instantanea) => void;
 }
 
@@ -125,6 +127,15 @@ export function duracionEstimada(texto: string): number {
   return Math.min(15000, Math.max(1500, Math.round((palabras / 150) * 60_000) + 400));
 }
 
+/**
+ * Pausa didáctica entre un paso y el siguiente, en milisegundos.
+ *
+ * Sin ella, la locución de una columna empalma con la de la siguiente y el
+ * alumno no llega a ver la cifra que se acaba de escribir. Con algo más de medio
+ * segundo, cada columna se cierra antes de abrir la de al lado.
+ */
+export const PAUSA_ENTRE_PASOS = 600;
+
 /** Los textos que se dicen en una escena: la entrada y luego cada foco. */
 function segmentosDe(escena: Escena | undefined): string[] {
   if (!escena) return [];
@@ -135,6 +146,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
   const escenas = opciones.escenas ?? [];
   const reloj = opciones.reloj ?? RELOJ_REAL;
   const locutor = opciones.locutor ?? null;
+  const pausa = opciones.pausaEntrePasos ?? PAUSA_ENTRE_PASOS;
 
   let estado: EstadoReproduccion = "inicio";
   let escena = 0;
@@ -296,7 +308,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
     const textos = segmentosDe(escenas[escena]);
     if (segmento + 1 < textos.length) {
       segmento++;
-      lanzar();
+      encadenar();
       return;
     }
     if (escena + 1 < escenas.length) {
@@ -306,10 +318,33 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       // tiene que pasar antes de que empiece a hablar de ella.
       visible = 0;
       avisar();
-      lanzar();
+      encadenar();
       return;
     }
     terminar();
+  }
+
+  /**
+   * Deja respirar entre un paso y el siguiente.
+   *
+   * La locución del paso ya ha terminado —esto se llama desde `onend`—, así que
+   * la espera no compite con la voz: sólo separa una columna de la siguiente,
+   * que es lo que hace legible el paso a paso.
+   */
+  function encadenar() {
+    if (cancelarEspera) {
+      cancelarEspera();
+      cancelarEspera = null;
+    }
+    if (pausa <= 0) {
+      lanzar();
+      return;
+    }
+    const mia = ++ficha;
+    cancelarEspera = reloj.programar(() => {
+      if (mia !== ficha || estado !== "reproduciendo") return;
+      lanzar();
+    }, pausa);
   }
 
   function terminar() {

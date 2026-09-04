@@ -392,6 +392,21 @@ export function PanelAnimado({
     alCambiarAvatar?.(estado.avatar);
   }, [estado.avatar, alCambiarAvatar]);
 
+  /**
+   * UN SOLO DUEÑO DEL SINTETIZADOR.
+   *
+   * Si el tutor vuelve a hablar mientras el repaso se estaba reproduciendo, el
+   * repaso calla y pasa a seguirlo. Sin esta regla los dos hablaban a la vez y,
+   * como cada locución empieza cancelando la anterior, se cancelaban entre
+   * ellas: las dos daban por terminado su paso al instante y el resaltado salía
+   * disparado por las columnas mientras el audio apenas había empezado.
+   */
+  useEffect(() => {
+    if (leccionEnMarcha && !leccionPausada && estado.estado === "reproduciendo") {
+      mandos.detener();
+    }
+  }, [leccionEnMarcha, leccionPausada, estado.estado, mandos]);
+
   // La pizarra sigue a la voz del tutor. Es lo que ata el resaltado a lo que se
   // está oyendo: sin esto, la locución iba por las decenas y el recuadro seguía
   // en el primer paso, esperando a que alguien pulsara Reproducir.
