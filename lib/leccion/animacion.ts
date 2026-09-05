@@ -59,7 +59,7 @@ export interface Escena {
   narracion: string;
   focos: Foco[];
   /** De dónde salió: sirve para depurar y para las pruebas. */
-  clase: "columna" | "polinomio" | "despeje" | "texto";
+  clase: "columna" | "polinomio" | "despeje" | "simplificacion" | "texto";
 }
 
 /** Nombre de cada posición decimal, de derecha a izquierda. */
@@ -470,6 +470,127 @@ function formatearRacional(numerador: number, denominador: number): string {
   return `${signo}${a / g}/${b / g}`;
 }
 
+// ── Simplificación: lo que se cancela, tachado ───────────────────────────────
+
+/** Una fracción escrita como "12/8", "6x/3" o "x^{2}/x". */
+interface FraccionLeida {
+  coefNum: number;
+  coefDen: number;
+  variable: string;
+  expNum: number;
+  expDen: number;
+}
+
+function leerFraccion(texto: string): FraccionLeida | null {
+  const limpio = String(texto ?? "")
+    .replace(/[−–—]/g, "-")
+    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2")
+    .replace(/\s+/g, "");
+  // Se ignora lo que venga tras el igual: el resultado lo calculamos nosotros.
+  const izquierda = limpio.split("=")[0];
+
+  const m = izquierda.match(
+    /^(-?\d*)([a-zA-Z]?)(?:\^\{?(\d+)\}?)?\/(-?\d*)([a-zA-Z]?)(?:\^\{?(\d+)\}?)?$/,
+  );
+  if (!m) return null;
+
+  const [, cn, vn, en, cd, vd, ed] = m;
+  // Una variable sólo se cancela contra la misma variable.
+  if (vn && vd && vn !== vd) return null;
+
+  const coefNum = cn === "" || cn === "+" ? 1 : cn === "-" ? -1 : Number(cn);
+  const coefDen = cd === "" || cd === "+" ? 1 : cd === "-" ? -1 : Number(cd);
+  if (!Number.isFinite(coefNum) || !Number.isFinite(coefDen) || coefDen === 0) return null;
+
+  return {
+    coefNum,
+    coefDen,
+    variable: vn || vd || "",
+    expNum: vn ? Number(en ?? 1) : 0,
+    expDen: vd ? Number(ed ?? 1) : 0,
+  };
+}
+
+/**
+ * Una simplificación con lo que se va TACHADO.
+ *
+ * Es la otra cancelación que pide el pliego, la algebraica: el factor común de
+ * arriba y de abajo se tacha a la vez —que es como se hace a mano— y sólo
+ * después aparece la fracción reducida. Escribir el resultado desde el
+ * principio convierte la simplificación en un dato que hay que creerse.
+ */
+export function escenaDeSimplificacion(texto: string, id: string): Escena | null {
+  const f = leerFraccion(texto);
+  if (!f) return null;
+
+  const divisor = mcd(Math.abs(f.coefNum), Math.abs(f.coefDen));
+  const potencias = Math.min(f.expNum, f.expDen);
+  // Sin factor común no hay nada que tachar: no es una simplificación.
+  if (divisor <= 1 && potencias <= 0) return null;
+
+  const escribir = (coef: number, exponente: number) => {
+    const parte = f.variable && exponente > 0
+      ? `${f.variable}${exponente > 1 ? `^{${exponente}}` : ""}`
+      : "";
+    if (!parte) return String(coef);
+    if (coef === 1) return parte;
+    if (coef === -1) return `-${parte}`;
+    return `${coef}${parte}`;
+  };
+
+  const arriba = escribir(f.coefNum, f.expNum);
+  const abajo = escribir(f.coefDen, f.expDen);
+  const arribaSimple = escribir(f.coefNum / divisor, f.expNum - potencias);
+  const abajoSimple = escribir(f.coefDen / divisor, f.expDen - potencias);
+
+  // Denominador 1: el resultado se escribe sin fracción, como se hace a mano.
+  const resultado =
+    abajoSimple === "1" ? arribaSimple : `\\frac{${arribaSimple}}{${abajoSimple}}`;
+
+  const latex =
+    `\\frac{${marcar("pz-cancela", arriba)}}{${marcar("pz-cancela", abajo)}}` +
+    ` ${marcar("pz-rev-1", `= ${marcar("pz-simplificada", resultado)}`)}`;
+
+  const porQue: string[] = [];
+  if (divisor > 1) porQue.push(`dividimos arriba y abajo entre ${divisor}`);
+  if (potencias > 0) {
+    porQue.push(
+      potencias === 1
+        ? `se cancela una ${f.variable} de arriba con la de abajo`
+        : `se cancelan ${potencias} ${f.variable} de arriba con las de abajo`,
+    );
+  }
+
+  return {
+    id,
+    texto,
+    latex,
+    narracion: `Vamos a simplificar ${arriba} entre ${abajo}.`,
+    clase: "simplificacion",
+    focos: [
+      {
+        clase: "pz-cancela",
+        tipo: "tachado",
+        narracion: `${mayuscula(porQue.join(" y "))}.`,
+        etiqueta: divisor > 1 ? `÷ ${divisor}` : "se cancelan",
+      },
+      {
+        clase: "pz-simplificada",
+        tipo: "ovalo",
+        narracion:
+          abajoSimple === "1"
+            ? `Queda ${arribaSimple}.`
+            : `Queda ${arribaSimple} entre ${abajoSimple}.`,
+      },
+    ],
+  };
+}
+
+/** Máximo común divisor, para saber entre cuánto se divide la fracción. */
+function mcd(a: number, b: number): number {
+  return b === 0 ? a : mcd(b, a % b);
+}
+
 // ── Escena de respaldo ───────────────────────────────────────────────────────
 
 /**
@@ -503,6 +624,7 @@ export function escenaDeLinea(texto: string, id: string): Escena {
   return (
     escenaDeColumna(texto, id) ??
     escenaDeDespeje(texto, id) ??
+    escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
     escenaDeTexto(texto, id)
   );

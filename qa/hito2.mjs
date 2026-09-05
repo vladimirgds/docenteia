@@ -32,6 +32,7 @@ import {
   escenaDeDespeje,
   escenaDeLinea,
   escenaDePolinomio,
+  escenaDeSimplificacion,
   escenaDeTexto,
   guionDeLeccion,
   reglasDeRevelado,
@@ -470,6 +471,56 @@ titulo("A2. Polinomios, despejes y prosa");
 }
 
 {
+  // La otra cancelación que pide el pliego: la de una simplificación. El factor
+  // común se tacha arriba y abajo a la vez, y la fracción reducida sólo aparece
+  // después; escrita desde el principio, la simplificación es un dato que hay
+  // que creerse en lugar de un paso que se entiende.
+  const escena = escenaDeSimplificacion("12/8", "e");
+  check("12/8 se anima como simplificación", escena?.clase === "simplificacion");
+  check("lo que se cancela va tachado", escena.focos[0].tipo === "tachado");
+  check(
+    "se tacha arriba y abajo",
+    (escena.latex.match(/pz-cancela/g) || []).length === 2,
+    escena.latex,
+  );
+  check(
+    "y se dice entre cuánto se divide",
+    escena.focos[0].narracion === "Dividimos arriba y abajo entre 4." &&
+      escena.focos[0].etiqueta === "÷ 4",
+    escena.focos[0].narracion,
+  );
+  check(
+    "la fracción reducida se destapa al final, no antes",
+    escena.latex.includes("\\htmlClass{pz-rev-1}") &&
+      escena.focos.at(-1).clase === "pz-simplificada",
+  );
+  check("y es la correcta", escena.focos.at(-1).narracion === "Queda 3 entre 2.");
+
+  const conVariable = escenaDeSimplificacion("6x/3", "e");
+  check(
+    "un monomio se simplifica igual",
+    conVariable.focos.at(-1).narracion === "Queda 2x.",
+    conVariable.focos.at(-1).narracion,
+  );
+
+  const potencias = escenaDeSimplificacion("x^{2}/x", "e");
+  check(
+    "y las potencias de la misma variable se cancelan",
+    /Se cancela una x de arriba con la de abajo/.test(potencias.focos[0].narracion),
+    potencias.focos[0].narracion,
+  );
+
+  check(
+    "una fracción ya irreducible no se anima como simplificación",
+    escenaDeSimplificacion("7/3", "e") === null,
+  );
+  check(
+    "ni se mezclan variables distintas",
+    escenaDeSimplificacion("6x/3y", "e") === null,
+  );
+}
+
+{
   // La frase de un tutor NO es un polinomio. Sin este límite, la pizarra se
   // pone a señalar sílabas como si fueran términos.
   for (const frase of [
@@ -506,6 +557,8 @@ titulo("B. Toda escena se compone con KaTeX y conserva sus marcas");
     "3x⁴ - 2x²",
     "12x³ - 4x",
     "5x^{2}",
+    "12/8",
+    "6x/3",
     "Vamos a ver la regla de la potencia",
     "derivada = 2x",
   ];
@@ -1110,6 +1163,45 @@ titulo("D. Máquina de estados del avatar");
   check(
     "cada estado tiene su etiqueta en castellano",
     pedidos.every((e) => typeof ETIQUETA_ESTADO[e] === "string" && ETIQUETA_ESTADO[e].length > 0),
+  );
+}
+
+{
+  // El pliego no pide sólo que los cinco estados EXISTAN, sino cuándo se usa
+  // cada uno: PENSANDO mientras el servidor valida, CELEBRANDO ante un acierto
+  // y APOYO ante un error. Hasta ahora nadie disparaba los dos primeros y el
+  // fallo se narraba con la cara de explicar.
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const motor = readFileSync(new URL("../public/pseLight.js", import.meta.url), "utf8");
+
+  const corregir = aula.slice(aula.indexOf("const responder = useCallback"));
+  check(
+    "el avatar PIENSA mientras el servidor valida la respuesta",
+    /setEstadoAvatar\("pensando"\)/.test(corregir) &&
+      corregir.indexOf('setEstadoAvatar("pensando")') <
+        corregir.indexOf('fetch("/api/practica/corregir"'),
+  );
+  check(
+    "CELEBRA cuando el veredicto es correcto",
+    /correcto === true\) setEstadoAvatar\("sonriendo"\)/.test(corregir),
+  );
+  check(
+    "y ACOMPAÑA cuando es incorrecto",
+    /correcto === false\) setEstadoAvatar\("preguntando"\)/.test(corregir),
+  );
+  check(
+    "un veredicto que no se puede verificar no se trata como error del alumno",
+    /else setEstadoAvatar\("neutral"\)/.test(corregir),
+  );
+  check(
+    "y el tutor narra el fallo con gesto de apoyo, no con el de explicar",
+    !/`Casi\. \$\{hint\}`, "hablando"/.test(motor) &&
+      /`Casi\. \$\{hint\}`, "preguntando"/.test(motor),
+  );
+
+  check(
+    "la lección dice qué versión está desplegada, para poder comprobarlo",
+    aula.includes("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA") && aula.includes("build {VERSION}"),
   );
 }
 

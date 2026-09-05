@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.850 comprobaciones automáticas, 0
-fallos**, de las cuales **223 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.866 comprobaciones automáticas, 0
+fallos**, de las cuales **239 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 205 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 223
+node qa/hito2.mjs                                  # sin servidor: 221 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 239
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 223 | 0 |
+| `qa/hito2.mjs` (este hito) | 239 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.850** | **0** |
+| **Total** | **1.866** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 223 comprobaciones del hito |
+| `qa/hito2.mjs` | 239 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -598,3 +598,63 @@ ni el sincronizador usan `setInterval`, que el encadenado sale del fin de la
 locución, que el repaso se calla cuando el tutor retoma la palabra, que al tomar
 la voz se corta la del tutor, y que entre columna y columna hay una pausa que se
 cancela al pausar. Suite completa: **1.850 comprobaciones, 0 fallos**.
+
+---
+
+## 17. Repaso completo del pliego, punto por punto
+
+Con el pliego del Hito 2 delante otra vez, se revisó cada requisito contra el
+código. Tres cosas estaban a medias; las tres quedan cerradas.
+
+### 1. Cancelaciones en simplificaciones algebraicas
+
+El pliego pide "tachados/cancelaciones en simplificaciones algebraicas" y sólo
+estaba la cancelación del despeje (el `+5` y el `−5` de los dos lados). Ahora se
+anima también la simplificación de una fracción: el factor común se **tacha
+arriba y abajo a la vez** —como se hace a mano— y la fracción reducida aparece
+sólo después.
+
+- `12/8` → *"Dividimos arriba y abajo entre 4"*, rótulo **÷ 4**, y queda 3 entre 2.
+- `6x/3` → queda `2x`.
+- `x²/x` → *"se cancela una x de arriba con la de abajo"*, queda `x`.
+- `7/3` no se anima: no hay nada que cancelar.
+
+### 2. Los estados del avatar, con su disparador
+
+Los cinco estados existían, pero el pliego dice **cuándo** se usa cada uno, y
+dos no los disparaba nadie:
+
+- **PENSANDO — "validación en servidor en curso"**: el avatar piensa mientras
+  `/api/practica/corregir` comprueba la respuesta. Antes el alumno enviaba su
+  respuesta y el tutor se quedaba con la misma cara.
+- **CELEBRANDO — "feedback positivo ante respuesta correcta"**: al recibir un
+  veredicto correcto.
+- **APOYO — "feedback empático ante error"**: al recibir uno incorrecto. Además,
+  el tutor narraba el fallo (*"Casi. …"*) con el gesto de explicar; ahora lo hace
+  con el de apoyo.
+- Un veredicto que el motor **no puede verificar** no se trata como error del
+  alumno: ahí no se pone cara de apoyo.
+
+### 3. Saber qué versión se está probando
+
+Varias rondas se fueron en decidir si lo que se veía era la corrección o el
+despliegue anterior. La tarjeta del tutor muestra ahora, en pequeño, el commit
+desplegado (`build a1b2c3d`, de la variable que Vercel expone). De un vistazo se
+sabe si lo que hay en pantalla incluye el último arreglo.
+
+### Y el resto del pliego, comprobado
+
+| Requisito | Estado |
+| --- | --- |
+| `pizarra-animada.tsx` recibe los pasos en `/estudiante/leccion` | ✅ sección 1 |
+| Resaltado con SVG overlay / bounding box, sin recompilar KaTeX | ✅ sección 2 |
+| Llevadas encima de las columnas y tachados de cancelación | ✅ secciones 3 y 17.1 |
+| `sincronizador-leccion.ts` con eventos del TTS | ✅ secciones 4 y 14 |
+| Pausar, Reanudar, Repetir paso, Avanzar | ✅ sección 4 |
+| Degradación a temporizador si el audio falla o está desactivado | ✅ sección 4 |
+| Cinco estados del avatar con transiciones suaves | ✅ secciones 5 y 17.2 |
+| Modo proyección: pantalla completa y alto contraste | ✅ sección 6 |
+| Backlog: orden de bloques en `/docente/crear-tema` | ✅ sección 7 |
+| `qa/hito2.mjs` | ✅ 239 comprobaciones |
+
+Suite completa: **1.866 comprobaciones, 0 fallos**.

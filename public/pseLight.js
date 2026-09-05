@@ -533,7 +533,7 @@ export class PSELight {
     } else {
       const hint = buildHint(d.texto, boardText, 1);
       this.ui.showFeedback(false, `Casi. ${hint} Inténtalo otra vez.`);
-      this._speak(`Casi. ${hint}`, "hablando", signal); // no bloquea: la caja se reabre ya
+      this._speak(`Casi. ${hint}`, "preguntando", signal); // no bloquea: la caja se reabre ya
     }
     let retry = await this.ui.askAnswer(d.texto, { signal });
     if (signal.aborted || retry == null) return;
@@ -542,7 +542,7 @@ export class PSELight {
     // 2º error → pista más concreta del método + otro reintento.
     const hint2 = buildHint(d.texto, boardText, 2);
     this.ui.showFeedback(false, `Aún no, pero vas bien. ${hint2} Prueba una vez más.`);
-    this._speak(`Aún no. ${hint2}`, "hablando", signal);
+    this._speak(`Aún no. ${hint2}`, "preguntando", signal);
     retry = await this.ui.askAnswer(d.texto, { signal });
     if (signal.aborted || retry == null) return;
     if (checkAnswer(retry, expected).correct) { await acerto("¡Muy bien, lo lograste! 🎉"); return; }

@@ -89,6 +89,15 @@ const BOTONES_APOYO: Array<{
   },
 ];
 
+/**
+ * Qué versión del código está viendo quien mira la pantalla.
+ *
+ * Vercel expone el commit desplegado, y Next lo incrusta en el paquete. Sirve
+ * para resolver en un vistazo la duda más cara de esta entrega: si lo que se
+ * está probando es la corrección recién subida o el despliegue anterior.
+ */
+const VERSION = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7);
+
 interface Veredicto {
   correcto: boolean | null;
   verificable: boolean;
@@ -749,6 +758,11 @@ export function Aula({
     // Evaluación inmediata contra la solución que RECALCULA el servidor. El
     // navegador no conoce la respuesta correcta.
     if (estado.ejercicio) {
+      // El pliego pide que el avatar acompañe la corrección: PENSANDO mientras
+      // el servidor valida —que puede tardar—, y luego celebración o apoyo
+      // según el veredicto. Sin esto, el alumno enviaba su respuesta y el tutor
+      // se quedaba con la misma cara mirando al vacío.
+      setEstadoAvatar("pensando");
       try {
         const r = await fetch("/api/practica/corregir", {
           method: "POST",
@@ -764,10 +778,21 @@ export function Aula({
             pizarra: escrito.current.join("\n").slice(0, 2000),
           }),
         });
-        if (r.ok) setVeredicto(await r.json());
+        if (r.ok) {
+          const fallo: Veredicto = await r.json();
+          setVeredicto(fallo);
+          // Celebrar o acompañar. Un veredicto que el motor no puede verificar
+          // no es un error del alumno, así que ahí no se pone cara de apoyo.
+          if (fallo.correcto === true) setEstadoAvatar("sonriendo");
+          else if (fallo.correcto === false) setEstadoAvatar("preguntando");
+          else setEstadoAvatar("neutral");
+        } else {
+          setEstadoAvatar("neutral");
+        }
       } catch {
         // Un fallo de red al corregir no debe bloquear la lección: el motor
         // local sigue adelante con su propia ramificación pedagógica.
+        setEstadoAvatar("neutral");
       }
     }
 
@@ -1027,6 +1052,9 @@ export function Aula({
               </Button>
               <p className="text-center text-[11px] leading-tight text-muted-foreground">
                 {estadoVoz}
+              </p>
+              <p className="text-center text-[10px] leading-tight text-muted-foreground/60">
+                build {VERSION}
               </p>
             </CardContent>
           </Card>
