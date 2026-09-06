@@ -23,7 +23,10 @@ import {
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { TextoMatematico } from "@/components/math";
 import { Button } from "@/components/ui/button";
-import { useSincronizadorLeccion } from "@/components/leccion/sincronizador-leccion";
+import {
+  useGuionEstable,
+  useSincronizadorLeccion,
+} from "@/components/leccion/sincronizador-leccion";
 import {
   guionDeLeccion,
   reglasDeRevelado,
@@ -381,10 +384,14 @@ export function PanelAnimado({
   const marco = useRef<HTMLDivElement | null>(null);
   const [proyeccion, setProyeccion] = useState(false);
 
-  // El guion sólo se rehace cuando cambian las líneas de verdad: recomponerlo
-  // en cada pintado reiniciaría la reproducción a mitad de explicación.
+  // El guion sólo se rehace cuando cambia LO QUE SE ANIMA, no cuando cambian las
+  // líneas. El tutor va escribiendo mientras explica —el enunciado primero, el
+  // desarrollo después— y casi siempre eso produce el mismo guion: la cuenta es
+  // la misma. Rehacerlo de todas formas reiniciaba la máquina y la pizarra
+  // volvía al primer paso a mitad de explicación.
   const firma = lineas.join("|");
-  const escenas = useMemo(() => guionDeLeccion(firma.split("|")), [firma]);
+  const guion = useMemo(() => guionDeLeccion(firma.split("|")), [firma]);
+  const escenas = useGuionEstable(guion);
 
   const { estado, mandos } = useSincronizadorLeccion({ escenas, tts, audio: vozActiva });
 

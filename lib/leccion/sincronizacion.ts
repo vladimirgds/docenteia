@@ -167,6 +167,17 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
   // temporizador ANTES de darle al play, no cuando ya está en marcha.
   let modo: ModoAvance = audio && locutor?.disponible() ? "voz" : "temporizador";
   let vozCaida = false;
+  /**
+   * ¿Hay una locución LANZADA POR ESTA MÁQUINA sonando ahora mismo?
+   *
+   * Importa muchísimo: el sintetizador es del navegador, no nuestro, y quien
+   * suele estar hablando es el tutor de la lección. Cancelar sin haber hablado
+   * mataba SU voz. Y como una cancelación dispara el `onend` de la locución que
+   * corta, el tutor daba su frase por terminada y saltaba a la siguiente: la
+   * lección entera se iba de carrera con el audio recién empezado. Que es
+   * exactamente lo que se vio en pantalla.
+   */
+  let hablando = false;
 
   /** Cancela el temporizador en curso, si lo hay. */
   let cancelarEspera: (() => void) | null = null;
@@ -201,6 +212,10 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       cancelarEspera();
       cancelarEspera = null;
     }
+    // SÓLO se calla lo que hemos dicho nosotros. Si no hemos abierto la boca,
+    // aquí no se cancela nada: la voz que suena es la del tutor.
+    if (!hablando) return;
+    hablando = false;
     try {
       locutor?.cancelar();
     } catch {
@@ -259,14 +274,17 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
 
     modo = "voz";
     let resuelta = false;
+    hablando = true;
     locutor
       .hablar(texto, { alEmpezar: mostrar })
       .then(() => {
         resuelta = true;
+        hablando = false;
         seguir();
       })
       .catch(() => {
         resuelta = true;
+        hablando = false;
         if (mia !== ficha || estado !== "reproduciendo") return;
         // La voz ha fallado a mitad de lección: se sigue con temporizador y se
         // deja constancia, para que la interfaz pueda decirlo.
@@ -284,6 +302,7 @@ export function crearSincronizador(opciones: OpcionesSincronizador): Sincronizad
       if (resuelta || mia !== ficha || estado !== "reproduciendo") return;
       vozCaida = true;
       modo = "temporizador";
+      hablando = false;
       try {
         locutor.cancelar();
       } catch {

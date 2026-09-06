@@ -648,6 +648,12 @@ export function guionDeLeccion(lineas: readonly string[]): Escena[] {
     if (!linea) continue;
 
     const escena = escenaDeLinea(linea, `escena-${escenas.length}`);
+    // La prosa no entra en el guion. Una frase del tutor no tiene nada que
+    // resaltar: como escena sólo repite lo que ya está en el subtítulo, y
+    // además parte la lección en trozos —"línea 1 de 3"— que no corresponden a
+    // ningún paso. La pizarra animada anima lo que se puede animar.
+    if (escena.focos.length === 0) continue;
+
     const identidad = identidadDeEscena(escena);
     if (vistas.has(identidad)) continue;
     vistas.add(identidad);

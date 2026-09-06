@@ -564,7 +564,16 @@ titulo("B. Toda escena se compone con KaTeX y conserva sus marcas");
   ];
   const guion = guionDeLeccion(corpus);
 
-  check("el guion tiene una escena por línea", guion.length === corpus.length);
+  check(
+    "el guion recoge todas las líneas que se pueden animar",
+    guion.length === corpus.filter((l) => esAnimable(l)).length,
+    `${guion.length} escenas de ${corpus.length} líneas`,
+  );
+  check(
+    "y la prosa no entra: no tiene nada que resaltar y partía la lección en trozos",
+    guion.every((e) => e.focos.length > 0) &&
+      guionDeLeccion(["Vamos a ver la regla de la potencia"]).length === 0,
+  );
   check(
     "cada escena tiene un identificador único",
     new Set(guion.map((e) => e.id)).size === guion.length,
@@ -692,18 +701,24 @@ titulo("B2. La pizarra sigue a la voz del tutor");
   // ya resuelta mientras abajo corría la animación.
   const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
 
-  check("la lección sabe qué líneas anima la pizarra", aula.includes("esAnimable"));
-  check(
-    "y mientras la animación no termina, no las compone arriba",
-    aula.includes("desarrolloVisible") && aula.includes("desarrollo={desarrolloVisible}"),
+  // No basta con filtrar líneas: la tarjeta del desarrollo COMPONE la cuenta a
+  // partir de los pasos narrados, así que hay que decirle que no la pinte.
+  const pizarra = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
   );
   check(
-    "en cuanto termina la animación —o la lección— el desarrollo vuelve entero",
-    /if \(animacionCompleta \|\| !controles\.playing\) return desarrollo;/.test(aula),
+    "el aula le dice a la pizarra que esconda el desarrollo",
+    aula.includes("ocultarDesarrollo={ocultarDesarrollo}") &&
+      /const ocultarDesarrollo = !animacionCompleta && controles\.playing/.test(aula),
   );
   check(
-    "las aclaraciones se siguen viendo: no destripan el resultado",
-    /linea\.aclaracion \|\| !esAnimable/.test(aula),
+    "y la pizarra lo obedece: sin desarrollo no compone ni la cuenta ni los pasos",
+    /propio && !ocultarDesarrollo \? desarrolloRecibido : SIN_DESARROLLO/.test(pizarra),
+  );
+  check(
+    "en cuanto la animación termina —o la lección para— el desarrollo vuelve",
+    aula.includes("!animacionCompleta && controles.playing && lineasAnimadas.length > 0"),
   );
   check("y la pizarra recibe lo que el tutor está diciendo", aula.includes("narracion={subtitulo}"));
 
@@ -1339,7 +1354,11 @@ titulo("D. Máquina de estados del avatar");
   check(
     "el paso se encadena con el fin de la locución, no con un reloj propio",
     maquina.includes(".hablar(texto, { alEmpezar: mostrar })") &&
-      /\.then\(\(\) => \{\s*resuelta = true;\s*seguir\(\);/.test(maquina),
+      /\.then\(\(\) => \{\s*resuelta = true;\s*hablando = false;\s*seguir\(\);/.test(maquina),
+  );
+  check(
+    "la pizarra sólo cancela la voz si la locución la lanzó ella",
+    /if \(!hablando\) return;/.test(maquina) && /hablando = true;/.test(maquina),
   );
   check(
     "si el tutor retoma la palabra, el repaso se calla",

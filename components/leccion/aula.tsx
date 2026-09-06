@@ -19,7 +19,6 @@ import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/ps
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
-import { esAnimable } from "@/lib/leccion/animacion";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import {
   Pizarra,
@@ -878,14 +877,17 @@ export function Aula({
     [],
   );
 
-  const desarrolloVisible = useMemo(() => {
-    // Sólo se retiene mientras el tutor está explicando. Si la lección ya ha
-    // terminado, el desarrollo se compone entero pase lo que pase con la
-    // animación: preferible un resultado repetido a un alumno esperando algo
-    // que no va a llegar.
-    if (animacionCompleta || !controles.playing) return desarrollo;
-    return desarrollo.filter((linea) => linea.aclaracion || !esAnimable(linea.texto));
-  }, [desarrollo, animacionCompleta, controles.playing]);
+  /**
+   * ¿Hay que esconder el desarrollo de la pizarra clásica?
+   *
+   * Sí mientras el tutor explica y la animación no ha destapado todo: con la
+   * cuenta resuelta arriba, el paso a paso de abajo no enseña nada. Filtrar
+   * línea a línea no bastaba —la tarjeta compone la cuenta a partir de los
+   * pasos narrados, no de una línea con el resultado—, así que se le dice a la
+   * pizarra directamente. En cuanto la animación termina, o la lección para,
+   * el desarrollo vuelve entero para poder repasarlo.
+   */
+  const ocultarDesarrollo = !animacionCompleta && controles.playing && lineasAnimadas.length > 0;
 
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
@@ -1067,7 +1069,8 @@ export function Aula({
           <Pizarra
             fases={fases}
             ejercicio={ejercicio}
-            desarrollo={desarrolloVisible}
+            desarrollo={desarrollo}
+            ocultarDesarrollo={ocultarDesarrollo}
             faseDelContenido={faseDelContenido}
             resaltado={resaltado}
             reglas={reglasDelTema}

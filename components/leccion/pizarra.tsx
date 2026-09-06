@@ -126,6 +126,7 @@ export function Pizarra({
   reglas = [],
   reglaDetectada = null,
   tema,
+  ocultarDesarrollo = false,
   className,
 }: {
   /** Fases ya abiertas: la tira de progreso y la vista en curso. */
@@ -159,6 +160,16 @@ export function Pizarra({
   reglaDetectada?: ReglaPizarra | null;
   /** Tema en curso, para elegir el diagrama de la fase de Concepto. */
   tema?: string;
+  /**
+   * Oculta el desarrollo mientras la pizarra animada lo va contando.
+   *
+   * Lo pidió el cliente y tiene toda la razón: con la cuenta resuelta a la
+   * vista —el 412 y sus llevadas— el paso a paso de abajo no explica nada. No
+   * basta con filtrar las líneas del desarrollo, porque la cuenta de esta
+   * tarjeta se COMPONE a partir de los pasos narrados ("unidades: 4 + 8 = 12"),
+   * no de una línea con el resultado. Por eso el aula lo dice explícitamente.
+   */
+  ocultarDesarrollo?: boolean;
   className?: string;
 }) {
   const actual = fases[fases.length - 1] ?? null;
@@ -169,8 +180,8 @@ export function Pizarra({
   const propio = actual != null && faseDelContenido === actual.id;
   const ejercicio = propio ? ejercicioRecibido : null;
   const desarrollo = useMemo(
-    () => (propio ? desarrolloRecibido : SIN_DESARROLLO),
-    [propio, desarrolloRecibido],
+    () => (propio && !ocultarDesarrollo ? desarrolloRecibido : SIN_DESARROLLO),
+    [propio, ocultarDesarrollo, desarrolloRecibido],
   );
 
   // La regla que el tutor está explicando ahora mismo, deducida de las líneas

@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.866 comprobaciones automáticas, 0
-fallos**, de las cuales **239 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.875 comprobaciones automáticas, 0
+fallos**, de las cuales **248 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 221 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 239
+node qa/hito2.mjs                                  # sin servidor: 222 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 240
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 239 | 0 |
+| `qa/hito2.mjs` (este hito) | 240 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,8 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.866** | **0** |
+| `qa/navegador.mjs` (navegador real) | 8 | 0 |
+| **Total** | **1.875** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +311,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 239 comprobaciones del hito |
+| `qa/hito2.mjs` | 240 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -658,3 +659,69 @@ sabe si lo que hay en pantalla incluye el último arreglo.
 | `qa/hito2.mjs` | ✅ 239 comprobaciones |
 
 Suite completa: **1.866 comprobaciones, 0 fallos**.
+
+---
+
+## 18. La pizarra callaba al tutor (probado en un navegador de verdad)
+
+El cliente pidió levantar el proyecto y probarlo de principio a fin **en el
+navegador** antes de mandar nada más. Hecho: `qa/navegador.mjs` abre un Chrome
+real, entra como alumno, pide una lección de aritmética y observa la pantalla
+mientras corre. En la primera ejecución apareció esto:
+
+```
+utterances creadas: 8   ·   locuciones pronunciadas: 0   ·   cancelaciones: 18
+```
+
+**Ocho frases preparadas, ninguna dicha, dieciocho cancelaciones en doce
+segundos.** Ésa era la causa de todo lo que el cliente venía describiendo.
+
+### Qué pasaba
+
+El sincronizador de la pizarra cancela el sintetizador al reordenarse —cosa
+razonable cuando es él quien habla—. Pero la pizarra **sigue** al tutor: cada
+frase suya la recoloca, y esa recolocación pasaba por la misma limpieza. Es
+decir: cada vez que el tutor empezaba una frase, la pizarra cancelaba su voz.
+
+Y una cancelación dispara el `onend` de la locución que corta. Para el motor de
+la lección, eso significa "ya he terminado de decirlo": pasaba a la frase
+siguiente de inmediato. De ahí que **el marcado fuera a toda velocidad con el
+audio recién empezado**, que se desfasara de la locución y que en el equipo del
+cliente pareciera que mandaban temporizadores.
+
+### La corrección
+
+La pizarra sólo calla lo que ha dicho ella. La máquina lleva ahora una marca de
+"tengo una locución en el aire", y si no la tiene, no cancela: la voz que suena
+es la del tutor y no se toca.
+
+### Y las otras dos cosas del mensaje
+
+- **El bloque DESARROLLO seguía apareciendo.** Filtrar sus líneas no bastaba,
+  porque esa tarjeta **compone** la cuenta a partir de los pasos narrados
+  ("unidades: 4 + 8 = 12"), no de una línea con el resultado. Ahora el aula le
+  dice explícitamente a la pizarra que no lo pinte mientras la animación
+  explica. Verificado en el navegador: no aparece en ninguna muestra.
+- **El contador decía "línea 1/3".** La prosa ya no entra en el guion: una
+  frase del tutor no tiene nada que resaltar, sólo repetía el subtítulo y
+  partía la lección en trozos que no eran pasos. Y el guion deja de rehacerse
+  —y de reiniciar la pizarra— cuando el tutor añade una línea que no cambia lo
+  que hay que animar.
+
+### Lo que comprueba `qa/navegador.mjs`
+
+Con un `speechSynthesis` de mentira de tiempos conocidos (arranca a los 200 ms,
+termina a los 1.600 ms), porque un navegador headless no trae voces y sin
+eventos no habría nada que medir:
+
+| Comprobación | Qué caza |
+| --- | --- |
+| El bloque DESARROLLO no aparece mientras la animación explica | el spoiler pedagógico |
+| El resaltado no se mueve antes de que empiece a sonar la voz | el marcado adelantado |
+| El tutor habla de verdad (≥ 2 locuciones) | el silencio disfrazado de animación |
+| A ninguna locución se la corta a mitad de frase | **la cancelación cruzada** |
+| Las cifras destapadas no vuelven a esconderse | el revelado que se pierde |
+| La consola no suelta errores | excepciones de render |
+
+Suite completa: **1.875 comprobaciones, 0 fallos**, de las cuales 8 se ejecutan
+dentro de Chrome.
