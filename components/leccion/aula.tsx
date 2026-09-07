@@ -403,6 +403,11 @@ export function Aula({
       // En el mismo lote que la fase: el contenido que viene a continuación es
       // suyo, y el de la fase anterior deja de pintarse en el mismo instante.
       setFaseDelContenido(clave);
+      // Y el subtítulo también es de la fase que se cierra. Al pasar de
+      // "Concepto" a "Reglas", el ejemplo de la pizza seguía debajo mientras el
+      // tutor ya explicaba otra cosa: lo que se lee y lo que se oye contaban
+      // cosas distintas. Se limpia y lo repone la primera frase de la fase nueva.
+      setSubtitulo("");
 
       // El enunciado se conoce desde que llegó la lección; y si esta fase no lo
       // trae, vale el que el alumno tiene entre manos. En una fase de ejercicio

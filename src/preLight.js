@@ -744,6 +744,40 @@ function rhsToRat(rhs) {
   if (/^-?\d+\.\d+$/.test(s)) { const neg = s[0] === "-"; const [i, dec] = s.replace("-", "").split("."); const den = Math.pow(10, dec.length); return rat(parseInt(i + dec, 10) * (neg ? -1 : 1), den); }
   return null;
 }
+// EQUIVALENCIAS ESCRITAS CON EL SIGNO CAMBIADO.
+//
+// Lo reportó el cliente: en la lección de 1/2 + 1/3 la pizarra mostraba
+// "1/2 - 3/6" y "1/3 - 2/6" donde tocaba "1/2 = 3/6" y "1/3 = 2/6". El paso es
+// la conversión a común denominador, y con el signo cambiado dice algo que no
+// es: en un tutor de matemáticas, un signo mal puesto es un fallo grave.
+//
+// Se repara sólo el caso que no admite otra lectura: una línea que es
+// EXACTAMENTE dos fracciones unidas por "-" (o "+"), sin ningún "=", y cuyos
+// dos lados VALEN LO MISMO. "1/2 - 3/6" así suelto vale cero y no enseña nada;
+// como equivalencia, es el paso de la lección. Cuando los lados no coinciden
+// —"3/4 - 1/4"— es una resta de verdad y no se toca.
+export function repararEquivalencias(texto) {
+  if (typeof texto !== "string") return { texto, correcciones: 0 };
+  const linea = normDashes(texto).trim();
+  if (linea.includes("=")) return { texto, correcciones: 0 };
+
+  // SÓLO el menos. "1/2 + 2/4" es una suma perfectamente normal —da 1— y
+  // convertirla en igualdad sería estropear un ejercicio bueno; "1/2 - 2/4",
+  // en cambio, da cero y como paso de una lección no dice nada.
+  const m = linea.match(/^(\d+\s*\/\s*\d+)\s*-\s*(\d+\s*\/\s*\d+)$/);
+  if (!m) return { texto, correcciones: 0 };
+
+  const valor = (f) => {
+    const [n, d] = f.split("/").map((x) => Number(x.trim()));
+    return d ? n / d : null;
+  };
+  const a = valor(m[1]);
+  const b = valor(m[2]);
+  if (a == null || b == null || a !== b) return { texto, correcciones: 0 };
+
+  return { texto: `${m[1].replace(/\s+/g, "")} = ${m[2].replace(/\s+/g, "")}`, correcciones: 1 };
+}
+
 export function corregirIgualdades(texto) {
   if (typeof texto !== "string" || !texto.includes("=")) return { texto, correcciones: 0 };
   // Guiones/menos unicode → "-" ASCII antes de verificar aritmética: sin esto "80 − 5 = 75" (con U+2212)
@@ -1380,7 +1414,9 @@ function sanitizeDirectiva(raw, warnings, context) {
         return null;
       }
       // Validación matemática integral: corrige operaciones erróneas escritas en la PIZARRA.
-      const fixP = corregirIgualdades(limpiarSustituciones(sanitizeMath(str(raw.contenido))));
+      const equiv = repararEquivalencias(limpiarSustituciones(sanitizeMath(str(raw.contenido))));
+      if (equiv.correcciones) warnings.push(`Equivalencia con el signo cambiado corregida en "pizarra" (${context}).`);
+      const fixP = corregirIgualdades(equiv.texto);
       if (fixP.correcciones) warnings.push(`Corregida(s) ${fixP.correcciones} operación(es) errónea(s) en "pizarra" (${context}).`);
       // El conector "o"/"o," entre dos igualdades en la pizarra se normaliza a coma ("x = -2 o, x = -3"
       // → "x = -2, x = -3"): la pizarra separa las soluciones con "," de forma consistente.

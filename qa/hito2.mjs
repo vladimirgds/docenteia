@@ -39,6 +39,7 @@ import {
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
 import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
+import { repararEquivalencias } from "../src/preLight.js";
 import {
   avatarDe,
   crearSincronizador,
@@ -393,6 +394,35 @@ titulo("A1b. Lo destapado se queda escrito, y se declara con una regla CSS");
   );
 }
 
+titulo("A1c. Una equivalencia no puede llevar el signo cambiado");
+
+{
+  // Lo reportó el cliente: en la lección de 1/2 + 1/3, la pizarra mostraba
+  // "1/2 - 3/6" donde tocaba "1/2 = 3/6". El paso es la conversión a común
+  // denominador; con el signo cambiado dice algo que no es.
+  check(
+    "una equivalencia escrita con menos se repara",
+    repararEquivalencias("1/2 - 3/6").texto === "1/2 = 3/6" &&
+      repararEquivalencias("1/3 - 2/6").texto === "1/3 = 2/6",
+  );
+  check(
+    "y queda constancia de la corrección",
+    repararEquivalencias("1/2 - 3/6").correcciones === 1,
+  );
+  check(
+    "una resta de verdad no se toca",
+    repararEquivalencias("3/4 - 1/4").texto === "3/4 - 1/4",
+  );
+  check(
+    "ni una suma, aunque los sumandos valgan lo mismo",
+    repararEquivalencias("1/2 + 2/4").texto === "1/2 + 2/4",
+  );
+  check(
+    "ni una línea que ya trae su igual",
+    repararEquivalencias("1/2 = 3/6").correcciones === 0,
+  );
+}
+
 titulo("A2. Polinomios, despejes y prosa");
 
 {
@@ -693,6 +723,54 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     "con una línea de prosa parecida delante, gana la columna que se opera",
     destino?.escena === 0 && destino?.foco === 0,
     JSON.stringify(destino),
+  );
+}
+
+{
+  // EL SEGUIMIENTO, CON LAS PALABRAS DEL TUTOR DE VERDAD.
+  //
+  // Las frases de la lección las redacta el modelo, no el guion: dice "escribimos
+  // el 3 debajo de las unidades" donde el guion dice "escribo 3". La pizarra
+  // tiene que reconocerlo igual. Estas frases son las de la captura del cliente.
+  const guion = guionDeLeccion(["678 + 145"]);
+  const recorrido = [
+    ["Vamos a sumar 678 más 145 paso a paso.", -1],
+    [
+      "Sumamos 8 + 5, que es 13. Escribimos el 3 debajo de las unidades y nos llevamos el 1 a la columna de las decenas.",
+      0,
+    ],
+    [
+      "Ahora sumamos las decenas: 7 + 4 + 1 que nos llevábamos, que es 12. Escribimos el 2 y llevamos 1.",
+      1,
+    ],
+    ["Por último, las centenas: 6 + 1 + 1 = 8.", 2],
+    ["Así, 678 + 145 = 823. Ahora te toca a ti.", 3],
+  ];
+
+  let escenaActual = 0;
+  for (const [dicho, esperado] of recorrido) {
+    const destino = situacionParaNarracion(guion, dicho, escenaActual);
+    if (destino) escenaActual = destino.escena;
+    check(
+      `"${dicho.slice(0, 40)}…" lleva la pizarra al paso ${esperado + 2}`,
+      destino?.foco === esperado,
+      destino ? `foco ${destino.foco}` : "no se movió",
+    );
+  }
+
+  check(
+    "y una frase suelta no la mueve",
+    situacionParaNarracion(guion, "Muy bien, sigamos practicando.", 0) === null,
+  );
+
+  // La causa era comparar TROZOS: "vamos" aparecía dentro de "llevamos".
+  const columnas = guion[0].focos;
+  check(
+    "cada columna sabe cómo la llama el tutor",
+    columnas[0].pista === "unidades" &&
+      columnas[1].pista === "decenas" &&
+      columnas[2].pista === "centenas",
+    JSON.stringify(columnas.map((f) => f.pista)),
   );
 }
 
@@ -1217,6 +1295,14 @@ titulo("D. Máquina de estados del avatar");
   check(
     "la lección dice qué versión está desplegada, para poder comprobarlo",
     aula.includes("NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA") && aula.includes("build {VERSION}"),
+  );
+
+  // El subtítulo pertenece a la fase que se cierra: al pasar de "Concepto" a
+  // "Reglas", el ejemplo de la pizza se quedaba debajo mientras el tutor ya
+  // explicaba otra cosa.
+  check(
+    "el subtítulo se limpia al cambiar de fase",
+    /setFaseDelContenido\(clave\);[\s\S]{0,400}setSubtitulo\(""\);/.test(aula),
   );
 }
 

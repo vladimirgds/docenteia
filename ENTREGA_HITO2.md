@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.875 comprobaciones automáticas, 0
-fallos**, de las cuales **248 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.888 comprobaciones automáticas, 0
+fallos**, de las cuales **261 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -237,8 +237,8 @@ verifica en la suite leyendo el HTML de la página.
 ### Suite automática
 
 ```bash
-node qa/hito2.mjs                                  # sin servidor: 222 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 240
+node qa/hito2.mjs                                  # sin servidor: 235 comprobaciones
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 253
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 240 | 0 |
+| `qa/hito2.mjs` (este hito) | 253 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -259,7 +259,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
 | `qa/navegador.mjs` (navegador real) | 8 | 0 |
-| **Total** | **1.875** | **0** |
+| **Total** | **1.888** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -311,7 +311,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 240 comprobaciones del hito |
+| `qa/hito2.mjs` | 253 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -725,3 +725,69 @@ eventos no habría nada que medir:
 
 Suite completa: **1.875 comprobaciones, 0 fallos**, de las cuales 8 se ejecutan
 dentro de Chrome.
+
+---
+
+## 19. Las palabras del tutor, el subtítulo heredado y un signo cambiado
+
+Tres cosas del último repaso del cliente sobre el build `42fceda`.
+
+### 1. El resaltado no seguía a la locución (Aritmética)
+
+**Lo que se veía.** Con la voz en "Sumamos 8 + 5… escribimos el 3 debajo de las
+unidades", la pizarra seguía en el paso 1. Y al llegar a las decenas, el óvalo
+estaba sobre las centenas.
+
+**Por qué.** El seguimiento comparaba **trozos de palabra**, no palabras. En
+"nos lle**vamos** el 1" encontraba "vamos" —la entrada de la escena dice "**Vamos**
+a sumar…"— y en "a la **columna** de las decenas" encontraba "columna", también
+de la entrada. Resultado: la entrada empataba con la columna que se estaba
+explicando y, al empatar, ganaba ella.
+
+**La corrección.**
+
+- Se comparan **palabras enteras**. "vamos" ya no aparece dentro de "llevamos".
+- Cada columna lleva ahora **la palabra por la que el tutor la llama**
+  —"unidades", "decenas", "centenas"—, que es la señal fiable: el modelo redacta
+  la frase como quiere, pero nombra la columna. Vale más que cualquier otra
+  coincidencia.
+- Un empate entre la entrada de la escena y un paso lo gana el paso: la entrada
+  no señala nada.
+
+Comprobado con **las frases exactas de la captura del cliente**, que las escribe
+el modelo y no coinciden con las del guion: llevan la pizarra a unidades,
+decenas, centenas y resultado, en ese orden, y una frase ajena no la mueve.
+
+### 2. El subtítulo de una fase se quedaba en la siguiente
+
+Al pasar de "Concepto" a "Reglas y propiedades", el ejemplo de la pizza seguía
+debajo mientras el tutor ya explicaba otra cosa. El subtítulo pertenece a la
+fase que se cierra: ahora se limpia al abrirse la nueva y lo repone su primera
+frase.
+
+### 3. `1/2 - 3/6` donde tocaba `1/2 = 3/6`
+
+En la lección de 1/2 + 1/3, el paso de conversión a común denominador aparecía
+con un menos en lugar del igual. **Toda la cadena de composición local conserva
+el "="** —se comprobó una por una: `planoALatex`, `notacionFormal`,
+`lineaResaltada`, `columnaDeLinea` y `corregirIgualdades`—, así que la línea
+llega ya con el signo cambiado desde el generador de la lección (en el
+despliegue del cliente la redacta el modelo; el motor determinista local escribe
+`1/2 = 3/6`).
+
+Como un signo mal puesto en un tutor de matemáticas no es aceptable venga de
+donde venga, la validación de la pizarra —la misma que ya corregía operaciones
+falsas— repara ahora este caso: **una línea que es exactamente dos fracciones
+unidas por un menos, sin ningún igual, y cuyos dos lados valen lo mismo**, es
+una equivalencia con el signo cambiado. `1/2 - 3/6` vale cero y como paso no
+dice nada; como equivalencia es el paso de la lección. Una resta de verdad
+(`3/4 - 1/4`) y una suma (`1/2 + 2/4`, que es un ejercicio legítimo) no se
+tocan, y la reparación queda anotada en los avisos.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **253 comprobaciones** y `qa/navegador.mjs` sigue en 8,
+dentro de Chrome. Suite completa: **1.888 comprobaciones, 0 fallos**.
+
+> Nota: el mensaje del cliente anuncia cuatro inconsistencias y en la captura
+> sólo se leen tres. Si hay una cuarta, hace falta el texto para cerrarla.

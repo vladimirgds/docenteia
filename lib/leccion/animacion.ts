@@ -41,6 +41,14 @@ export interface Foco {
   narracion: string;
   /** Rótulo corto que se dibuja junto al recuadro ("llevo 1"). */
   etiqueta?: string;
+  /**
+   * La palabra por la que el tutor llama a este paso: "unidades", "decenas".
+   *
+   * Es la señal más fiable para seguirle, porque la dice con cualquier
+   * redacción —"sumamos las decenas", "ahora las decenas", "toca decenas"—
+   * mientras que las cifras y los verbos cambian de una frase a otra.
+   */
+  pista?: string;
 }
 
 export interface Escena {
@@ -202,6 +210,7 @@ function focosDeColumna(
         clase: `pz-col-${i}`,
         tipo: "caja",
         narracion,
+        pista: posicion,
         ...(llevada && i - 1 >= 0 ? { etiqueta: "llevo 1" } : {}),
       });
       arrastre = llevada;
@@ -223,6 +232,7 @@ function focosDeColumna(
       clase: `pz-col-${i}`,
       tipo: "caja",
       narracion,
+      pista: posicion,
       ...(prestado && i - 1 >= 0 ? { etiqueta: "reagrupo" } : {}),
     });
     arrastre = prestado ? 1 : 0;
@@ -721,6 +731,15 @@ export function situacionParaNarracion(
 ): Situacion | null {
   const dicho = normalizar(narracion);
   if (!dicho.trim() || escenas.length === 0) return null;
+  /**
+   * Se comparan PALABRAS ENTERAS, no trozos.
+   *
+   * Buscando por dentro, "vamos" aparecía en "lle­vamos" y "sumar" en
+   * "sumamos": la entrada de la escena empataba con la columna que el tutor
+   * estaba explicando y, al empatar, ganaba ella. El resaltado se quedaba en el
+   * primer paso mientras la voz iba por las unidades.
+   */
+  const palabras = palabrasDe(narracion);
 
   // Se buscan por separado la mejor escena CON algo que señalar y la mejor sin
   // nada. Una línea de prosa cuya narración es la frase entera encaja al 100 %
@@ -739,11 +758,17 @@ export function situacionParaNarracion(
     ];
 
     for (const candidato of candidatos) {
-      let puntos = solapamiento(candidato.texto, dicho);
+      let puntos = solapamiento(candidato.texto, palabras);
       if (candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
       // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
       // escena por un decimal es peor que quedarse.
       if (indice === escenaActual) puntos += 0.05;
+
+      // Un empate entre la entrada de la escena y un paso lo gana el paso: la
+      // entrada no señala nada. Sin este desempate, "escribimos el 3 debajo de
+      // las unidades" se quedaba en la entrada porque "vamos" y "columna"
+      // empataban con "unidades" y "13".
+      if (candidato.foco >= 0) puntos += 0.02;
 
       if (puntos < UMBRAL_SEGUIMIENTO) continue;
 
@@ -767,6 +792,9 @@ export function situacionParaNarracion(
 
 /** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */
 function clavesDeFoco(foco: Foco): string[] {
+  // La posición decimal manda sobre todo lo demás: si el tutor dice "decenas",
+  // está en las decenas, redacte la frase como la redacte.
+  if (foco.pista) return [foco.pista];
   if (foco.tipo === "tachado") return ["cancel", "quitamos", "restamos", "ambos lados", "los dos lados"];
   if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
   if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];
@@ -784,11 +812,16 @@ function clavesDeFoco(foco: Foco): string[] {
  * un 2, un 1 y un 4—, así que contarlo como prueba hacía que el cierre del
  * ejemplo se pareciera al paso de las centenas más que al del resultado.
  */
-function solapamiento(narracion: string, dicho: string): number {
+function solapamiento(narracion: string, palabras: Set<string>): number {
   const piezas = normalizar(narracion).match(/[a-z]{4,}|\d{2,}/g) ?? [];
   if (piezas.length === 0) return 0;
-  const aciertos = piezas.filter((pieza) => dicho.includes(pieza)).length;
+  const aciertos = piezas.filter((pieza) => palabras.has(pieza)).length;
   return aciertos / piezas.length;
+}
+
+/** Las palabras de lo dicho, enteras. */
+function palabrasDe(texto: string): Set<string> {
+  return new Set(normalizar(texto).match(/[a-z]+|\d+/g) ?? []);
 }
 
 /** Sin tildes, en minúsculas: el tutor no siempre acentúa igual que el guion. */

@@ -1466,7 +1466,7 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
     // Al abrir, el desarrollo se REEMPLAZA: vacío, o con la línea que la fase ya
     // trae. Lo que no puede es arrastrar el de la fase anterior.
     "al abrir la fase se fija el ejercicio y se renueva el desarrollo",
-    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,600}setDesarrollo\([\s\S]{0,20}adelantada \?/.test(
+    /abrirEscena = useCallback\([\s\S]{0,1800}fijarLineaEjercicio\([\s\S]{0,600}setDesarrollo\([\s\S]{0,20}adelantada \?/.test(
       fuenteA,
     ),
   );
