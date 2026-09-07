@@ -112,7 +112,10 @@ export function PizarraAnimada({
     const base = raiz.getBoundingClientRect();
     const medidas: Record<string, Caja> = {};
 
-    for (const clase of new Set(escena.focos.map((f) => f.clase))) {
+    // Un foco puede enmarcar varias piezas por separado —los dos términos que se
+    // cancelan a uno y otro lado del igual—, y entonces se mide cada una.
+    const aMedir = new Set(escena.focos.flatMap((f) => f.piezas ?? [f.clase]));
+    for (const clase of aMedir) {
       const piezas = raiz.querySelectorAll(`.${CSS.escape(clase)}`);
       if (piezas.length === 0) continue;
 
@@ -222,10 +225,25 @@ export function PizarraAnimada({
             Lo que queda de los pasos anteriores son las cifras ya escritas, que
             es como se ve una cuenta hecha a mano.
           */}
-          {escena.focos.map((f, i) => {
-            const caja = cajas[f.clase];
-            if (!caja || i !== foco) return null;
-            return <Resaltado key={`${f.clase}-${i}`} foco={f} caja={caja} />;
+          {escena.focos.flatMap((f, i) => {
+            if (i !== foco) return [];
+            // Una caja POR PIEZA. Con una sola caja para las dos, la del
+            // despeje abarcaba desde el 6 de la izquierda hasta el de la
+            // derecha —tragándose el "= 16"— y la tachadura cruzaba el signo
+            // igual, que no se cancela con nada.
+            return (f.piezas ?? [f.clase]).flatMap((pieza, j) => {
+              const caja = cajas[pieza];
+              if (!caja) return [];
+              return [
+                <Resaltado
+                  key={`${pieza}-${i}-${j}`}
+                  foco={f}
+                  caja={caja}
+                  // El rótulo se escribe una sola vez, sobre la primera pieza.
+                  conEtiqueta={j === 0}
+                />,
+              ];
+            });
           })}
         </svg>
       </div>
@@ -244,7 +262,15 @@ export function PizarraAnimada({
  * Los que ya han pasado se quedan tenues en lugar de desaparecer: al llegar a
  * la última columna, el alumno ve el camino recorrido por la cuenta.
  */
-function Resaltado({ foco, caja }: { foco: Foco; caja: Caja }) {
+function Resaltado({
+  foco,
+  caja,
+  conEtiqueta = true,
+}: {
+  foco: Foco;
+  caja: Caja;
+  conEtiqueta?: boolean;
+}) {
   return (
     <g className="pz-resaltado" data-tipo={foco.tipo}>
       {/* El fondo va DEBAJO del trazo y encima de la fórmula: es lo que hace que
@@ -300,7 +326,7 @@ function Resaltado({ foco, caja }: { foco: Foco; caja: Caja }) {
         />
       ) : null}
 
-      {foco.etiqueta ? (
+      {foco.etiqueta && conEtiqueta ? (
         <text
           x={caja.x + caja.ancho / 2}
           y={caja.y - 6}

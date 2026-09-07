@@ -42,6 +42,16 @@ export interface Foco {
   /** Rótulo corto que se dibuja junto al recuadro ("llevo 1"). */
   etiqueta?: string;
   /**
+   * Piezas que este foco enmarca POR SEPARADO, cada una con su caja.
+   *
+   * Sin esto, dos trozos que comparten clase se enmarcan en UNA sola caja que
+   * los abarca a los dos y a todo lo que quede en medio. Para una columna eso
+   * es lo que se quiere; para una cancelación a los dos lados de una ecuación
+   * es un disparate: la caja se comía el "= 16" y la tachadura cruzaba el signo
+   * igual, que no se cancela con nada.
+   */
+  piezas?: string[];
+  /**
    * La palabra por la que el tutor llama a este paso: "unidades", "decenas".
    *
    * Es la señal más fiable para seguirle, porque la dice con cualquier
@@ -403,7 +413,12 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const izquierda = unitario
     ? `${coeficiente === -1 ? "-" : ""}${variable}`
     : `${marcar("pz-coef-despeje", String(coeficiente))}${variable}`;
-  const terminoLatex = b === 0 ? "" : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela", String(Math.abs(b)))}`;
+  // Cada término que se cancela lleva SU clase además de la común: la común
+  // identifica el foco, las propias delimitan una caja por término.
+  const terminoLatex =
+    b === 0
+      ? ""
+      : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela pz-cancela-izq", String(Math.abs(b)))}`;
 
   // Cuántos focos habrá, para saber en cuál se destapa la solución. La ecuación
   // no puede empezar con el resultado escrito: eso es dar la respuesta antes de
@@ -415,7 +430,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const compensacion =
     b === 0
       ? ""
-      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela", String(Math.abs(b)))}`)}`;
+      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`;
 
   const solucion = formatearRacional(c - b, coeficiente);
   const latex =
@@ -429,6 +444,9 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   if (b !== 0) {
     focos.push({
       clase: "pz-cancela",
+      // Una caja por término: la del miembro izquierdo y la del derecho. Nunca
+      // una sola que las una pasando por encima del igual.
+      piezas: ["pz-cancela-izq", "pz-cancela-der"],
       tipo: "tachado",
       narracion: `Quitamos ${Math.abs(b)} en los dos lados: a la izquierda se cancela y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
       etiqueta: "se cancelan",
@@ -558,7 +576,7 @@ export function escenaDeSimplificacion(texto: string, id: string): Escena | null
     abajoSimple === "1" ? arribaSimple : `\\frac{${arribaSimple}}{${abajoSimple}}`;
 
   const latex =
-    `\\frac{${marcar("pz-cancela", arriba)}}{${marcar("pz-cancela", abajo)}}` +
+    `\\frac{${marcar("pz-cancela pz-cancela-num", arriba)}}{${marcar("pz-cancela pz-cancela-den", abajo)}}` +
     ` ${marcar("pz-rev-1", `= ${marcar("pz-simplificada", resultado)}`)}`;
 
   const porQue: string[] = [];
@@ -580,6 +598,9 @@ export function escenaDeSimplificacion(texto: string, id: string): Escena | null
     focos: [
       {
         clase: "pz-cancela",
+        // Se tachan arriba y abajo por separado, como se hace a mano; una caja
+        // única taparía también la raya de la fracción.
+        piezas: ["pz-cancela-num", "pz-cancela-den"],
         tipo: "tachado",
         narracion: `${mayuscula(porQue.join(" y "))}.`,
         etiqueta: divisor > 1 ? `÷ ${divisor}` : "se cancelan",
@@ -741,6 +762,17 @@ export function situacionParaNarracion(
    */
   const palabras = palabrasDe(narracion);
 
+  // EL CIERRE DEL EJEMPLO, ANTES QUE NADA.
+  //
+  // "Así, 3 + 4 = 7. Ahora te toca a ti." es la frase con la que el tutor cierra
+  // la cuenta, y el óvalo tiene que ir al resultado. Por puntuación no puede
+  // ganar: dice exactamente los mismos números que el paso de las unidades —en
+  // una suma de una cifra, "3 más 4 son 7" ES la cuenta entera—, y el paso de
+  // las unidades lleva además la palabra de su columna. Se reconoce por su
+  // forma, no por parecido.
+  const cierre = cierreDeColumna(escenas, palabras, escenaActual);
+  if (cierre) return cierre;
+
   // Se buscan por separado la mejor escena CON algo que señalar y la mejor sin
   // nada. Una línea de prosa cuya narración es la frase entera encaja al 100 %
   // y le robaba el turno a la columna que el tutor estaba explicando; entre las
@@ -790,6 +822,60 @@ export function situacionParaNarracion(
   return eleccion ?? respaldo;
 }
 
+/**
+ * ¿Es esto el cierre de una cuenta en columna?
+ *
+ * Lo es cuando la frase cumple las dos condiciones a la vez:
+ *
+ *   1. NO nombra ninguna columna. El tutor dice "unidades" o "decenas" siempre
+ *      que explica una, así que una frase sin esa palabra no está en ninguna.
+ *   2. Repite la cuenta ENTERA: los dos sumandos y el total.
+ *
+ * Con las dos no queda otra lectura: la frase resume la cuenta y lo que toca
+ * encender es el óvalo del resultado. Exigir la cuenta entera es lo que separa
+ * el cierre de la presentación de la SIGUIENTE cuenta —"Vamos a sumar 7 más 2,
+ * columna por columna" tampoco nombra columna, pero no dice ni 3, ni 4, ni 7—.
+ */
+function cierreDeColumna(
+  escenas: readonly Escena[],
+  palabras: Set<string>,
+  escenaActual: number,
+): Situacion | null {
+  const orden = [
+    escenaActual,
+    ...escenas.map((_, i) => i).filter((i) => i !== escenaActual),
+  ];
+
+  for (const indice of orden) {
+    const escena = escenas[indice];
+    if (!escena) continue;
+
+    // Sólo las cuentas en columna: son las únicas cuyos focos llevan el nombre
+    // de su columna. En un polinomio o un despeje esta lectura no aplica.
+    const columnas = escena.focos.filter((f) => f.pista);
+    if (columnas.length === 0) continue;
+    if (columnas.some((f) => palabras.has(f.pista as string))) continue;
+
+    const resultado = escena.focos.findIndex((f) => f.clase === "pz-resultado");
+    if (resultado < 0) continue;
+
+    const cuenta = [
+      ...cifrasDe(escena.narracion),
+      ...cifrasDe(escena.focos[resultado].narracion),
+    ];
+    if (cuenta.length === 0 || !cuenta.every((n) => palabras.has(n))) continue;
+
+    return { escena: indice, foco: resultado };
+  }
+
+  return null;
+}
+
+/** Los números enteros de un texto, tal como se dicen. */
+function cifrasDe(texto: string): string[] {
+  return normalizar(texto).match(/\d+/g) ?? [];
+}
+
 /** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */
 function clavesDeFoco(foco: Foco): string[] {
   // La posición decimal manda sobre todo lo demás: si el tutor dice "decenas",
@@ -807,13 +893,21 @@ function clavesDeFoco(foco: Foco): string[] {
 /**
  * Qué parte de lo que diría el guion aparece en lo que ha dicho el tutor.
  *
- * Sólo cuentan las palabras largas y los números de dos cifras o más. Un "2"
- * suelto aparece en casi cualquier frase con números —"234 + 178 = 412" tiene
- * un 2, un 1 y un 4—, así que contarlo como prueba hacía que el cierre del
- * ejemplo se pareciera al paso de las centenas más que al del resultado.
+ * Cuentan las palabras largas y los números ENTEROS, de una cifra o de cuatro.
+ *
+ * Antes se exigían dos cifras. El miedo era razonable —"234 + 178 = 412" lleva
+ * dentro un 2, un 1 y un 4, y contarlos habría hecho que el cierre del ejemplo
+ * se pareciera al paso de las centenas—, pero no llega a darse: los dos lados
+ * se parten en números ENTEROS, así que la pieza "2" sólo casa con un "2"
+ * suelto, nunca con el 2 que va dentro de "234".
+ *
+ * Y exigir dos cifras dejaba ciega a la pizarra justo con las cuentas de los
+ * más pequeños: en "3 + 4 = 7" no hay una sola pieza que puntuar, así que dos
+ * sumas distintas de una cifra eran indistinguibles y el cierre del ejemplo no
+ * encajaba en ningún paso.
  */
 function solapamiento(narracion: string, palabras: Set<string>): number {
-  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d{2,}/g) ?? [];
+  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
   if (piezas.length === 0) return 0;
   const aciertos = piezas.filter((pieza) => palabras.has(pieza)).length;
   return aciertos / piezas.length;

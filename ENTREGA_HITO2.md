@@ -1,9 +1,10 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.888 comprobaciones automáticas, 0
-fallos**, de las cuales **261 son nuevas** y específicas de este hito
-(`qa/hito2.mjs`).
+verificado con la suite del proyecto: **3.529 comprobaciones automáticas, 0
+fallos** (`npm test`, código de salida 0), de las cuales **270 son nuevas** y
+específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
+Chrome de verdad** (`qa/navegador.mjs`).
 
 ---
 
@@ -250,16 +251,19 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 253 | 0 |
+| `qa/hito2.mjs` (este hito) | 270 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
-| `qa/leccion.mjs` | 811 | 0 |
+| `qa/leccion.mjs` | 819 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| `qa/navegador.mjs` (navegador real) | 8 | 0 |
-| **Total** | **1.888** | **0** |
+| `qa/navegador.mjs` (navegador real) | 12 | 0 |
+| **Suma de estas** | **1.917** | **0** |
+
+Y la suite entera, con las catorce baterías de `npm test`: **3.529
+comprobaciones, 0 fallos**.
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -791,3 +795,200 @@ dentro de Chrome. Suite completa: **1.888 comprobaciones, 0 fallos**.
 
 > Nota: el mensaje del cliente anuncia cuatro inconsistencias y en la captura
 > sólo se leen tres. Si hay una cuarta, hace falta el texto para cerrarla.
+
+---
+
+## 20. La cuenta que no llegaba a cerrarse
+
+Este repaso no salió de una captura del cliente. Salió de levantar el proyecto
+entero —PostgreSQL, servidor y navegador— y mirar la lección corriendo de
+principio a fin. De ahí salió un fallo de verdad en la pizarra, y dos pruebas
+que no probaban lo que decían.
+
+### 1. Con números de una cifra, el ejemplo no cerraba nunca
+
+**Lo que se veía.** Un alumno de primaria recién diagnosticado recibe cuentas de
+una cifra: `3 + 4`. La animación llegaba a *«Paso 2 de 3»* y ahí se quedaba. El
+óvalo sobre el resultado —el paso que remata la cuenta, el que dice *«el
+resultado es 7»*— no se encendía nunca, y la lección pasaba al ejercicio
+siguiente con el contador a medias.
+
+**Por qué.** La pizarra sigue al tutor comparando lo que dice con la narración
+de cada paso, y esa comparación sólo contaba **palabras de cuatro letras o más y
+números de dos cifras o más**. Aplicada al cierre de una cuenta pequeña, no
+queda nada que comparar:
+
+| Cuenta | Narración del paso | Lo que dice el tutor | Piezas comparables |
+| --- | --- | --- | --- |
+| `234 + 178` | «El resultado es 412.» | «Así, 234 + 178 = 412…» | `resultado`, **`412`** ✅ |
+| `3 + 4` | «El resultado es 7.» | «Así, 3 + 4 = 7…» | `resultado` — que el tutor no dice ❌ |
+
+Con el `412` bastaba; con el `7` no había nada, y el cierre no encajaba en
+ningún paso. La regla de las dos cifras se puso por un motivo razonable —«234 +
+178 = 412» lleva dentro un 2, un 1 y un 4, y contarlos habría confundido el
+cierre con el paso de las centenas—, pero ese riesgo no llega a darse: los dos
+lados se parten en números **enteros**, así que la pieza `2` sólo casa con un
+`2` suelto, nunca con el que va dentro de `234`.
+
+**La corrección.** Dos cambios en `lib/leccion/animacion.ts`:
+
+- Se cuentan los números enteros, tengan una cifra o cuatro. Con eso, además,
+  dos sumas distintas de una cifra dejan de ser indistinguibles entre sí.
+- El cierre se reconoce **por su forma, no por parecido**: una frase que no
+  nombra ninguna columna —el tutor dice «unidades» o «decenas» siempre que
+  explica una— y que repite la cuenta entera, sumandos y total, sólo puede ser
+  el cierre. Eso lo separa de la presentación de la cuenta SIGUIENTE («Vamos a
+  sumar 7 más 2, columna por columna» tampoco nombra columna, pero no dice ni 3,
+  ni 4, ni 7).
+
+En el navegador, la lección pasa ahora por *«Paso 3 de 3 · El resultado es 7»*,
+que antes no aparecía nunca. `qa/hito2.mjs` sube a **259 comprobaciones**, con
+seis nuevas que fijan el caso: el recorrido completo de una cuenta de una cifra,
+que el cierre no se quede en las unidades, y que presentar la cuenta siguiente
+lleve la pizarra a **esa** cuenta sin cerrar la anterior.
+
+### 2. La prueba de navegador llevaba días sin ejecutarse
+
+`qa/navegador.mjs` es la batería que abre un Chrome de verdad, y es la que
+destapó el fallo de la voz cancelada que la lectura del código había dado por
+bueno. Tenía dos problemas:
+
+- Cargaba el motor de navegador desde **una carpeta temporal del equipo de quien
+  la escribió**. Esa carpeta se limpió, y desde entonces no cargaba.
+- Al no cargar, **avisaba y salía con código 0**: figuraba como superada sin
+  haber abierto un navegador.
+
+Ahora `playwright-core` es una dependencia de desarrollo declarada —el *driver*,
+sin navegadores dentro: conduce el Chrome que ya esté instalado—, y no poder
+correr es un **fallo**, con su código de salida. Una prueba que no puede correr
+no es una prueba que pasa.
+
+Además, ni `qa/hito2.mjs` ni `qa/navegador.mjs` estaban en `npm test`: la batería
+del hito en curso había que lanzarla a mano. Las dos entran ahora en la suite, y
+cada una tiene su atajo (`npm run qa:hito2`, `npm run qa:navegador`).
+
+### 3. Dos comprobaciones que no comprobaban lo que decían
+
+Al arreglar el cierre, la lección empezó a llegar a su último paso —cosa que
+antes no hacía— y dejó al descubierto dos reglas escritas a la medida de un caso
+concreto:
+
+- **«El desarrollo no aparece mientras la animación explica»** daba por
+  terminada la animación al llegar a `Paso 5 de 5`, que son los pasos de la
+  cuenta de tres cifras del ejemplo grande. Una cuenta de una cifra tiene tres,
+  y al terminar en «Paso 3 de 3» la comprobación la acusaba de destripar la
+  solución. Ahora se pregunta por la forma —el último paso, sea cual sea el
+  número—, y se exige además que el tutor **esté hablando**, que es la condición
+  con la que la lección esconde el desarrollo. En la pausa entre el ejemplo y la
+  práctica sigue compuesto el desarrollo de la cuenta anterior, ya explicada
+  entera: eso no destripa nada y es justo lo que el alumno necesita para
+  repasar.
+- **«La consola no suelta errores»** disculpaba todo lo que encajara en
+  `/Failed to load resource/`, que es el texto con el que Chrome anuncia
+  **cualquier** recurso que no carga. El escape se puso para tapar el 404 del
+  favicon —que el proyecto no tenía—, y de paso habría tapado un trozo de
+  JavaScript que faltara o una llamada a la API que devolviera 500. Se añade
+  `app/icon.svg` —dibujado con rectángulos y no con un glifo, para que no dependa
+  de las tipografías de quien lo mire— y la comprobación pasa a ser lo que decía
+  ser: la consola limpia del todo, sin excepciones.
+
+### Comprobado
+
+Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
+
+| Batería | Comprobaciones | Fallos |
+| --- | ---: | ---: |
+| `qa/diagnostico.mjs` | 416 | 0 |
+| `qa/paso1.mjs` | 72 | 0 |
+| `qa/hito1.mjs` | 124 | 0 |
+| `qa/hito2.mjs` | 270 | 0 |
+| `qa/matematicas.mjs` | 100 | 0 |
+| `qa/diagnostico-nivel.mjs` | 94 | 0 |
+| `qa/qa.mjs` | 1.462 | 0 |
+| `qa/frontend.mjs` | 10 | 0 |
+| `qa/sesiones.mjs` | 126 | 0 |
+| `qa/aceptacion.mjs` | 24 | 0 |
+| `qa/leccion.mjs` | 819 | 0 |
+| `qa/navegador.mjs` (Chrome real) | 12 | 0 |
+| **Total** | **3.529** | **0** |
+
+Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
+
+`npm test` termina con código 0 y ejecuta **las catorce baterías**, la del
+navegador incluida. Compilación y comprobación de tipos, limpias.
+
+---
+
+## 20. Cuarta revisión: cancelación, diálogo pegado y lienzos vacíos
+
+Cuatro puntos sobre el build `38a10ff`. Los cuatro, corregidos.
+
+### 1. La cancelación se tragaba el signo igual (error matemático)
+
+**Lo que se veía.** En `2x + 6 = 16 − 6`, la caja roja y la tachadura de *«se
+cancelan»* encerraban `+ 6 = 16 − 6`: el signo igual y un número que no se
+cancela con nada. Como afirmación matemática, falsa.
+
+**Por qué.** Los dos seises compartían la clase `pz-cancela`, y el resaltado
+dibuja **una caja que abarca todas las piezas de una misma clase**. Para una
+columna de una cuenta eso es justo lo que se quiere —las tres cifras, un
+recuadro— pero para dos términos a uno y otro lado del igual es un disparate: la
+caja los une pasando por encima de todo lo que hay en medio.
+
+**La corrección.** Un foco puede enmarcar **varias piezas por separado**. Cada
+término que se va lleva su propia marca (`pz-cancela-izq`, `pz-cancela-der`) y
+la pizarra dibuja **un recuadro por término**, con el rótulo escrito una sola
+vez. Lo mismo al simplificar una fracción: numerador y denominador se tachan por
+separado, sin cruzar la raya.
+
+Medido en el navegador, no a ojo: con la lección de ecuaciones en pantalla, los
+recuadros salen en 683–704 y 744–761, y el signo igual está en 700–714 —**fuera
+de los dos**—. Es una comprobación permanente de `qa/navegador.mjs`.
+
+### 2. El diálogo se quedaba pegado de la fase anterior
+
+En "Reglas y propiedades" de Fracciones seguía debajo el ejemplo de la pizza, de
+"Concepto". Limpiar el subtítulo al abrir la fase —lo que se hizo en la ronda
+anterior— **no basta**: el orden de las directivas lo decide el generador de la
+lección, y una frase de la fase que se cierra puede llegar después del cambio.
+
+Ahora el subtítulo va **etiquetado con la fase a la que pertenece**, igual que ya
+se hacía con el contenido de la pizarra, y sólo se pinta si esa fase es la que
+está abierta. Llegue cuando llegue, una frase de Concepto no aparece bajo el
+rótulo de Reglas.
+
+### 3. Faltaba señalar el numerador y el denominador
+
+En "Concepto" de Fracciones, el tutor explicaba las dos palabras y la pizarra
+enseñaba una barra con una celda azul, sin decir cuál era cuál. Ahora el dibujo
+lo señala: una **flecha a la parte sombreada** rotulada *numerador: lo que
+tomamos*, y una **llave que abarca las cuatro partes** rotulada *denominador:
+partes iguales del todo*.
+
+### 4. El recuadro en blanco de Aritmética
+
+Dos causas, las dos corregidas:
+
+- **El lienzo tenía la altura del ejemplo resuelto en todas las fases.** Concepto
+  y Reglas enseñan una tarjeta y poco más, así que quedaba medio lienzo vacío.
+  Ahora el alto se ajusta a la fase —fijo dentro de cada una, que es lo que
+  evitaba que los botones bailaran— y cambia sólo al cambiar de fase, cuando la
+  vista se sustituye entera de todas formas.
+- **Aritmética era el único tema sin diagrama.** Su fase de Concepto se quedaba
+  con una línea de texto en medio del lienzo. Ahora tiene el suyo: dos grupos de
+  fichas que se juntan en un total.
+
+Medido en el navegador, el hueco en blanco de la fase de Concepto de Aritmética
+pasa de **330 px a 93 px**, y el de Reglas de 273 px a 168 px, con la tarjeta de
+la regla ocupando el resto.
+
+Y de paso: la pizarra ya no repite el rótulo de la regla que la tarjeta acaba de
+enseñar. En la fase de Reglas se leía "Suma con llevada" en la tarjeta, otra vez
+debajo y una tercera en el subtítulo.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **270 comprobaciones** y `qa/navegador.mjs` a **12**, tres
+de ellas nuevas y dentro de Chrome: que se dibuje un recuadro por término
+cancelado y que ninguno encierre el signo igual. `npm test` completo: **3.529
+comprobaciones, 0 fallos**.

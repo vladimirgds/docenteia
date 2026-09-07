@@ -122,6 +122,59 @@ function CurvaYTangente() {
   );
 }
 
+/**
+ * Dos grupos de fichas que se juntan: la idea de suma.
+ *
+ * Aritmética no tenía dibujo y su fase de Concepto se quedaba con una línea de
+ * texto en medio del lienzo. Se cuentan fichas, que es como se entiende sumar
+ * antes de aprender a colocar las cifras en columna.
+ */
+function JuntarCantidades() {
+  const g = GEOMETRIAS.ARITMETICA;
+  /** Un grupo de fichas sin juntar: gris, porque el total aún no está hecho. */
+  const grupo = (inicio: number, cuantas: number) =>
+    Array.from({ length: cuantas }, (_, i) => (
+      <circle
+        key={`${inicio}-${i}`}
+        cx={inicio + i * 24}
+        cy={52}
+        r="9"
+        className="fill-muted stroke-muted-foreground/50"
+        strokeWidth="1.5"
+      />
+    ));
+
+  return (
+    <svg
+      viewBox={`0 0 ${g.ancho} ${g.alto}`}
+      className="h-auto w-full max-w-sm"
+      role="img"
+      aria-label="Tres fichas y dos fichas se juntan para formar cinco."
+    >
+      {grupo(24, 3)}
+      {grupo(120, 2)}
+
+      {/* La flecha del "da como resultado". */}
+      <line x1="160" y1="52" x2="180" y2="52" className="stroke-muted-foreground" strokeWidth="1.5" />
+      <polygon points="188,52 178,47 178,57" className="fill-muted-foreground" />
+
+      {/* El total, ya juntas y en el color del tema. */}
+      {Array.from({ length: 5 }, (_, i) => (
+        <circle
+          key={`t-${i}`}
+          cx={196 + (i % 3) * 14}
+          cy={i < 3 ? 44 : 62}
+          r="6"
+          className="fill-primary/60 stroke-primary"
+          strokeWidth="1.2"
+        />
+      ))}
+
+      <Etiquetas geometria={g} />
+    </svg>
+  );
+}
+
 /** Un todo dividido en partes iguales: la idea de fracción. */
 function PartesDeUnTodo() {
   const g = GEOMETRIAS.FRACCIONES;
@@ -144,6 +197,22 @@ function PartesDeUnTodo() {
           strokeWidth="1.5"
         />
       ))}
+
+      {/* La flecha que ata la palabra "numerador" a la parte sombreada. Sin
+          ella, el alumno oye los dos nombres y ve un rectángulo partido, pero
+          nada le dice cuál es cuál. */}
+      <line x1="45" y1="15" x2="45" y2="30" className="stroke-primary" strokeWidth="1.5" />
+      <polygon points="45,36 41,28 49,28" className="fill-primary" />
+
+      {/* Y la llave que abarca las cuatro partes: eso es el denominador. */}
+      <path
+        d="M 20 80 L 20 86 L 220 86 L 220 80"
+        className="stroke-primary"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      <polygon points="120,94 116,86 124,86" className="fill-primary" />
+
       <Etiquetas geometria={g} />
     </svg>
   );
@@ -174,6 +243,7 @@ function BalanzaEnEquilibrio() {
 }
 
 const DIAGRAMAS: Record<string, () => React.ReactElement> = {
+  ARITMETICA: JuntarCantidades,
   DERIVADAS: CurvaYTangente,
   FRACCIONES: PartesDeUnTodo,
   ECUACIONES_LINEALES: BalanzaEnEquilibrio,

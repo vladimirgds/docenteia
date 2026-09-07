@@ -29,7 +29,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { BASE_URL as BASE } from "./base-url.mjs";
+import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
 import { iniciarSesion, registrarAlumno } from "./sesion.mjs";
 
 const require = createRequire(import.meta.url);
@@ -45,10 +45,17 @@ const CHROME =
     "/usr/bin/chromium",
   ].find((ruta) => existsSync(ruta));
 
-/** El motor de navegador vive fuera del proyecto: es una herramienta, no una dependencia. */
-const RUTA_PLAYWRIGHT =
-  process.env.PLAYWRIGHT_CORE ||
-  "C:/Users/ADMINI~1/AppData/Local/Temp/2/claude/c--Users-Administrator-Documents-Maths-2-/08e627f6-dfc0-4951-b8e9-778e8330ee3f/scratchpad/node_modules/playwright-core";
+/**
+ * El motor de navegador es `playwright-core`: el DRIVER, sin navegadores dentro.
+ *
+ * Se declara en devDependencies —y no en una ruta suelta de un equipo— porque
+ * una prueba que sólo corre en la máquina de quien la escribió no es una
+ * prueba: es una anécdota. `playwright-core` NO descarga Chromium (eso es
+ * `playwright` a secas): conduce el Chrome que ya está instalado, que es justo
+ * lo que aquí se quiere. Se sigue admitiendo PLAYWRIGHT_CORE para apuntar a una
+ * copia externa.
+ */
+const RUTA_PLAYWRIGHT = process.env.PLAYWRIGHT_CORE || "playwright-core";
 
 let ok = 0;
 const fallos = [];
@@ -74,23 +81,40 @@ function salir() {
   process.exit(fallos.length > 0 ? 1 : 0);
 }
 
+/**
+ * UNA PRUEBA QUE NO PUEDE CORRER NO ES UNA PRUEBA QUE PASA.
+ *
+ * Antes, si faltaba playwright-core, esto avisaba y salía con código 0: la
+ * batería figuraba como superada sin haber abierto un navegador. Y como la ruta
+ * apuntaba a una carpeta temporal, bastó con que se limpiara para que la única
+ * prueba que mira la pantalla de verdad dejara de ejecutarse sin que nadie lo
+ * notara. Ahora la falta de driver y la falta de navegador son FALLOS, con su
+ * código de salida, que es lo que `npm test` sabe leer.
+ */
 let chromium;
 try {
   ({ chromium } = require(RUTA_PLAYWRIGHT));
-} catch {
-  console.log("\n(playwright-core no está instalado: se omite la prueba de navegador.)");
-  console.log("  npm i playwright-core   y   CHROME=<ruta a chrome.exe> node qa/navegador.mjs\n");
-  process.exit(0);
+} catch (e) {
+  console.error("\n  ✗ No se ha podido cargar playwright-core: la lección NO se ha probado en un navegador.");
+  console.error("    Instálalo con:  npm install");
+  console.error("    O apunta a una copia externa:  PLAYWRIGHT_CORE=<ruta> node qa/navegador.mjs");
+  console.error(`    (${String(e.message).split("\n")[0]})\n`);
+  process.exit(1);
 }
 if (!CHROME) {
-  console.log("\n(No se ha encontrado Chrome ni Edge: se omite la prueba de navegador.)\n");
-  process.exit(0);
+  console.error("\n  ✗ No se ha encontrado Chrome ni Edge: la lección NO se ha probado en un navegador.");
+  console.error("    Indica la ruta con:  CHROME=<ruta a chrome.exe> node qa/navegador.mjs\n");
+  process.exit(1);
 }
 
 // ── Un alumno listo para entrar en la lección ────────────────────────────────
 
 const email = `qa.navegador.${Date.now().toString(36)}@mentoriamath.local`;
 const clave = "Alumno-2026";
+
+// Sin esto, no arrancar la aplicación se manifestaba como un ECONNREFUSED sin
+// traducir y treinta líneas de traza, en vez de como lo que es.
+await exigirServidor();
 
 const alta = await registrarAlumno(BASE, { email, password: clave, nombre: "QA Navegador" });
 if (!alta.ok) {
@@ -260,6 +284,9 @@ while (Date.now() - inicio < 45_000) {
       hayDesarrollo: [...document.querySelectorAll("p")].some(
         (p) => p.textContent?.trim() === "Desarrollo",
       ),
+      // ¿Hay una locución sonando AHORA? Es la condición con la que la lección
+      // decide esconder el desarrollo, así que la comprobación la necesita.
+      hablando: (window.__locuciones ?? []).some((l) => l.inicio != null && l.fin == null),
       cajaX: caja ? Number(caja.getAttribute("x") ?? caja.getAttribute("cx")) : null,
       destapadas,
       locuciones: (window.__locuciones ?? []).map((l) => ({
@@ -272,7 +299,6 @@ while (Date.now() - inicio < 45_000) {
     };
   });
   fotos.push(foto);
-  if (foto.contador && /Paso 5 de 5/.test(foto.contador)) break;
   await pagina.waitForTimeout(150);
 }
 
@@ -288,9 +314,35 @@ for (const f of conPanel) {
 console.log("  · recorrido:");
 for (const paso of recorrido) console.log(`      ${paso}`);
 
+/**
+ * ¿La animación ha llegado a su último paso?
+ *
+ * Antes esto se preguntaba con /Paso 5 de 5/, que son los pasos que tiene la
+ * cuenta de tres cifras del ejemplo grande. Una cuenta de una cifra tiene tres,
+ * y al llegar a "Paso 3 de 3" —ya terminada, con su resultado rodeado— el
+ * bloque Desarrollo aparece con todo el derecho: la comprobación lo denunciaba
+ * como spoiler. Se pregunta por la forma, no por un número escrito a mano.
+ */
+function enElUltimoPaso(contador) {
+  const m = /^Paso (\d+) de (\d+)/.exec(contador ?? "");
+  return Boolean(m) && m[1] === m[2];
+}
+
 // A. El spoiler
+//
+// LA REGLA, TAL COMO LA APLICA LA LECCIÓN: el desarrollo se esconde mientras el
+// tutor EXPLICA y la animación no ha destapado todo. En cuanto la animación
+// termina —o la lección calla— el desarrollo vuelve entero, que es lo que el
+// alumno necesita para repasar.
+//
+// Sin la condición de que el tutor esté hablando, esto acusaba un caso legítimo:
+// al pasar del ejemplo a la práctica la animación entra en la cuenta nueva por
+// su paso 1, y durante la pausa entre locuciones sigue compuesto el desarrollo
+// de la cuenta ANTERIOR —ya explicada entera—. Eso no destripa nada: lo que no
+// puede pasar es que el desarrollo adelante lo que la animación todavía está
+// explicando, y para eso hace falta que el tutor esté explicándolo.
 const spoiler = conPanel.filter(
-  (f) => f.hayDesarrollo && f.contador && !/Paso 5 de 5/.test(f.contador),
+  (f) => f.hayDesarrollo && f.hablando && f.contador && !enElUltimoPaso(f.contador),
 );
 check(
   "el bloque DESARROLLO no aparece mientras la animación explica",
@@ -362,18 +414,120 @@ check("las cifras destapadas no vuelven a esconderse", retrocesos === 0, `${retr
 console.log(`  · cifras destapadas: ${conPanel.map((f) => f.destapadas).join("")}`.slice(0, 90));
 
 // D. Sin errores de consola
-// El favicon no existe en el proyecto y el navegador lo pide en cada carga: es
-// ruido conocido, no un fallo de la lección.
-console.log("  · consola:", JSON.stringify(erroresConsola.slice(0, 4)));
-const soloFavicon = erroresConsola.every(
-  (e) => /favicon/i.test(e) || /Failed to load resource/i.test(e),
-);
-const erroresReales = soloFavicon ? [] : erroresConsola;
+//
+// ESTA COMPROBACIÓN ERA UN COLADOR. Ignoraba todo lo que encajara en
+// /Failed to load resource/, que es el texto con el que Chrome anuncia CUALQUIER
+// recurso que no carga: un trozo de JavaScript que falta, una llamada a la API
+// que devuelve 500 y el favicon inexistente daban exactamente el mismo mensaje.
+// El escape se puso para tapar el 404 del favicon —que el proyecto no tenía— y
+// de paso tapaba cualquier fallo de carga real.
+//
+// El favicon ya existe (`app/icon.svg`), así que no hay nada que disculpar y la
+// comprobación puede ser lo que decía ser: la consola, limpia del todo.
+if (erroresConsola.length > 0) {
+  console.log("  · consola:");
+  for (const e of erroresConsola.slice(0, 8)) console.log(`      ${e}`);
+} else {
+  console.log("  · consola: limpia");
+}
 check(
   "la consola del navegador no suelta errores",
-  erroresReales.length === 0,
-  erroresReales.slice(0, 2).join(" | "),
+  erroresConsola.length === 0,
+  erroresConsola.slice(0, 2).join(" | "),
 );
+
+// ── Segunda escena: la cancelación de un despeje ──────────────────────────
+//
+// El cliente lo reportó como error matemático grave: en "2x + 6 = 16 - 6" la
+// caja roja y la tachadura abarcaban "+ 6 = 16 - 6", es decir el signo igual y
+// un número que no se cancela con nada. Lo único que puede quedar dentro es el
+// término que se va, en su miembro. Se mide en pantalla: dónde están las cajas
+// y dónde el "=".
+console.log("\n── Ecuaciones lineales: la cancelación no puede tragarse el igual ──");
+
+const emailEq = `qa.despeje.${Date.now().toString(36)}@mentoriamath.local`;
+const altaEq = await registrarAlumno(BASE, { email: emailEq, password: clave, nombre: "QA Despeje" });
+await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", cookie: altaEq.sesion },
+  body: JSON.stringify({ etapa: "SECUNDARIA", curso: 2 }),
+});
+const pruebaEq = await (
+  await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: altaEq.sesion } })
+).json();
+await fetch(`${BASE}/api/diagnostico`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", cookie: altaEq.sesion },
+  body: JSON.stringify({
+    respuestas: (pruebaEq.preguntas ?? []).map((p) => ({
+      preguntaId: p.id,
+      respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0",
+    })),
+  }),
+});
+const galletaEq = (await iniciarSesion(BASE, emailEq, clave)) ?? altaEq.sesion;
+
+const ctxEq = await navegador.newContext({ viewport: { width: 1280, height: 1400 } });
+await ctxEq.addCookies(
+  galletaEq.split(";").map((par) => {
+    const [nombre, ...resto] = par.trim().split("=");
+    return {
+      name: nombre,
+      value: resto.join("="),
+      domain: url.hostname,
+      path: "/",
+      httpOnly: false,
+      secure: url.protocol === "https:",
+    };
+  }),
+);
+const paginaEq = await ctxEq.newPage();
+await paginaEq.goto(`${BASE}/estudiante/leccion`, { waitUntil: "networkidle" });
+
+const temas = await paginaEq.locator(".text-lg").allTextContents();
+const cual = temas.findIndex((t) => /ecuaciones/i.test(t));
+check("la vista ofrece Ecuaciones lineales", cual >= 0, temas.join(", "));
+await paginaEq
+  .getByRole("button", { name: /Empezar|Desde el principio/ })
+  .nth(cual < 0 ? 0 : cual)
+  .click();
+
+let cancelacion = null;
+for (let k = 0; k < 80 && !cancelacion; k++) {
+  cancelacion = await paginaEq.evaluate(() => {
+    const panel = document.querySelector(".pz-animada");
+    if (!panel?.querySelector('.pz-resaltado[data-tipo="tachado"]')) return null;
+    const caja = (n) => {
+      const b = n.getBoundingClientRect();
+      return { x1: Math.round(b.left), x2: Math.round(b.right) };
+    };
+    return {
+      formula: panel.querySelector("annotation")?.textContent ?? "",
+      cajas: [...panel.querySelectorAll('.pz-resaltado[data-tipo="tachado"] rect')].map(caja),
+      iguales: [...panel.querySelectorAll(".pz-formula .mrel")]
+        .filter((n) => n.textContent?.trim() === "=")
+        .map(caja),
+    };
+  });
+  if (!cancelacion) await paginaEq.waitForTimeout(750);
+}
+
+if (!cancelacion) {
+  check("la lección llega a mostrar una cancelación", false, "no apareció en 60 s");
+} else {
+  // Cada caja se dibuja dos veces —fondo y trazo—, así que se agrupan por
+  // posición para contar recuadros, no rectángulos.
+  const distintas = [...new Set(cancelacion.cajas.map((c) => `${c.x1}-${c.x2}`))];
+  console.log(`  · recuadros: ${distintas.join(" · ")}`);
+  console.log(`  · signos igual: ${cancelacion.iguales.map((s) => `${s.x1}-${s.x2}`).join(" · ")}`);
+
+  check("se dibuja un recuadro por término cancelado", distintas.length === 2, distintas.join(" · "));
+  check(
+    "y ningún recuadro encierra el signo igual",
+    !cancelacion.cajas.some((c) => cancelacion.iguales.some((s) => s.x1 >= c.x1 && s.x2 <= c.x2)),
+    JSON.stringify(cancelacion.cajas),
+  );
+}
 
 await navegador.close();
 salir();

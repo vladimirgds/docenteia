@@ -248,6 +248,25 @@ export function Aula({
   const [faseDelContenido, setFaseDelContenido] = useState("");
   const [resaltado, setResaltado] = useState<string | null>(null);
   const [subtitulo, setSubtitulo] = useState("");
+  /**
+   * DE QUÉ FASE ES EL SUBTÍTULO.
+   *
+   * Lo mismo que ya se hacía con el contenido de la pizarra, y por el mismo
+   * motivo: el cliente vio la fase de "Reglas y propiedades" con el ejemplo de
+   * la pizza —de "Concepto"— debajo. Limpiar al abrir la fase no basta, porque
+   * el orden de las directivas lo decide el generador de la lección y una frase
+   * de la fase anterior puede llegar después del cambio.
+   *
+   * Etiquetado, no hay orden que valga: una frase de Concepto no se pinta
+   * mientras esté abierta Reglas, llegue cuando llegue.
+   */
+  const [faseDelSubtitulo, setFaseDelSubtitulo] = useState("");
+
+  /** Guarda lo que se está diciendo junto con la fase a la que pertenece. */
+  const fijarSubtitulo = useCallback((texto: string) => {
+    setSubtitulo(texto);
+    setFaseDelSubtitulo(fasesRef.current[fasesRef.current.length - 1]?.id ?? "");
+  }, []);
   const [controles, setControles] = useState<EstadoControles>({
     playing: false,
     paused: false,
@@ -472,7 +491,7 @@ export function Aula({
 
         for (const linea of lineas) {
           if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
-          else setSubtitulo(linea);
+          else fijarSubtitulo(linea);
         }
       },
       // La explicación hablada NO va a la pizarra. El motor la escribía además
@@ -488,7 +507,7 @@ export function Aula({
       },
       setCaption: (texto) => {
         const t = String(texto ?? "");
-        setSubtitulo(t);
+        fijarSubtitulo(t);
         // Lo narrado se guarda aparte para poder saber qué regla está
         // explicando el tutor. Antes se deducía de la pizarra, pero la prosa ya
         // no se escribe allí.
@@ -1114,7 +1133,12 @@ export function Aula({
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
               fórmulas se componen igual que las de la pizarra. */}
-          {subtitulo && (
+          {/*
+              El subtítulo, sólo si es de la fase que está abierta. Una frase de
+              la fase anterior que llegue tarde no se pinta bajo el rótulo de la
+              nueva: contaría una cosa mientras la pizarra enseña otra.
+          */}
+          {subtitulo && faseDelSubtitulo === (fases[fases.length - 1]?.id ?? "") && (
             <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
               <TextoMatematico texto={subtitulo} />
             </p>

@@ -390,7 +390,63 @@ titulo("A1b. Lo destapado se queda escrito, y se declara con una regla CSS");
   );
   check(
     "y sólo se enciende el foco de la columna que se está operando",
-    /if \(!caja \|\| i !== foco\) return null;/.test(panel),
+    /if \(i !== foco\) return \[\];/.test(panel),
+  );
+}
+
+titulo("A1b2. La cancelación encierra los términos, no el signo igual");
+
+{
+  // Lo reportó el cliente y es un error matemático de los graves: en
+  // "2x + 6 = 16 - 6" la caja y la tachadura abarcaban "+ 6 = 16 - 6", o sea el
+  // signo igual y un número que no se cancela con nada. Cada término que se va
+  // tiene que llevar SU caja.
+  const escena = escenaDeDespeje("2x + 6 = 16", "e");
+  const cancelacion = escena.focos.find((f) => f.tipo === "tachado");
+
+  check(
+    "el foco de cancelación enmarca dos piezas, no un tramo entero",
+    Array.isArray(cancelacion.piezas) && cancelacion.piezas.length === 2,
+    JSON.stringify(cancelacion.piezas),
+  );
+  check(
+    "una por miembro: la de la izquierda y la de la derecha",
+    cancelacion.piezas.includes("pz-cancela-izq") &&
+      cancelacion.piezas.includes("pz-cancela-der"),
+  );
+  check(
+    "y cada una marca sólo su número en el LaTeX",
+    contenidoDe(escena.latex, "pz-cancela-izq") === "6" &&
+      contenidoDe(escena.latex, "pz-cancela-der") === "6",
+    `${contenidoDe(escena.latex, "pz-cancela-izq")} / ${contenidoDe(escena.latex, "pz-cancela-der")}`,
+  );
+  check(
+    "el 16 y el signo igual quedan FUERA de toda marca",
+    !marcas(escena.latex).some((m) => m.contenido.includes("16") || m.contenido.includes("=")),
+    JSON.stringify(marcas(escena.latex).map((m) => m.contenido)),
+  );
+
+  // Lo mismo al simplificar: numerador y denominador se tachan por separado, sin
+  // pasar la raya de la fracción por el medio.
+  const simplificada = escenaDeSimplificacion("12/8", "e");
+  check(
+    "al simplificar se tachan numerador y denominador por separado",
+    JSON.stringify(simplificada.focos[0].piezas) ===
+      JSON.stringify(["pz-cancela-num", "pz-cancela-den"]),
+  );
+
+  const panel = readFileSync(
+    new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "y la pizarra dibuja una caja por pieza",
+    panel.includes("(f.piezas ?? [f.clase]).flatMap") &&
+      panel.includes("escena.focos.flatMap((f) => f.piezas ?? [f.clase])"),
+  );
+  check(
+    "con el rótulo escrito una sola vez",
+    panel.includes("conEtiqueta={j === 0}"),
   );
 }
 
@@ -450,8 +506,8 @@ titulo("A2. Polinomios, despejes y prosa");
   check("el primer foco es la cancelación", escena.focos[0].tipo === "tachado");
   check("y se rotula como tal", escena.focos[0].etiqueta === "se cancelan");
   check(
-    "el término se tacha en los DOS lados",
-    (escena.latex.match(/pz-cancela/g) || []).length === 2,
+    "el término se tacha en los DOS lados, cada uno con su marca",
+    marcada(escena.latex, "pz-cancela-izq") && marcada(escena.latex, "pz-cancela-der"),
     escena.latex,
   );
   check(
@@ -509,8 +565,8 @@ titulo("A2. Polinomios, despejes y prosa");
   check("12/8 se anima como simplificación", escena?.clase === "simplificacion");
   check("lo que se cancela va tachado", escena.focos[0].tipo === "tachado");
   check(
-    "se tacha arriba y abajo",
-    (escena.latex.match(/pz-cancela/g) || []).length === 2,
+    "se tacha arriba y abajo, cada uno con su marca",
+    marcada(escena.latex, "pz-cancela-num") && marcada(escena.latex, "pz-cancela-den"),
     escena.latex,
   );
   check(
@@ -704,6 +760,54 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     cierre?.foco === guion[0].focos.length - 1,
     JSON.stringify(cierre),
   );
+
+  // ── Y LO MISMO CON UNA CUENTA DE UNA SOLA CIFRA ────────────────────────────
+  //
+  // Es la cuenta que recibe un alumno de primaria recién diagnosticado, y era
+  // justo la que no cerraba: "El resultado es 7" no tiene ninguna pieza que el
+  // tutor repita —"resultado" no lo dice, y el 7 no se contaba por ser de una
+  // cifra—, así que el cierre no encajaba en ningún paso y la pizarra se
+  // quedaba clavada en "Paso 2 de 3", sin llegar nunca a rodear el resultado.
+  {
+    const corta = guionDeLeccion(["3 + 4", "unidades: 3 + 4 = 7"]);
+    const ultimo = corta[0].focos.length - 1;
+
+    const pasos = [
+      ["Vamos a sumar 3 + 4 paso a paso.", -1],
+      ["Sumamos las unidades: 3 + 4 = 7.", 0],
+      ["Así, 3 + 4 = 7. Ahora te toca a ti.", ultimo],
+    ];
+    let donde = 0;
+    for (const [dicho, esperado] of pasos) {
+      const destino = situacionParaNarracion(corta, dicho, donde);
+      if (destino) donde = destino.escena;
+      check(
+        `una cuenta de una cifra: "${dicho.slice(0, 30)}…" va al paso ${esperado + 2}`,
+        destino?.foco === esperado,
+        destino ? `foco ${destino.foco}` : "sin situación",
+      );
+    }
+
+    check(
+      "el cierre de una cuenta de una cifra NO se queda en las unidades",
+      situacionParaNarracion(corta, "Así, 3 + 4 = 7. Ahora te toca a ti.", 0)?.foco === ultimo,
+    );
+
+    // Presentar la SIGUIENTE cuenta no puede cerrar la anterior: tampoco nombra
+    // columna, pero no repite la cuenta entera.
+    const dos = guionDeLeccion(["3 + 4", "unidades: 3 + 4 = 7", "7 + 2 = ?"]);
+    const siguiente = situacionParaNarracion(dos, "Vamos a sumar 7 más 2, columna por columna.", 0);
+    check(
+      "presentar la cuenta siguiente lleva la pizarra a ESA cuenta",
+      siguiente?.escena === 1 && siguiente?.foco === -1,
+      JSON.stringify(siguiente),
+    );
+
+    check(
+      "y el cierre de la primera sigue yendo a su resultado",
+      situacionParaNarracion(dos, "Así, 3 + 4 = 7. Ahora te toca a ti.", 0)?.escena === 0,
+    );
+  }
 
   check(
     "una frase que no habla de la cuenta no mueve la pizarra",
@@ -1300,6 +1404,29 @@ titulo("D. Máquina de estados del avatar");
   // El subtítulo pertenece a la fase que se cierra: al pasar de "Concepto" a
   // "Reglas", el ejemplo de la pizza se quedaba debajo mientras el tutor ya
   // explicaba otra cosa.
+  const pizarraTsx = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el subtítulo va etiquetado con la fase a la que pertenece",
+    aula.includes("faseDelSubtitulo") &&
+      /setFaseDelSubtitulo\(fasesRef\.current\[fasesRef\.current\.length - 1\]\?\.id/.test(aula),
+  );
+  check(
+    "y no se pinta si es de una fase que ya se cerró",
+    /subtitulo && faseDelSubtitulo === \(fases\[fases\.length - 1\]\?\.id \?\? ""\)/.test(aula),
+  );
+  check(
+    "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
+    /const compacta =\s*actual != null && !esFaseDeEjemplo/.test(pizarraTsx) &&
+      pizarraTsx.includes('compacta ? "h-[19rem] sm:h-[23rem]"'),
+  );
+  check(
+    "ni repite el rótulo de la regla que ya está en la tarjeta",
+    pizarraTsx.includes("repiteLaRegla") && pizarraTsx.includes("pasoSuelto && !repiteLaRegla"),
+  );
+
   check(
     "el subtítulo se limpia al cambiar de fase",
     /setFaseDelContenido\(clave\);[\s\S]{0,400}setSubtitulo\(""\);/.test(aula),

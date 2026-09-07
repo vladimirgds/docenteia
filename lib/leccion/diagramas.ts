@@ -7,6 +7,7 @@
  * la prueba daría por bueno un concepto vacío.
  */
 export const TEMAS_CON_DIAGRAMA = [
+  "ARITMETICA",
   "DERIVADAS",
   "FRACCIONES",
   "ECUACIONES_LINEALES",
@@ -106,11 +107,21 @@ export const GEOMETRIA_DERIVADAS: GeometriaDiagrama = {
   ],
 };
 
+/**
+ * El todo dividido en partes, con las dos palabras señaladas.
+ *
+ * Lo pidió el cliente: mientras el tutor explica qué es el numerador y qué el
+ * denominador, la pizarra enseñaba una barra con una celda azul y ninguna
+ * indicación de cuál es cuál. Un dibujo que no dice qué señala no enseña; el
+ * alumno tiene que atar cada palabra a una parte del dibujo.
+ */
 export const GEOMETRIA_FRACCIONES: GeometriaDiagrama = {
   ancho: 240,
-  alto: 90,
+  alto: 132,
   etiquetas: [
-    { texto: "1 de 4 partes iguales", x: 120, y: 84, anclaje: "middle", tamano: 10, tono: "tenue" },
+    { texto: "numerador: lo que tomamos", x: 20, y: 12, anclaje: "start", tamano: 9, tono: "acento" },
+    { texto: "denominador: partes iguales del todo", x: 120, y: 104, anclaje: "middle", tamano: 9, tono: "acento" },
+    { texto: "1 de 4 partes iguales", x: 120, y: 124, anclaje: "middle", tamano: 10, tono: "tenue" },
   ],
 };
 
@@ -124,7 +135,28 @@ export const GEOMETRIA_LINEALES: GeometriaDiagrama = {
   ],
 };
 
+/**
+ * Juntar dos grupos: la idea de suma, y de dónde sale la llevada.
+ *
+ * Aritmética era el único tema sin dibujo, y su fase de Concepto se quedaba con
+ * una línea de texto en medio del lienzo: es el "recuadro en blanco" que
+ * reportó el cliente. Aquí el alumno ve lo que significa sumar antes de que le
+ * expliquen cómo se coloca en columna.
+ */
+export const GEOMETRIA_ARITMETICA: GeometriaDiagrama = {
+  ancho: 240,
+  alto: 118,
+  etiquetas: [
+    { texto: "3", x: 46, y: 20, anclaje: "middle", tamano: 11, tono: "normal" },
+    { texto: "+", x: 96, y: 52, anclaje: "middle", tamano: 13, tono: "tenue" },
+    { texto: "2", x: 140, y: 20, anclaje: "middle", tamano: 11, tono: "normal" },
+    { texto: "5", x: 210, y: 20, anclaje: "middle", tamano: 11, tono: "acento" },
+    { texto: "juntar dos cantidades da el total", x: 120, y: 110, anclaje: "middle", tamano: 9, tono: "tenue" },
+  ],
+};
+
 export const GEOMETRIAS: Record<string, GeometriaDiagrama> = {
+  ARITMETICA: GEOMETRIA_ARITMETICA,
   DERIVADAS: GEOMETRIA_DERIVADAS,
   FRACCIONES: GEOMETRIA_FRACCIONES,
   ECUACIONES_LINEALES: GEOMETRIA_LINEALES,

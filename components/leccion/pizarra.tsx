@@ -306,6 +306,35 @@ export function Pizarra({
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [desarrollo.length, ejercicio?.id, actual?.id]);
 
+  /**
+   * ¿Es una fase de las que enseñan poco: Concepto o Reglas?
+   *
+   * Ahí no hay ejercicio ni desarrollo, sólo una tarjeta y a lo sumo una línea.
+   * Con el alto del ejemplo paso a paso, lo que se ve es medio lienzo vacío.
+   */
+  const compacta =
+    actual != null && !esFaseDeEjemplo(actual.id) && !esFaseDePractica(actual.id);
+
+  /**
+   * ¿La línea suelta no dice más que el nombre de la regla que ya está arriba?
+   *
+   * En la fase de Reglas, el motor escribe "Suma con llevada: si pasa de 9,
+   * llevo 1" justo debajo de la tarjeta que ya se titula "Suma con llevada" y
+   * enseña la cuenta. Es el mismo rótulo por segunda vez, y por tercera en el
+   * subtítulo. La pizarra es para la notación; la prosa, para la voz.
+   */
+  const repiteLaRegla = useMemo(() => {
+    if (!pasoSuelto || !reglaEnCurso) return false;
+    const limpiar = (t: string) =>
+      String(t ?? "")
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .toLowerCase()
+        .trim();
+    const nombre = limpiar(reglaEnCurso.nombre);
+    return nombre.length > 3 && limpiar(pasoSuelto.texto).startsWith(nombre);
+  }, [pasoSuelto, reglaEnCurso]);
+
   return (
     <div className={cn("space-y-3", className)}>
       <Fases fases={fases} />
@@ -313,9 +342,18 @@ export function Pizarra({
       {/* ALTURA FIJA, no mínima. Con una altura que crecía según el contenido,
           la pizarra cambiaba de tamaño en cada paso y los botones de abajo
           saltaban arriba y abajo mientras el alumno leía. El desbordamiento se
-          resuelve dentro, con scroll propio. */}
+          resuelve dentro, con scroll propio.
+
+          Fija DENTRO DE CADA FASE, eso sí. Concepto y Reglas enseñan una
+          tarjeta y poco más, y con la altura del ejemplo resuelto quedaba medio
+          lienzo en blanco —el cliente lo reportó como "recuadro vacío"—. El
+          alto cambia sólo al cambiar de fase, que es cuando la vista entera se
+          sustituye de todas formas. */}
       <div
-        className="relative h-[24rem] overflow-hidden rounded-lg border bg-card shadow-inner sm:h-[30rem]"
+        className={cn(
+          "relative overflow-hidden rounded-lg border bg-card shadow-inner",
+          compacta ? "h-[19rem] sm:h-[23rem]" : "h-[24rem] sm:h-[30rem]",
+        )}
         aria-live="polite"
         aria-label="Pizarra"
       >
@@ -434,7 +472,7 @@ export function Pizarra({
                     desmontajes, y el de dentro se ve como un recuadro que
                     asoma y desaparece. La línea nueva entra con su fundido y
                     la anterior se va con la fase, de una pieza. */}
-                {pasoSuelto && (
+                {pasoSuelto && !repiteLaRegla && (
                     <motion.div
                       key={pasoSuelto.id}
                       initial={{ opacity: 0, y: 10 }}

@@ -19,7 +19,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
-    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs",
+    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/hito2.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs && node qa/navegador.mjs",
     "qa:preflight": "node qa/preflight.mjs",
     "qa:diagnostico": "node qa/diagnostico.mjs",
     "qa:leccion": "node qa/leccion.mjs",
@@ -33,7 +33,9 @@
     "qa:paso1": "node qa/paso1.mjs",
     "qa:hito1": "node qa/hito1.mjs",
     "qa:matematicas": "node qa/matematicas.mjs",
-    "qa:diagnostico-nivel": "node qa/diagnostico-nivel.mjs"
+    "qa:diagnostico-nivel": "node qa/diagnostico-nivel.mjs",
+    "qa:hito2": "node qa/hito2.mjs",
+    "qa:navegador": "node qa/navegador.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
@@ -64,6 +66,7 @@
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
+    "playwright-core": "^1.63.0",
     "postcss": "^8.4.49",
     "prisma": "^6.2.1",
     "tailwindcss": "^3.4.17",

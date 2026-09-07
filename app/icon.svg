@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="MentorIA Math">
+  <!--
+    El icono de la pestaña. Vive en app/ y no en public/ porque así el App
+    Router le pone la etiqueta link rel="icon" en la cabecera: sin ella el
+    navegador pide /favicon.ico por su cuenta y se llevaba un 404 en CADA carga
+    de página. Ese 404 salía en la consola de la prueba de navegador, que a la
+    vez afirmaba que la consola estaba limpia.
+
+    Se dibuja con rectángulos y no con un glifo de texto a propósito: una letra
+    depende de las fuentes de quien la mire, y un icono no puede quedarse en
+    blanco porque el equipo del cliente no tenga la tipografía.
+
+    Azul de marca: la variable primary del tema claro, hsl(221 83% 53%).
+  -->
+  <rect width="32" height="32" rx="7" fill="hsl(221 83% 53%)"/>
+  <g fill="#fff">
+    <rect x="7" y="9" width="18" height="3.2" rx="1.6"/>
+    <rect x="10.6" y="12.2" width="3.2" height="11" rx="1.6"/>
+    <rect x="18.2" y="12.2" width="3.2" height="11" rx="1.6"/>
+  </g>
+</svg>
