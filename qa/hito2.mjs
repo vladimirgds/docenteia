@@ -35,6 +35,7 @@ import {
   escenaDeSimplificacion,
   escenaDeTexto,
   escenaDeAmplificacion,
+  escenaDeDistributiva,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
@@ -550,6 +551,92 @@ titulo("A00. Marcado semántico genérico");
     "la expresión se parte por el igual de nivel superior",
     JSON.stringify(miembros("a + b = c = d")).replace(/ /g, "") === '["a+b","c","d"]' &&
       miembros("\htmlClass{x}{a = b} + 1").length === 1,
+  );
+}
+
+titulo("A00a. La distributiva se reparte a la vista");
+
+{
+  // El cliente lo pidió: en 2(x + 4) el alumno ve de pronto 2x + 8 sin saber
+  // por qué. Hay que enseñar que el 2 entra en los dos sumandos.
+  const e = escenaDeDistributiva("2(x + 4) = 3x - 1", "e");
+  check("2(x + 4) se anima como distributiva", e?.clase === "distributiva");
+  check(
+    "un paso por sumando, más el resultado",
+    e.focos.length === 3,
+    `${e.focos.length} focos`,
+  );
+  check(
+    "cada paso enmarca el factor Y el sumando al que llega",
+    JSON.stringify(e.focos[0].piezas) === JSON.stringify(["pz-reparte-0", "pz-reparte-1"]) &&
+      JSON.stringify(e.focos[1].piezas) === JSON.stringify(["pz-reparte-0", "pz-reparte-2"]),
+  );
+  check(
+    "y se dice qué da cada producto",
+    /El 2 multiplica a x: da 2x\./.test(e.focos[0].narracion) &&
+      /Y el 2 multiplica a 4: da 8\./.test(e.focos[1].narracion),
+    e.focos[0].narracion,
+  );
+  check(
+    "el resultado no se destapa hasta el final",
+    e.latex.includes("\htmlClass{pz-rev-2}") && e.focos[2].clase === "pz-resultado",
+  );
+  check("y es el correcto", e.focos[2].narracion === "Queda 2x + 8.", e.focos[2].narracion);
+
+  const conResta = escenaDeDistributiva("3(2x - 5)", "e");
+  check(
+    "con un signo menos dentro, también",
+    conResta.focos.at(-1).narracion === "Queda 6x - 15.",
+    conResta.focos.at(-1).narracion,
+  );
+  check(
+    "lo que no es un reparto de los que se enseñan aquí se deja pasar",
+    escenaDeDistributiva("2(x + y)", "e") === null &&
+      escenaDeDistributiva("x(x+1)", "e") === null,
+  );
+}
+
+titulo("A00a2. El acarreo se destaca cuando el tutor lo nombra");
+
+{
+  // En la fase de reglas la frase no nombra ninguna posición —"si pasa de 9,
+  // llevo 1"—, y aun así el acarreo tiene que iluminarse en ese momento.
+  const guion = guionDeLeccion(["24 + 17"]);
+  const destino = situacionParaNarracion(guion, "Suma con llevada: si pasa de 9, llevo 1", 0);
+  const foco = destino ? guion[0].focos[destino.foco] : null;
+  check(
+    '"llevo 1" lleva el foco a la columna que se lleva una',
+    foco?.etiqueta === "llevo 1",
+    JSON.stringify(destino),
+  );
+
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  check(
+    "y en la fase de reglas la cuenta de la regla entra en la pizarra animada",
+    /esFaseDeReglas\(faseAbierta\) && reglaDetectada\?\.enunciado/.test(aula),
+  );
+}
+
+titulo("A00a3. Lo marcado se ve como una etiqueta, no como una raya");
+
+{
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  check(
+    "el término cancelado se colorea, no sólo se tacha",
+    /\.pz-cancela,\s*\.pz-marcado \{[^}]*color:/.test(estilos),
+  );
+  check(
+    "lo que se opera va en el color del tema",
+    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
+  );
+  check(
+    "el fondo del recuadro se ve de verdad",
+    /\.pz-fondo \{[^}]*fill: hsl\(217 91% 60% \/ 0\.22\)/.test(estilos),
+  );
+  check(
+    "y el recuadro entra con una transición, no de golpe",
+    /@keyframes pz-entra-foco \{[^}]*scale\(0\.94\)/.test(estilos) &&
+      /\.pz-resaltado \{[^}]*animation: pz-entra-foco 260ms/.test(estilos),
   );
 }
 

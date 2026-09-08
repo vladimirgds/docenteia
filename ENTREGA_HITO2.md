@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **3.574 comprobaciones automáticas, 0
-fallos** (`npm test`, código de salida 0), de las cuales **315 son nuevas** y
+verificado con la suite del proyecto: **3.588 comprobaciones automáticas, 0
+fallos** (`npm test`, código de salida 0), de las cuales **329 son nuevas** y
 específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
 Chrome de verdad** (`qa/navegador.mjs`).
 
@@ -251,7 +251,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 315 | 0 |
+| `qa/hito2.mjs` (este hito) | 329 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -260,9 +260,9 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
 | `qa/navegador.mjs` (navegador real) | 12 | 0 |
-| **Suma de estas** | **1.962** | **0** |
+| **Suma de estas** | **1.976** | **0** |
 
-Y la suite entera, con las catorce baterías de `npm test`: **3.574
+Y la suite entera, con las catorce baterías de `npm test`: **3.588
 comprobaciones, 0 fallos**.
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
@@ -901,7 +901,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
-| `qa/hito2.mjs` | 315 | 0 |
+| `qa/hito2.mjs` | 329 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/qa.mjs` | 1.462 | 0 |
@@ -910,7 +910,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/aceptacion.mjs` | 24 | 0 |
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/navegador.mjs` (Chrome real) | 12 | 0 |
-| **Total** | **3.574** | **0** |
+| **Total** | **3.588** | **0** |
 
 Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
 
@@ -1143,3 +1143,72 @@ contrato y la subrutina —incluido que ninguna marca cruce el igual en las cuat
 operaciones, que se marquen todas las apariciones y que un término ausente no
 invente un resaltado—, la amplificación, y el trazo dibujado. `npm test`
 completo: **3.574 comprobaciones, 0 fallos**.
+
+---
+
+## 23. Los pasos intermedios que faltaban, y el marcado que se ve
+
+El cliente revisó el build `4528e52` —anterior a la entrega del marcado
+semántico, que se fusionó después como `d6ccb29`— y pidió cerrar el PMV con
+cuatro cosas. Una ya estaba; las otras tres, hechas.
+
+### 1. Fracciones: el paso intermedio (ya entregado)
+
+`1/2 = 3/6` se compone desde `bf076ae` como `1×3 / 2×3 = 3/6`, con el factor
+recuadrado **arriba y abajo** —que es lo que enseña que se multiplica por lo
+mismo en los dos sitios— y el resultado destapándose sólo al final. Estaba
+fusionado pero no desplegado cuando se hizo la revisión.
+
+### 2. Ecuaciones: la propiedad distributiva
+
+En `2(x + 4)` el alumno veía aparecer `2x + 8` sin saber de dónde. Ahora el
+reparto se cuenta en dos pasos:
+
+1. Se enmarcan **el 2 y la x** a la vez → *«El 2 multiplica a x: da 2x.»*
+2. Se enmarcan **el 2 y el 4** → *«Y el 2 multiplica a 4: da 8.»*
+3. Óvalo sobre el resultado, que hasta ese momento no estaba escrito →
+   *«Queda 2x + 8.»*
+
+Cada paso enmarca el factor **y** el sumando al que llega, que es justo lo que
+hace ver que el de fuera entra en los dos y no sólo en el primero. Funciona
+igual con signo menos dentro (`3(2x − 5)` → `6x − 15`), y lo que no es un
+reparto de los que se enseñan aquí —dos variables distintas, factor con
+incógnita— se deja pasar en lugar de adornarlo mal.
+
+### 3. Aritmética: el acarreo, destacado cuando se nombra
+
+En "Reglas y propiedades" se veía una cuenta estática en una esquina. Ahora **la
+cuenta de la regla entra en la pizarra animada**: se monta paso a paso, y al
+oír *«si pasa de 9, llevo 1»* el foco salta a la columna que se lleva una. La
+frase de esa fase no nombra ninguna posición decimal, así que "llevo",
+"llevada", "llevamos" y "acarreo" delatan por sí solas a la columna que acarrea.
+
+### 4. El marcado se ve como una etiqueta
+
+- **El término marcado se colorea**: rojo lo que se cancela, azul lo que se
+  opera, verde el resultado. Antes era texto negro con una raya fina encima.
+- **El fondo del recuadro se ve** (de 0,16 a 0,22 de opacidad) y el trazo sigue
+  dibujándose de principio a fin.
+- **El recuadro entra con una transición**: aparece con una pizca de escala
+  —260 ms, con un rebote corto— en lugar de encenderse de golpe.
+
+Se ha hecho con CSS y no con Framer Motion: la capa de resaltados es SVG medido
+sobre la fórmula, y animarla con una librería de layout obligaría a que esa
+librería conociera unas coordenadas que se recalculan con cada cambio de tamaño.
+Con `prefers-reduced-motion`, nada de esto se anima.
+
+### Un fallo que sólo se veía abriendo la página
+
+Al meter la regla en la pizarra animada, dos constantes quedaron usadas antes de
+declararse. TypeScript no lo ve —son válidas en el módulo— y la aplicación
+compila, pero al montar la lección lanza *«Cannot access before
+initialization»* y la vista se queda en blanco. **Lo cazó `qa/navegador.mjs`**,
+que abre un Chrome de verdad: el arreglo salió de ahí antes de mandar nada.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **329 comprobaciones**, con tres bloques nuevos: la
+distributiva —dos pasos, el factor con cada sumando, el resultado destapado al
+final y el resultado correcto con signo menos—, el acarreo respondiendo a
+"llevo", y el aspecto de etiqueta del marcado. `npm test` completo: **3.588
+comprobaciones, 0 fallos**.

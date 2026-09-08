@@ -88,6 +88,7 @@ export interface Escena {
     | "despeje"
     | "simplificacion"
     | "amplificacion"
+    | "distributiva"
     | "semantica"
     | "texto";
 }
@@ -696,6 +697,125 @@ export function escenaDeAmplificacion(texto: string, id: string): Escena | null 
   };
 }
 
+// ── Propiedad distributiva ───────────────────────────────────────────────────
+
+/** Un término de dentro del paréntesis: "3x", "-4", "x". */
+interface TerminoInterno {
+  signo: 1 | -1;
+  coeficiente: number;
+  variable: string;
+}
+
+/** Lee "x + 4", "2x - 3", "5 + y" como términos con su signo. */
+function leerInterior(texto: string): TerminoInterno[] | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  if (!limpio) return null;
+
+  const terminos: TerminoInterno[] = [];
+  const patron = /([+-]?)(\d*)([a-zA-Z]?)/g;
+  let consumido = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = patron.exec(limpio)) !== null) {
+    if (m[0] === "") {
+      patron.lastIndex++;
+      continue;
+    }
+    if (m.index !== consumido) return null;
+    consumido = m.index + m[0].length;
+
+    const [, signo, coef, variable] = m;
+    if (!coef && !variable) return null;
+    terminos.push({
+      signo: signo === "-" ? -1 : 1,
+      coeficiente: coef === "" ? 1 : Number(coef),
+      variable: variable ?? "",
+    });
+  }
+
+  if (consumido !== limpio.length || terminos.length < 2 || terminos.length > 3) return null;
+  // Una sola variable: "xy" no es de lo que se enseña aquí.
+  if (new Set(terminos.map((t) => t.variable).filter(Boolean)).size > 1) return null;
+  return terminos;
+}
+
+/** Escribe un término ya multiplicado: "2x", "-8", "x". */
+function escribirTermino(t: TerminoInterno, factor: number): string {
+  const valor = t.coeficiente * factor;
+  if (!t.variable) return String(valor);
+  if (valor === 1) return t.variable;
+  if (valor === -1) return `-${t.variable}`;
+  return `${valor}${t.variable}`;
+}
+
+/**
+ * `2(x + 4)` contado como lo que es: el 2 entra en los DOS sumandos.
+ *
+ * Lo pidió el cliente: el alumno ve `2(x + 4)` y de pronto `2x + 8`, sin ver
+ * por qué. Aquí el factor y cada sumando se enmarcan a la vez —"el 2 multiplica
+ * a x", "y el 2 multiplica a 4"— y el resultado no se destapa hasta el final.
+ */
+export function escenaDeDistributiva(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // Sólo el paréntesis a la izquierda del igual, que es donde se reparte.
+  const m = limpio.match(/^(-?\d+)\(([^()]+)\)(?:=(.+))?$/);
+  if (!m) return null;
+
+  const factor = Number(m[1]);
+  const interior = leerInterior(m[2]);
+  if (!Number.isFinite(factor) || factor === 0 || !interior) return null;
+
+  const marcado = (i: number, cuerpo: string) => marcar(`pz-reparte pz-reparte-${i}`, cuerpo);
+  const dentro = interior
+    .map((t, i) => {
+      const signo = t.signo === -1 ? " - " : i > 0 ? " + " : "";
+      const coef = t.coeficiente === 1 && t.variable ? "" : String(t.coeficiente);
+      return `${signo}${marcado(i + 1, `${coef}${t.variable}`)}`;
+    })
+    .join("");
+
+  const expandido = interior
+    .map((t, i) => {
+      const valor = escribirTermino(t, factor * t.signo);
+      const sinSigno = valor.replace(/^-/, "");
+      const signo = valor.startsWith("-") ? " - " : i > 0 ? " + " : "";
+      return `${signo}${sinSigno}`;
+    })
+    .join("");
+
+  const resto = m[3] ? ` = ${planoALatex(m[3])}` : "";
+  const latex =
+    `${marcado(0, String(factor))}\\left(${dentro}\\right)${resto}` +
+    ` ${marcar(`pz-rev-${interior.length}`, `= ${marcar("pz-resultado", expandido)}`)}`;
+
+  const focos: Foco[] = interior.map((t, i) => ({
+    clase: "pz-reparte",
+    // El factor y el sumando al que llega, cada uno con su recuadro: es lo que
+    // enseña que el de fuera entra en los dos, y no sólo en el primero.
+    piezas: ["pz-reparte-0", `pz-reparte-${i + 1}`],
+    tipo: "caja",
+    narracion: `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${
+      t.variable ? `${t.coeficiente === 1 ? "" : t.coeficiente}${t.variable}` : t.coeficiente
+    }: da ${escribirTermino(t, factor)}.`,
+    etiqueta: `× ${factor}`,
+  }));
+
+  focos.push({
+    clase: "pz-resultado",
+    tipo: "ovalo",
+    narracion: `Queda ${expandido.replace(/\s+/g, " ").trim()}.`,
+  });
+
+  return {
+    id,
+    texto,
+    latex,
+    narracion: `Repartimos el ${factor} dentro del paréntesis.`,
+    clase: "distributiva",
+    focos,
+  };
+}
+
 // ── Escena de respaldo ───────────────────────────────────────────────────────
 
 /**
@@ -737,6 +857,7 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
     //    deja pasar a la siguiente.
     escenaDeColumna(texto, id) ??
     escenaDeDespeje(texto, id) ??
+    escenaDeDistributiva(texto, id) ??
     escenaDeAmplificacion(texto, id) ??
     escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
@@ -964,7 +1085,15 @@ function cifrasDe(texto: string): string[] {
 function clavesDeFoco(foco: Foco): string[] {
   // La posición decimal manda sobre todo lo demás: si el tutor dice "decenas",
   // está en las decenas, redacte la frase como la redacte.
-  if (foco.pista) return [foco.pista];
+  //
+  // Y si esa columna se lleva una, "llevo" también la delata: el cliente pidió
+  // que al oír "llevo 1" el acarreo se destaque EN ESE MOMENTO, y en la fase de
+  // reglas la frase no nombra ninguna posición ("si pasa de 9, llevo 1").
+  if (foco.pista) {
+    return foco.etiqueta === "llevo 1"
+      ? [foco.pista, "llevo", "llevada", "llevamos", "acarreo"]
+      : [foco.pista];
+  }
   if (foco.tipo === "tachado") return ["cancel", "quitamos", "restamos", "ambos lados", "los dos lados"];
   if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
   if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];

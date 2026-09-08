@@ -260,12 +260,57 @@
    columna que se está operando—, así que la entrada tiene que notarse: es la
    señal de que el foco se ha movido. */
 @keyframes pz-entra-foco {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .pz-resaltado {
-  animation: pz-entra-foco 200ms ease-out;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pz-entra-foco 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* LOS TÉRMINOS MARCADOS SE VEN COMO TALES.
+   El cliente lo pidió con nombre y apellidos: un término cancelado o agrupado
+   tiene que leerse como una etiqueta —fondo, borde y color— y no como una raya
+   fina sobre texto negro. El recuadro y el fondo los dibuja la capa SVG; el
+   COLOR del propio número va aquí, sobre el span que KaTeX conserva.
+
+   Cada familia con su color: azul lo que se opera, rojo lo que se va. */
+.pz-cancela,
+.pz-marcado {
+  color: hsl(0 72% 42%);
+  font-weight: 600;
+}
+
+.dark .pz-cancela,
+.dark .pz-marcado {
+  color: hsl(0 84% 68%);
+}
+
+.pz-factor,
+.pz-reparte,
+.pz-coef-despeje {
+  color: hsl(221 83% 45%);
+  font-weight: 600;
+}
+
+.dark .pz-factor,
+.dark .pz-reparte,
+.dark .pz-coef-despeje {
+  color: hsl(213 94% 72%);
+}
+
+/* Y el resultado, cuando ya está, en verde: es la meta, no un paso. */
+.pz-solucion,
+.pz-simplificada {
+  color: hsl(160 84% 30%);
+  font-weight: 600;
+}
+
+.dark .pz-solucion,
+.dark .pz-simplificada {
+  color: hsl(160 84% 55%);
 }
 
 /* El fondo de la columna operada. El cliente lo pidió así —"que la columna se
@@ -274,7 +319,7 @@
    `bg-blue-100 ring-2 ring-blue-500` de la interfaz, pero dibujado en la capa
    SVG: no toca la fórmula, así que no hay recomposición ni parpadeo. */
 .pz-fondo {
-  fill: hsl(217 91% 60% / 0.16);
+  fill: hsl(217 91% 60% / 0.22);
 }
 
 .dark .pz-fondo {
@@ -282,7 +327,7 @@
 }
 
 .pz-resaltado[data-tipo="tachado"] .pz-fondo {
-  fill: hsl(0 84% 60% / 0.13);
+  fill: hsl(0 84% 60% / 0.18);
 }
 
 /* La cancelación se pinta en rojo: es la única marca que dice "esto se va". */

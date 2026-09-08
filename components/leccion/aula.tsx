@@ -45,7 +45,7 @@ import {
   type EstadoConversacion,
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
-import { esFaseDeEjemplo, esFaseDePractica } from "@/lib/leccion/fases";
+import { esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
@@ -885,11 +885,29 @@ export function Aula({
    * están. Las líneas van en la notación plana del motor; el guion se encarga
    * de decidir cuáles se dejan animar.
    */
+  // Se mantiene al día la última regla nombrada, para poder inyectarla en la
+  // petición de aclaración sin que `pedirLeccion` dependa de este estado.
+  const [reglaDetectada, setReglaDetectada] = useState<ReglaVista | null>(null);
+
+  /** La fase que está abierta ahora mismo. */
+  const faseAbierta = fases[fases.length - 1]?.id ?? "";
+
   const lineasAnimadas = useMemo(() => {
     // Cada línea viaja como PASO: su LaTeX y, si el generador la envió, la
     // instrucción de foco. Con etiqueta, la pizarra marca exactamente lo que
     // dice; sin ella, la deduce como hasta ahora.
     const pasos: PasoSemantico[] = [];
+
+    // EN LA FASE DE REGLAS, LA CUENTA DE LA REGLA TAMBIÉN SE ANIMA.
+    //
+    // Lo pidió el cliente: en "Reglas y propiedades" se veía una cuenta
+    // estática en una esquina, y al oír "llevo 1" no se destacaba nada. Metida
+    // en la pizarra animada, la cuenta se monta paso a paso y el acarreo
+    // aparece cuando el tutor lo nombra.
+    if (esFaseDeReglas(faseAbierta) && reglaDetectada?.enunciado) {
+      pasos.push({ latex: reglaDetectada.enunciado });
+    }
+
     if (ejercicio?.texto) {
       pasos.push({ latex: ejercicio.texto, ...(ejercicio.operacion ? { operacion: ejercicio.operacion } : {}) });
     }
@@ -956,9 +974,6 @@ export function Aula({
    */
   const ocultarDesarrollo = !animacionCompleta && controles.playing && lineasAnimadas.length > 0;
 
-  /** La fase que está abierta ahora mismo. */
-  const faseAbierta = fases[fases.length - 1]?.id ?? "";
-
   /**
    * CAMBIAR DE FASE O DE TEMA EMPIEZA DE CERO.
    *
@@ -972,10 +987,6 @@ export function Aula({
    * declarativo evita tener que sacarle una API de mandos al aula.
    */
   const reinicioAnimacion = `${tema?.clave ?? ""}·${faseAbierta}`;
-
-  // Se mantiene al día la última regla nombrada, para poder inyectarla en la
-  // petición de aclaración sin que `pedirLeccion` dependa de este estado.
-  const [reglaDetectada, setReglaDetectada] = useState<ReglaVista | null>(null);
 
   useEffect(() => {
     // Se mira lo narrado Y lo escrito: el nombre de la regla puede aparecer en
