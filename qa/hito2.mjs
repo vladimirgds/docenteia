@@ -34,6 +34,7 @@ import {
   escenaDePolinomio,
   escenaDeSimplificacion,
   escenaDeTexto,
+  escenaDeAmplificacion,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
@@ -41,6 +42,7 @@ import {
 import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { repararEquivalencias } from "../src/preLight.js";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
+import { leerAmplificacion, marcarTerminos, miembros } from "../lib/leccion/marcado.ts";
 import { fraccionEnTexto, geometriaDeFraccion } from "../lib/leccion/diagramas.ts";
 import {
   avatarDe,
@@ -449,6 +451,165 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   check(
     "con el rótulo escrito una sola vez",
     panel.includes("conEtiqueta={j === 0}"),
+  );
+}
+
+titulo("A00. Marcado semántico genérico");
+
+{
+  // Lo que pidió el cliente: que un paso llegue ETIQUETADO —qué operación y
+  // sobre qué términos— y que la pizarra lo marque sin saber de qué tema es.
+  // Así el catálogo puede crecer sin tocar el frontend.
+  const cancelacion = escenaDeLinea(
+    {
+      latex: "2x + 8 - 2x = 3x - 1 - 2x",
+      operacion: { tipo: "cancelacion", terminosFoco: ["2x"], etiqueta: "se cancelan" },
+      narracion: "Restamos 2x en los dos lados.",
+    },
+    "e",
+  );
+
+  check("un paso etiquetado produce escena semántica", cancelacion.clase === "semantica");
+  check("con el trazo que le toca a su operación", cancelacion.focos[0].tipo === "tachado");
+  check("y con el rótulo que trae", cancelacion.focos[0].etiqueta === "se cancelan");
+  check(
+    "se marcan TODAS las apariciones del término, no la primera",
+    cancelacion.focos[0].piezas.length === 3,
+    JSON.stringify(cancelacion.focos[0].piezas),
+  );
+  check(
+    "cada aparición lleva su propia caja",
+    new Set(cancelacion.focos[0].piezas).size === cancelacion.focos[0].piezas.length,
+  );
+  check(
+    "y se respeta la narración del paso",
+    cancelacion.focos[0].narracion === "Restamos 2x en los dos lados.",
+  );
+
+  // La regla que no se puede romper: ninguna marca cruza el igual.
+  const conIgual = (escena) =>
+    marcas(escena.latex).some((m) => m.contenido.includes("="));
+  check("ninguna marca abarca el signo igual", !conIgual(cancelacion));
+
+  const otros = [
+    {
+      latex: "2(x + 4) = 3x - 1",
+      operacion: { tipo: "distributiva", terminosFoco: ["2", "(x + 4)"] },
+    },
+    {
+      latex: "\frac{1 \times 3}{2 \times 3} = \frac{3}{6}",
+      operacion: { tipo: "amplificacion", terminosFoco: ["3"], etiqueta: "×3" },
+    },
+    {
+      latex: "24 + 17",
+      operacion: { tipo: "columna", terminosFoco: ["4", "7"], etiqueta: "llevo 1" },
+    },
+  ];
+  let bien = 0;
+  for (const paso of otros) {
+    const escena = escenaDeLinea(paso, "e");
+    if (escena.clase === "semantica" && escena.focos[0].piezas.length > 0 && !conIgual(escena)) bien++;
+  }
+  check(
+    "las cuatro operaciones del contrato se marcan igual de genéricamente",
+    bien === otros.length,
+    `${bien}/${otros.length}`,
+  );
+
+  // Un término que no está escrito no se marca: dibujar un recuadro sobre la
+  // nada no da error, sólo se ve mirando. La escena cae entonces en la lectura
+  // deducida —"3x = 12" es un despeje— en lugar de en un marcado inventado.
+  {
+    const sinTermino = escenaDeLinea(
+      { latex: "3x = 12", operacion: { tipo: "cancelacion", terminosFoco: ["7y"] } },
+      "e",
+    );
+    check(
+      "un término que no está en el paso no inventa un resaltado",
+      sinTermino.clase !== "semantica" &&
+        !sinTermino.focos.some((f) => (f.piezas ?? []).some((p) => p.startsWith("pz-foco-"))),
+      sinTermino.clase,
+    );
+  }
+
+  // El marcado nunca toca el nombre de una macro: la "x" de \times no es la
+  // incógnita.
+  const conMacro = marcarTerminos(
+    "2 \times x + 1",
+    ["x"],
+    () => "pz-marcado pz-p0",
+  );
+  check(
+    "no se marca la x de una macro de LaTeX",
+    (conMacro.latex.match(/htmlClass/g) || []).length === 1,
+    conMacro.latex,
+  );
+
+  // Y el reparto por miembros es el que garantiza lo anterior.
+  check(
+    "la expresión se parte por el igual de nivel superior",
+    JSON.stringify(miembros("a + b = c = d")).replace(/ /g, "") === '["a+b","c","d"]' &&
+      miembros("\htmlClass{x}{a = b} + 1").length === 1,
+  );
+}
+
+titulo("A00b. La amplificación se ve, no se supone");
+
+{
+  // El cliente lo marcó en rojo: de 1/2 a 3/6 hay un salto que el alumno tiene
+  // que creerse. Ahora se escribe la multiplicación y se marca el factor.
+  const e = escenaDeAmplificacion("1/2 = 3/6", "e");
+  check("1/2 = 3/6 se anima como amplificación", Boolean(e));
+  check(
+    "se escribe la multiplicación arriba y abajo",
+    e.latex.includes("1 \\times") && e.latex.includes("2 \\times"),
+    e.latex,
+  );
+  check(
+    "el factor se marca en los dos sitios, cada uno con su caja",
+    JSON.stringify(e.focos[0].piezas) === JSON.stringify(["pz-factor-num", "pz-factor-den"]),
+  );
+  check("y se dice por cuánto se multiplica", e.focos[0].etiqueta === "× 3");
+  check(
+    "el resultado no se destapa hasta el último paso",
+    e.latex.includes("\htmlClass{pz-rev-1}"),
+  );
+  check(
+    "una igualdad que no es amplificación no se disfraza de una",
+    escenaDeAmplificacion("1/2 = 2/5", "e") === null &&
+      escenaDeAmplificacion("1/2 = 1/2", "e") === null,
+  );
+  check(
+    "y leerAmplificacion da el factor correcto",
+    leerAmplificacion("1/3 = 2/6")?.factor === 2,
+  );
+}
+
+titulo("A00c. El marcado se dibuja, no aparece");
+
+{
+  const panel = readFileSync(
+    new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+    "utf8",
+  );
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  check(
+    "el trazo se normaliza para poder recorrerlo",
+    (panel.match(/pathLength=\{1\}/g) || []).length >= 3,
+  );
+  check(
+    "y la hoja de estilos lo dibuja de principio a fin",
+    /@keyframes pz-dibuja/.test(estilos) &&
+      /\.pz-trazo \{[^}]*animation: pz-dibuja/.test(estilos),
+  );
+  check(
+    "el fondo entra después del trazo",
+    /\.pz-fondo \{[^}]*animation: pz-rellena[^}]*both/.test(estilos),
+  );
+  check(
+    "y con movimiento reducido no se dibuja nada",
+    /prefers-reduced-motion[\s\S]{0,400}\.pz-trazo,[\s\S]{0,80}animation: none/.test(estilos),
   );
 }
 

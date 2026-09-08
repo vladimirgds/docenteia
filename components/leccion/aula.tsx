@@ -20,6 +20,7 @@ import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/ps
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
+import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
 import {
   crearVozCompartida,
   type VozCompartida,
@@ -339,7 +340,7 @@ export function Aula({
    * tarjeta de arriba ni al revés.
    */
   const anadirLinea = useCallback(
-    (texto: string, clase: "formula" | "explicacion") => {
+    (texto: string, clase: "formula" | "explicacion", operacion?: OperacionPaso | null) => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
       const linea: LineaPizarra = {
@@ -347,6 +348,7 @@ export function Aula({
         texto: limpio,
         clase,
         aclaracion: esAclaracion.current,
+        ...(operacion ? { operacion } : {}),
       };
       asegurarFase();
 
@@ -499,7 +501,7 @@ export function Aula({
       // fórmulas y el ejercicio. Un párrafo explicativo va al subtítulo, aunque
       // llegue por una directiva de pizarra: desde que las aclaraciones las
       // redacta el modelo en vivo, eso puede pasar.
-      writeBoard: (texto) => {
+      writeBoard: (texto, operacion) => {
         const contenido = String(texto ?? "").trim();
         if (!contenido) return;
 
@@ -515,7 +517,7 @@ export function Aula({
           : contenido.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
         for (const linea of lineas) {
-          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
+          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula", operacion);
           else fijarSubtitulo(linea);
         }
       },
@@ -884,12 +886,18 @@ export function Aula({
    * de decidir cuáles se dejan animar.
    */
   const lineasAnimadas = useMemo(() => {
-    const textos: string[] = [];
-    if (ejercicio?.texto) textos.push(ejercicio.texto);
-    for (const linea of desarrollo) {
-      if (!linea.aclaracion) textos.push(linea.texto);
+    // Cada línea viaja como PASO: su LaTeX y, si el generador la envió, la
+    // instrucción de foco. Con etiqueta, la pizarra marca exactamente lo que
+    // dice; sin ella, la deduce como hasta ahora.
+    const pasos: PasoSemantico[] = [];
+    if (ejercicio?.texto) {
+      pasos.push({ latex: ejercicio.texto, ...(ejercicio.operacion ? { operacion: ejercicio.operacion } : {}) });
     }
-    return textos;
+    for (const linea of desarrollo) {
+      if (linea.aclaracion) continue;
+      pasos.push({ latex: linea.texto, ...(linea.operacion ? { operacion: linea.operacion } : {}) });
+    }
+    return pasos;
   }, [ejercicio, desarrollo]);
 
   /**

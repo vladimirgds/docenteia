@@ -5,6 +5,11 @@ import {
   type OperacionEnColumna,
 } from "./columna.ts";
 import { planoALatex } from "../matematicas/index.ts";
+import {
+  escenaDePasoSemantico,
+  leerAmplificacion,
+  type PasoSemantico,
+} from "./marcado.ts";
 
 /**
  * EL GUION DE LA PIZARRA ANIMADA.
@@ -77,7 +82,14 @@ export interface Escena {
   narracion: string;
   focos: Foco[];
   /** De dónde salió: sirve para depurar y para las pruebas. */
-  clase: "columna" | "polinomio" | "despeje" | "simplificacion" | "texto";
+  clase:
+    | "columna"
+    | "polinomio"
+    | "despeje"
+    | "simplificacion"
+    | "amplificacion"
+    | "semantica"
+    | "texto";
 }
 
 /** Nombre de cada posición decimal, de derecha a izquierda. */
@@ -640,6 +652,50 @@ function mcd(a: number, b: number): number {
   return b === 0 ? a : mcd(b, a % b);
 }
 
+// ── Amplificación de fracciones ──────────────────────────────────────────────
+
+/**
+ * `1/2 = 3/6` contado como lo que es: multiplicar arriba y abajo por 3.
+ *
+ * El salto de 1/2 a 3/6 no se ve, y el alumno tiene que creérselo. Escribiendo
+ * la multiplicación —`1×3 / 2×3`— con el factor marcado en los dos sitios, se
+ * lee de dónde sale cada número y por qué la fracción sigue valiendo lo mismo.
+ * El resultado no se destapa hasta el último paso.
+ */
+export function escenaDeAmplificacion(texto: string, id: string): Escena | null {
+  const f = leerAmplificacion(texto);
+  if (!f) return null;
+
+  const factor = (donde: string) => marcar(`pz-factor pz-factor-${donde}`, String(f.factor));
+  const latex =
+    `\\frac{${f.a} \\times ${factor("num")}}{${f.b} \\times ${factor("den")}}` +
+    ` ${marcar("pz-rev-1", `= ${marcar("pz-resultado", `\\frac{${f.c}}{${f.d}}`)}`)}`;
+
+  return {
+    id,
+    texto,
+    latex,
+    narracion: `Vamos a escribir ${f.a} entre ${f.b} con denominador ${f.d}.`,
+    clase: "amplificacion",
+    focos: [
+      {
+        clase: "pz-factor",
+        // Arriba y abajo, cada uno con su recuadro: es lo que enseña que se
+        // multiplica por lo MISMO en los dos sitios.
+        piezas: ["pz-factor-num", "pz-factor-den"],
+        tipo: "caja",
+        narracion: `Multiplicamos arriba y abajo por ${f.factor}.`,
+        etiqueta: `× ${f.factor}`,
+      },
+      {
+        clase: "pz-resultado",
+        tipo: "ovalo",
+        narracion: `Queda ${f.c} entre ${f.d}.`,
+      },
+    ],
+  };
+}
+
 // ── Escena de respaldo ───────────────────────────────────────────────────────
 
 /**
@@ -669,10 +725,19 @@ export function escenaDeTexto(texto: string, id: string): Escena {
  * de lejos, una expresión; se anima como cuenta, que es lo que se está
  * enseñando.
  */
-export function escenaDeLinea(texto: string, id: string): Escena {
+export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena {
+  const texto = typeof paso === "string" ? paso : String(paso.latex ?? "");
+
   return (
+    // 1. Si el paso viene ETIQUETADO, manda su etiqueta. Es el camino que hace
+    //    que un ejercicio nuevo del catálogo se anime sin tocar el frontend.
+    (typeof paso === "string" ? null : escenaDePasoSemantico(paso, id)) ??
+    // 2. Y si no —hoy la lección llega en texto plano—, se deduce del contenido.
+    //    Cada lectura es estricta: la que no reconoce lo suyo devuelve null y
+    //    deja pasar a la siguiente.
     escenaDeColumna(texto, id) ??
     escenaDeDespeje(texto, id) ??
+    escenaDeAmplificacion(texto, id) ??
     escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
     escenaDeTexto(texto, id)
@@ -688,15 +753,16 @@ export function escenaDeLinea(texto: string, id: string): Escena {
  * 1 de 2" y repetía la cuenta entera, y seguir la voz se volvía ambiguo porque
  * dos escenas encajaban igual de bien.
  */
-export function guionDeLeccion(lineas: readonly string[]): Escena[] {
+export function guionDeLeccion(lineas: readonly (string | PasoSemantico)[]): Escena[] {
   const escenas: Escena[] = [];
   const vistas = new Set<string>();
 
   for (const cruda of lineas) {
-    const linea = String(cruda ?? "").trim();
+    const paso = typeof cruda === "string" ? cruda.trim() : cruda;
+    const linea = typeof paso === "string" ? paso : String(paso?.latex ?? "").trim();
     if (!linea) continue;
 
-    const escena = escenaDeLinea(linea, `escena-${escenas.length}`);
+    const escena = escenaDeLinea(paso, `escena-${escenas.length}`);
     // La prosa no entra en el guion. Una frase del tutor no tiene nada que
     // resaltar: como escena sólo repite lo que ya está en el subtítulo, y
     // además parte la lección en trozos —"línea 1 de 3"— que no corresponden a
@@ -720,8 +786,8 @@ function identidadDeEscena(escena: Escena): string {
 }
 
 /** ¿Esta línea se anima con focos, o es texto que sólo se lee? */
-export function esAnimable(texto: string): boolean {
-  return escenaDeLinea(String(texto ?? ""), "prueba").focos.length > 0;
+export function esAnimable(paso: string | PasoSemantico): boolean {
+  return escenaDeLinea(typeof paso === "string" ? String(paso ?? "") : paso, "prueba").focos.length > 0;
 }
 
 /**

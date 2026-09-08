@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **3.552 comprobaciones automáticas, 0
-fallos** (`npm test`, código de salida 0), de las cuales **293 son nuevas** y
+verificado con la suite del proyecto: **3.574 comprobaciones automáticas, 0
+fallos** (`npm test`, código de salida 0), de las cuales **315 son nuevas** y
 específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
 Chrome de verdad** (`qa/navegador.mjs`).
 
@@ -251,7 +251,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 293 | 0 |
+| `qa/hito2.mjs` (este hito) | 315 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -260,9 +260,9 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
 | `qa/navegador.mjs` (navegador real) | 12 | 0 |
-| **Suma de estas** | **1.940** | **0** |
+| **Suma de estas** | **1.962** | **0** |
 
-Y la suite entera, con las catorce baterías de `npm test`: **3.552
+Y la suite entera, con las catorce baterías de `npm test`: **3.574
 comprobaciones, 0 fallos**.
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
@@ -901,7 +901,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
-| `qa/hito2.mjs` | 293 | 0 |
+| `qa/hito2.mjs` | 315 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/qa.mjs` | 1.462 | 0 |
@@ -910,7 +910,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/aceptacion.mjs` | 24 | 0 |
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/navegador.mjs` (Chrome real) | 12 | 0 |
-| **Total** | **3.552** | **0** |
+| **Total** | **3.574** | **0** |
 
 Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
 
@@ -1061,3 +1061,85 @@ turno de palabra: que hablar lo tome, que quien no lo tiene no pueda callar al
 que sí, que hablar se lo arrebate al otro cortándolo una sola vez, y que la
 regla no haya vuelto a duplicarse en la máquina. `npm test` completo: **3.552
 comprobaciones, 0 fallos**.
+
+---
+
+## 22. Marcado semántico genérico: el frontend deja de crecer con el catálogo
+
+El cliente lo planteó como lo que es, un problema de arquitectura: *«resolver la
+vista caso por caso no escala; la base de datos alojará miles de ejercicios y el
+sistema debe responder de forma genérica»*. Tenía razón. Hasta aquí, cada tipo de
+ejercicio tenía su lector en el guion, y enseñar una operación nueva significaba
+tocar la pizarra.
+
+### 1. El paso llega etiquetado
+
+Un paso ya no es sólo LaTeX: puede traer **la instrucción de foco**, que es lo
+único que el frontend necesita para saber qué señalar.
+
+```ts
+{
+  latex: "2x + 8 - 2x = 3x - 1 - 2x",
+  operacion: { tipo: "cancelacion", terminosFoco: ["2x"], etiqueta: "se cancelan" },
+  narracion: "Restamos 2x en los dos lados."
+}
+```
+
+El contrato viaja de punta a punta: el generador lo emite, `src/preLight.js` lo
+**valida** —tipo conocido y términos no vacíos; lo que no encaja se descarta con
+un aviso, en lugar de llegar a la interfaz—, el reproductor lo entrega con la
+directiva y el aula lo transporta hasta la pizarra.
+
+### 2. La subrutina de marcado
+
+`lib/leccion/marcado.ts` recibe el paso etiquetado y devuelve la escena: el
+LaTeX con las marcas inyectadas y el foco que la pizarra encenderá. No sabe de
+temas; sólo de operaciones.
+
+- **Cada término listado recibe SU marca y SU recuadro.** En `2x + 8 - 2x` se
+  marcan **las dos** apariciones, no la primera: lo que se cancela son las dos.
+- **El marcado nunca cruza el igual**, y no por cuidado sino por construcción:
+  la expresión se parte por los `=` de nivel superior, se marca dentro de cada
+  miembro y se vuelve a unir. Es imposible que una caja abarque de un lado al
+  otro.
+- **Ni toca los nombres de macro**: la `x` de `\times` no es la incógnita.
+- Un término que no está escrito **no se marca**: un recuadro sobre la nada no
+  da error, sólo se ve mirando.
+- Las cuatro operaciones del contrato —`amplificacion`, `distributiva`,
+  `columna`, `cancelacion`— se resuelven con el mismo código; añadir una quinta
+  es añadir una fila a una tabla, no un caso al frontend.
+
+### 3. Sin etiqueta, se deduce
+
+El generador todavía no emite metadatos, así que la lección de hoy sigue
+llegando en texto plano. El guion prueba primero la etiqueta y, si no la hay,
+deduce la operación como hasta ahora. Los dos caminos acaban en la misma escena,
+de modo que el día que el catálogo empiece a etiquetar sus pasos no hay nada que
+cambiar en la pizarra.
+
+Y con la deducción llega **la amplificación**, que es lo que el cliente marcó en
+rojo sobre la captura: `1/2 = 3/6` se escribía como un salto que el alumno tenía
+que creerse. Ahora se compone el paso intermedio —`1×3 / 2×3`— con el factor
+recuadrado **arriba y abajo**, que es lo que enseña que se multiplica por lo
+mismo en los dos sitios, y el resultado no se destapa hasta el último paso.
+
+### 4. El marcado se dibuja
+
+El óvalo, la caja y el tachado ya no aparecen: **se trazan**, como los traza un
+profesor. `pathLength` normaliza el contorno —da igual que sea un rectángulo,
+una elipse o una raya— y la animación lo recorre en 420 ms, al compás de la voz;
+el fondo entra después, para que primero se vea el gesto.
+
+Se ha hecho con CSS y no con RoughNotation —el mensaje admitía las dos— porque
+esa librería dibuja sus propias capas en el DOM y competiría con la capa SVG que
+ya medimos sobre la fórmula; y porque una animación de trazo son ocho líneas de
+hoja de estilos, sin dependencia nueva que mantener. Con
+`prefers-reduced-motion`, no se dibuja nada.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **315 comprobaciones**, con tres bloques nuevos: el
+contrato y la subrutina —incluido que ninguna marca cruce el igual en las cuatro
+operaciones, que se marquen todas las apariciones y que un término ausente no
+invente un resaltado—, la amplificación, y el trazo dibujado. `npm test`
+completo: **3.574 comprobaciones, 0 fallos**.

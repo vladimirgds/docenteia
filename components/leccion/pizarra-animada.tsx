@@ -36,6 +36,7 @@ import {
 } from "@/lib/leccion/animacion";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import { cn } from "@/lib/utils";
+import type { PasoSemantico } from "@/lib/leccion/marcado";
 import type { VozUtilizable } from "@/lib/leccion/voz";
 
 /**
@@ -303,6 +304,7 @@ function Resaltado({
           ry={caja.alto / 2 + 2}
           className="pz-trazo"
           fill="none"
+          pathLength={1}
         />
       ) : (
         <rect
@@ -313,6 +315,7 @@ function Resaltado({
           rx={6}
           className="pz-trazo"
           fill="none"
+          pathLength={1}
         />
       )}
 
@@ -323,6 +326,7 @@ function Resaltado({
           x2={caja.x + caja.ancho - 1}
           y2={caja.y}
           className="pz-trazo pz-tachado"
+          pathLength={1}
         />
       ) : null}
 
@@ -369,8 +373,14 @@ export function PanelAnimado({
   mandosLeccion,
   className,
 }: {
-  /** Las líneas de la lección, en la notación plana del motor. */
-  lineas: readonly string[];
+  /**
+   * Los pasos de la lección.
+   *
+   * Un paso puede llegar como texto plano —lo que escribe hoy el motor— o
+   * etiquetado con su instrucción de foco. Con etiqueta, la pizarra marca
+   * exactamente lo que dice; sin ella, la deduce del contenido.
+   */
+  lineas: readonly (string | PasoSemantico)[];
   tts?: VozUtilizable | null;
   vozActiva?: boolean;
   /**
@@ -424,8 +434,13 @@ export function PanelAnimado({
   // desarrollo después— y casi siempre eso produce el mismo guion: la cuenta es
   // la misma. Rehacerlo de todas formas reiniciaba la máquina y la pizarra
   // volvía al primer paso a mitad de explicación.
-  const firma = lineas.join("|");
-  const guion = useMemo(() => guionDeLeccion(firma.split("|")), [firma]);
+  // La firma incluye la etiqueta: dos pasos con el mismo LaTeX y distinta
+  // operación no son el mismo paso.
+  const firma = JSON.stringify(lineas);
+  const guion = useMemo(
+    () => guionDeLeccion(JSON.parse(firma) as (string | PasoSemantico)[]),
+    [firma],
+  );
   const escenas = useGuionEstable(guion);
 
   const { estado, mandos } = useSincronizadorLeccion({ escenas, tts, audio: vozActiva });

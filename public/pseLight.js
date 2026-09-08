@@ -399,7 +399,7 @@ export class PSELight {
       if (!d) continue;
       if (d.tipo === "modulo") this.ui.setModule(d.id);
       else if (d.tipo === "hablar") this.ui.writeBoardExplain?.(d.texto);
-      else if (d.tipo === "pizarra") this.ui.writeBoard(d.contenido);
+      else if (d.tipo === "pizarra") this.ui.writeBoard(d.contenido, d.operacion ?? null);
       else if (d.tipo === "puntero") this.ui.highlightBoard(d.objetivo || null);
     }
     this.ui.onStep(i < this.timeline.length ? i : null);
@@ -445,7 +445,7 @@ export class PSELight {
       }
 
       case "pizarra": {
-        this.ui.writeBoard(d.contenido);
+        this.ui.writeBoard(d.contenido, d.operacion ?? null);
         await sleep(700, signal);
         break;
       }

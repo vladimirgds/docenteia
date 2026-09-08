@@ -59,9 +59,20 @@ export interface EstadoControles {
 }
 
 /** Callbacks con los que el reproductor habla con la interfaz. */
+/** La instrucción de foco abstracta que puede acompañar a un paso. */
+export interface OperacionPaso {
+  tipo: "amplificacion" | "distributiva" | "columna" | "cancelacion";
+  terminosFoco: string[];
+  etiqueta?: string;
+}
+
 export interface UIPSELight {
   setModule(etiqueta: string): void;
-  writeBoard(texto: string): unknown;
+  /**
+   * Escribe en la pizarra. `operacion` es la instrucción de foco del paso
+   * —qué se opera y sobre qué términos— cuando el generador la envía.
+   */
+  writeBoard(texto: string, operacion?: OperacionPaso | null): unknown;
   writeBoardExplain?(texto: string): unknown;
   highlightBoard(objetivo: string | null): void;
   clearBoard(): void;

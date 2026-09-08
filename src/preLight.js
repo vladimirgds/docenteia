@@ -1421,6 +1421,26 @@ function sanitizeDirectiva(raw, warnings, context) {
       // El conector "o"/"o," entre dos igualdades en la pizarra se normaliza a coma ("x = -2 o, x = -3"
       // → "x = -2, x = -3"): la pizarra separa las soluciones con "," de forma consistente.
       d.contenido = separarSolucionesConComa(fixP.texto);
+      // MARCADO SEMÁNTICO DEL PASO, cuando el generador lo envía.
+      //
+      // Es la instrucción de foco abstracta —qué operación se hace y sobre qué
+      // términos— con la que la pizarra resalta sin saber nada del tema. Así un
+      // ejercicio nuevo del catálogo se anima solo, sin tocar el frontend. Se
+      // valida como todo lo demás: lo que no encaje se descarta aquí en lugar de
+      // llegar a la interfaz.
+      const op = raw.operacion;
+      if (op && typeof op === "object") {
+        const TIPOS = ["amplificacion", "distributiva", "columna", "cancelacion"];
+        const terminos = Array.isArray(op.terminosFoco)
+          ? op.terminosFoco.map((t) => str(t)).filter(Boolean).slice(0, 8)
+          : [];
+        if (TIPOS.includes(str(op.tipo)) && terminos.length > 0) {
+          d.operacion = { tipo: str(op.tipo), terminosFoco: terminos };
+          if (str(op.etiqueta)) d.operacion.etiqueta = str(op.etiqueta).slice(0, 24);
+        } else {
+          warnings.push(`"operacion" no válida descartada en ${context}.`);
+        }
+      }
       break;
     case "puntero":
       d.accion = str(raw.accion) || "resaltar";

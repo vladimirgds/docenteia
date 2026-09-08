@@ -8,6 +8,7 @@ import { Check } from "lucide-react";
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import { fraccionEnTexto } from "@/lib/leccion/diagramas";
+import type { OperacionPaso } from "@/lib/leccion/marcado";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
@@ -39,6 +40,14 @@ export interface LineaPizarra {
   texto: string;
   /** "formula" viene de una directiva `pizarra`; "explicacion", de una `hablar`. */
   clase: "formula" | "explicacion";
+  /**
+   * La instrucción de foco del paso, si el generador la envía.
+   *
+   * Es lo que permite que un ejercicio nuevo del catálogo se resalte solo: dice
+   * qué operación se está haciendo y sobre qué términos, y la pizarra animada
+   * marca exactamente eso sin saber de qué tema se trata.
+   */
+  operacion?: OperacionPaso;
   /**
    * La línea pertenece a una ACLARACIÓN pedida por el alumno, no al hilo de la
    * lección. Se agrupa aparte y se sustituye en la siguiente aclaración, para

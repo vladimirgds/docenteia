@@ -163,6 +163,8 @@
   .avatar-cara,
   .avatar-destellos,
   .avatar-punto,
+  .pz-trazo,
+  .pz-fondo,
   .pz-resaltado {
     animation: none;
     transition: none;
@@ -222,6 +224,36 @@
 
 .dark .pz-trazo {
   stroke: hsl(213 94% 72%);
+}
+
+/* EL MARCADO SE DIBUJA, NO APARECE.
+   Lo pidió el cliente: que el óvalo, la caja y el tachado se tracen como los
+   traza un profesor en la pizarra, al compás de la voz. `pathLength: 1`
+   normaliza el contorno —da igual que sea un rectángulo, una elipse o una
+   raya— y la animación lo recorre de principio a fin.
+
+   Se hace con CSS y no con una librería de anotación: RoughNotation dibuja sus
+   propias capas en el DOM y competiría con la capa SVG que ya medimos sobre la
+   fórmula. */
+@keyframes pz-dibuja {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+.pz-trazo {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: pz-dibuja 420ms ease-out;
+}
+
+/* El fondo entra después del trazo, para que primero se vea el gesto. */
+@keyframes pz-rellena {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pz-fondo {
+  animation: pz-rellena 300ms ease-out 160ms both;
 }
 
 /* El recuadro entra con un fundido corto. Sólo hay UNO encendido —el de la
