@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
+import { fraccionEnTexto } from "@/lib/leccion/diagramas";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
@@ -312,6 +313,17 @@ export function Pizarra({
    * Ahí no hay ejercicio ni desarrollo, sólo una tarjeta y a lo sumo una línea.
    * Con el alto del ejemplo paso a paso, lo que se ve es medio lienzo vacío.
    */
+  /**
+   * La fracción que el tutor está explicando, leída de lo que hay en pantalla.
+   *
+   * Se mira primero el paso en curso y luego el enunciado: en la fase de
+   * Concepto lo que se escribe es justamente el ejemplo que se está contando.
+   */
+  const fraccionEnCurso = useMemo(
+    () => fraccionEnTexto(pasoSuelto?.texto ?? "") ?? fraccionEnTexto(ejercicio?.texto ?? ""),
+    [pasoSuelto, ejercicio],
+  );
+
   const compacta =
     actual != null && !esFaseDeEjemplo(actual.id) && !esFaseDePractica(actual.id);
 
@@ -391,7 +403,16 @@ export function Pizarra({
 
                 {/* En la fase de Concepto, un diagrama que enseñe la idea: la
                     tangente de una curva, las partes de un todo, la balanza. */}
-                {esFaseDeConcepto(actual.id) && tema && <DiagramaConcepto tema={tema} />}
+                {esFaseDeConcepto(actual.id) && tema && (
+                  <DiagramaConcepto
+                    tema={tema}
+                    // La fracción de la que se está hablando, para que el
+                    // dibujo enseñe exactamente eso. Sin esto el diagrama era
+                    // fijo —1 de 4— dijera lo que dijera el tutor.
+                    numerador={fraccionEnCurso?.numerador}
+                    denominador={fraccionEnCurso?.denominador}
+                  />
+                )}
 
                 {/* Fases con ejercicio: el enunciado anclado arriba y su
                     desarrollo debajo, para que el alumno pueda contrastar el

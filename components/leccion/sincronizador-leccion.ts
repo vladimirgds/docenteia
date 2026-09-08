@@ -9,7 +9,7 @@ import {
   type Locutor,
   type Sincronizador,
 } from "@/lib/leccion/sincronizacion";
-import type { TTS } from "@/public/tts.js";
+import type { VozUtilizable } from "@/lib/leccion/voz";
 
 /**
  * EL SINCRONIZADOR DE LA LECCIÓN, VISTO DESDE REACT.
@@ -50,7 +50,7 @@ export interface MandosLeccion {
  *     promesa de `speak()` se cierra por el abort; sin él quedaría colgada y el
  *     paso siguiente entraría tarde.
  */
-export function locutorDeTTS(tts: TTS | null | undefined): Locutor {
+export function locutorDeTTS(tts: VozUtilizable | null | undefined): Locutor {
   let corte: AbortController | null = null;
 
   return {
@@ -82,7 +82,7 @@ export function useSincronizadorLeccion({
   alTerminar,
 }: {
   escenas: readonly Escena[];
-  tts: TTS | null | undefined;
+  tts: VozUtilizable | null | undefined;
   audio?: boolean;
   alTerminar?: () => void;
 }): { estado: Instantanea; mandos: MandosLeccion } {

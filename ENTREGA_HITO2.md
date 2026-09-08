@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **3.529 comprobaciones automáticas, 0
-fallos** (`npm test`, código de salida 0), de las cuales **270 son nuevas** y
+verificado con la suite del proyecto: **3.552 comprobaciones automáticas, 0
+fallos** (`npm test`, código de salida 0), de las cuales **293 son nuevas** y
 específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
 Chrome de verdad** (`qa/navegador.mjs`).
 
@@ -251,7 +251,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 270 | 0 |
+| `qa/hito2.mjs` (este hito) | 293 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -260,9 +260,9 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
 | `qa/navegador.mjs` (navegador real) | 12 | 0 |
-| **Suma de estas** | **1.917** | **0** |
+| **Suma de estas** | **1.940** | **0** |
 
-Y la suite entera, con las catorce baterías de `npm test`: **3.529
+Y la suite entera, con las catorce baterías de `npm test`: **3.552
 comprobaciones, 0 fallos**.
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
@@ -901,7 +901,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
-| `qa/hito2.mjs` | 270 | 0 |
+| `qa/hito2.mjs` | 293 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/qa.mjs` | 1.462 | 0 |
@@ -910,7 +910,7 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/aceptacion.mjs` | 24 | 0 |
 | `qa/leccion.mjs` | 819 | 0 |
 | `qa/navegador.mjs` (Chrome real) | 12 | 0 |
-| **Total** | **3.529** | **0** |
+| **Total** | **3.552** | **0** |
 
 Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
 
@@ -991,4 +991,73 @@ debajo y una tercera en el subtítulo.
 `qa/hito2.mjs` sube a **270 comprobaciones** y `qa/navegador.mjs` a **12**, tres
 de ellas nuevas y dentro de Chrome: que se dibuje un recuadro por término
 cancelado y que ninguno encierre el signo igual. `npm test` completo: **3.529
+comprobaciones, 0 fallos**.
+
+---
+
+## 21. Quinta revisión: el turno de palabra, el reinicio y el diagrama que habla
+
+Cuatro peticiones estructurales sobre el commit `3c02cd6`. Las cuatro,
+atendidas.
+
+### 1. Un solo dueño del sintetizador
+
+**Lo que decía el mensaje.** Que `aula.tsx` y `pizarra-animada.tsx` llamaban a
+`window.speechSynthesis.speak()` de forma independiente, y que hacía falta
+centralizar el audio en un único servicio.
+
+**Lo que había.** Ninguno de los dos llama a la Web Speech API: el único fichero
+que la toca es `public/tts.js`, y el único que crea un sintetizador es
+`aula.tsx`, que se lo pasa a la pizarra. Eso ya estaba.
+
+**Lo que sí faltaba, y era el fondo de la petición.** Las reglas de convivencia
+—quién puede hablar, quién puede callar a quién— vivían repartidas en tres
+ficheros: una bandera en la máquina de estados, una llamada a `pause()` en el
+aula y un efecto en el panel. Tres sitios que tenían que estar de acuerdo. El
+fallo más caro de esta entrega salió justo de ahí.
+
+Ahora hay un servicio, `lib/leccion/voz.ts`, y **la regla completa cabe en una
+frase**: *hablar te da el turno; callar sólo te calla a ti*. Cada uno recibe su
+vista del sintetizador —`voz.para("tutor")`, `voz.para("pizarra")`— con la misma
+superficie de siempre, así que ni el motor de la lección ni la pizarra saben que
+existe un reparto. La bandera que llevaba la máquina **se ha retirado**: la
+regla ya no está en dos sitios que puedan discrepar.
+
+### 2. Cambiar de fase o de tema empieza de cero
+
+El subtítulo ya iba etiquetado con su fase desde la ronda anterior —por eso el
+ejemplo de la pizza no puede aparecer bajo el rótulo de Reglas—, pero faltaba lo
+demás: la pizarra animada seguía donde la había dejado la fase anterior. Ahora
+recibe una clave de `tema · fase` y, al cambiar, vuelve a su primer paso. Y al
+dejar el tema se calla lo que estuviera sonando, venga de quien venga.
+
+Una precisión: **no se cancela la voz en cada cambio de fase**, como sugería el
+mensaje. La fase se abre justo antes de que el tutor empiece a hablar de ella, y
+cancelar ahí le cortaría la primera frase de cada módulo —el mismo tipo de fallo
+que costó tres rondas—. Se cancela al cambiar de tema y al salir, que es cuando
+de verdad sobra lo anterior.
+
+### 3. La cancelación, dentro de un miembro
+
+La ecuación se compone ahora **miembro a miembro**: se construye el izquierdo
+con sus marcas, se escribe el igual, y se construye el derecho con las suyas.
+Ninguna marca puede abarcar de un lado al otro porque ninguna se aplica sobre la
+cadena entera. La suite lo comprueba en el LaTeX —ninguna marca contiene un
+`=`— y en el navegador, midiendo dónde caen los recuadros y dónde el signo.
+
+### 4. El diagrama dibuja la fracción de la que se habla
+
+`DiagramaConcepto` acepta ahora `numerador`, `denominador`, `etiquetaNumerador`
+y `etiquetaDenominador`, y la pizarra le pasa **la fracción que hay en la línea
+en curso**. Si la lección explica 2/6, el dibujo tiene seis partes con dos
+sombreadas y las leyendas dicen «numerador: 2», «denominador: 6». Las divisiones
+se reparten dentro del lienzo, así que vale igual para 2 partes que para 12, y
+la suite comprueba que ninguna se sale.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **293 comprobaciones**, con un bloque nuevo que ejerce el
+turno de palabra: que hablar lo tome, que quien no lo tiene no pueda callar al
+que sí, que hablar se lo arrebate al otro cortándolo una sola vez, y que la
+regla no haya vuelto a duplicarse en la máquina. `npm test` completo: **3.552
 comprobaciones, 0 fallos**.

@@ -36,7 +36,7 @@ import {
 } from "@/lib/leccion/animacion";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import { cn } from "@/lib/utils";
-import type { TTS } from "@/public/tts.js";
+import type { VozUtilizable } from "@/lib/leccion/voz";
 
 /**
  * PIZARRA ANIMADA.
@@ -363,6 +363,7 @@ export function PanelAnimado({
   alCambiarAvatar,
   alTomarLaVoz,
   alProgresar,
+  reinicio,
   leccionEnMarcha = false,
   leccionPausada = false,
   mandosLeccion,
@@ -370,7 +371,7 @@ export function PanelAnimado({
 }: {
   /** Las líneas de la lección, en la notación plana del motor. */
   lineas: readonly string[];
-  tts?: TTS | null;
+  tts?: VozUtilizable | null;
   vozActiva?: boolean;
   /**
    * Lo que el tutor de la lección está diciendo AHORA.
@@ -383,6 +384,14 @@ export function PanelAnimado({
   narracion?: string | null;
   /** Avisa de por dónde va la animación y de si ya ha terminado. */
   alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean }) => void;
+  /**
+   * Clave de la fase y el tema en curso: al cambiar, la pizarra vuelve a cero.
+   *
+   * Sin esto, al pasar de una fase a la siguiente la animación seguía donde la
+   * dejó la anterior, y el primer paso de la fase nueva se pintaba con el
+   * recuadro a mitad de camino de una cuenta que ya no está en pantalla.
+   */
+  reinicio?: string;
   /**
    * UN SOLO MANDO DE REPRODUCCIÓN.
    *
@@ -439,6 +448,17 @@ export function PanelAnimado({
       mandos.detener();
     }
   }, [leccionEnMarcha, leccionPausada, estado.estado, mandos]);
+
+  // Cambiar de fase o de tema es empezar de cero: la animación vuelve a su
+  // primer paso y se calla lo que ella misma estuviera diciendo.
+  const primerReinicio = useRef(true);
+  useEffect(() => {
+    if (primerReinicio.current) {
+      primerReinicio.current = false;
+      return;
+    }
+    mandos.detener();
+  }, [reinicio, mandos]);
 
   // La pizarra sigue a la voz del tutor. Es lo que ata el resaltado a lo que se
   // está oyendo: sin esto, la locución iba por las decenas y el recuadro seguía

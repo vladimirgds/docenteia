@@ -2,6 +2,7 @@
 
 import {
   GEOMETRIAS,
+  geometriaDeFraccion,
   tieneDiagrama,
   type EtiquetaDiagrama,
   type GeometriaDiagrama,
@@ -25,6 +26,14 @@ import {
  * simplemente lo recorta— así que sin esa comprobación el fallo sólo se ve
  * mirando el dibujo.
  */
+
+/** Lo que hace falta para dibujar una fracción concreta y rotularla. */
+export interface PropiedadesFraccion {
+  numerador?: number;
+  denominador?: number;
+  etiquetaNumerador?: string;
+  etiquetaDenominador?: string;
+}
 
 const CLASES_TONO: Record<TonoEtiqueta, string> = {
   acento: "fill-amber-600",
@@ -175,25 +184,44 @@ function JuntarCantidades() {
   );
 }
 
-/** Un todo dividido en partes iguales: la idea de fracción. */
-function PartesDeUnTodo() {
-  const g = GEOMETRIAS.FRACCIONES;
-  const partes = [0, 1, 2, 3];
+/**
+ * Un todo dividido en partes iguales: la idea de fracción.
+ *
+ * El dibujo se construye con la fracción de la que se está hablando. Antes era
+ * fijo —cuatro barras con una sombreada— y si la lección explicaba 2/6, el
+ * alumno oía una cosa y veía otra.
+ */
+function PartesDeUnTodo({
+  numerador = 1,
+  denominador = 4,
+  etiquetaNumerador,
+  etiquetaDenominador,
+}: PropiedadesFraccion) {
+  const g = geometriaDeFraccion(numerador, denominador, {
+    numerador: etiquetaNumerador,
+    denominador: etiquetaDenominador,
+  });
+  const f = g.fraccion!;
+
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
       className="h-auto w-full max-w-sm"
       role="img"
-      aria-label="Un rectángulo dividido en cuatro partes iguales, con una sombreada: una de cuatro."
+      aria-label={`Un rectángulo dividido en ${f.partes} partes iguales, con ${f.tomadas} sombreada${f.tomadas === 1 ? "" : "s"}.`}
     >
-      {partes.map((i) => (
+      {Array.from({ length: f.partes }, (_, i) => (
         <rect
           key={i}
-          x={20 + i * 50}
+          x={f.margen + i * f.celda}
           y="20"
-          width="50"
+          width={f.celda}
           height="50"
-          className={i === 0 ? "fill-primary/60 stroke-primary" : "fill-muted stroke-muted-foreground/40"}
+          className={
+            i < f.tomadas
+              ? "fill-primary/60 stroke-primary"
+              : "fill-muted stroke-muted-foreground/40"
+          }
           strokeWidth="1.5"
         />
       ))}
@@ -201,17 +229,30 @@ function PartesDeUnTodo() {
       {/* La flecha que ata la palabra "numerador" a la parte sombreada. Sin
           ella, el alumno oye los dos nombres y ve un rectángulo partido, pero
           nada le dice cuál es cuál. */}
-      <line x1="45" y1="15" x2="45" y2="30" className="stroke-primary" strokeWidth="1.5" />
-      <polygon points="45,36 41,28 49,28" className="fill-primary" />
+      <line
+        x1={f.centroPrimera}
+        y1="15"
+        x2={f.centroPrimera}
+        y2="30"
+        className="stroke-primary"
+        strokeWidth="1.5"
+      />
+      <polygon
+        points={`${f.centroPrimera},36 ${f.centroPrimera - 4},28 ${f.centroPrimera + 4},28`}
+        className="fill-primary"
+      />
 
-      {/* Y la llave que abarca las cuatro partes: eso es el denominador. */}
+      {/* Y la llave que abarca todas las partes: eso es el denominador. */}
       <path
-        d="M 20 80 L 20 86 L 220 86 L 220 80"
+        d={`M ${f.margen} 80 L ${f.margen} 86 L ${g.ancho - f.margen} 86 L ${g.ancho - f.margen} 80`}
         className="stroke-primary"
         strokeWidth="1.5"
         fill="none"
       />
-      <polygon points="120,94 116,86 124,86" className="fill-primary" />
+      <polygon
+        points={`${g.ancho / 2},94 ${g.ancho / 2 - 4},86 ${g.ancho / 2 + 4},86`}
+        className="fill-primary"
+      />
 
       <Etiquetas geometria={g} />
     </svg>
@@ -242,15 +283,26 @@ function BalanzaEnEquilibrio() {
   );
 }
 
-const DIAGRAMAS: Record<string, () => React.ReactElement> = {
+const DIAGRAMAS: Record<string, (props: PropiedadesFraccion) => React.ReactElement> = {
   ARITMETICA: JuntarCantidades,
   DERIVADAS: CurvaYTangente,
   FRACCIONES: PartesDeUnTodo,
   ECUACIONES_LINEALES: BalanzaEnEquilibrio,
 };
 
-/** Diagrama del tema, o nada si ese tema no tiene uno. */
-export function DiagramaConcepto({ tema }: { tema: string }) {
+/**
+ * Diagrama del tema, o nada si ese tema no tiene uno.
+ *
+ * Las propiedades de la fracción son opcionales: el de fracciones las usa para
+ * dibujar exactamente la que se está explicando, y los demás las ignoran.
+ */
+export function DiagramaConcepto({
+  tema,
+  numerador,
+  denominador,
+  etiquetaNumerador,
+  etiquetaDenominador,
+}: { tema: string } & PropiedadesFraccion) {
   // La lista de temas con diagrama vive en lib/leccion/diagramas.ts, que es la
   // que consulta también la suite; aquí sólo se resuelve el componente.
   if (!tieneDiagrama(tema)) return null;
@@ -258,7 +310,12 @@ export function DiagramaConcepto({ tema }: { tema: string }) {
   if (!Diagrama) return null;
   return (
     <div className="flex justify-center rounded-md border bg-muted/20 p-3">
-      <Diagrama />
+      <Diagrama
+        numerador={numerador}
+        denominador={denominador}
+        etiquetaNumerador={etiquetaNumerador}
+        etiquetaDenominador={etiquetaDenominador}
+      />
     </div>
   );
 }

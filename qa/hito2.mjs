@@ -40,6 +40,8 @@ import {
 } from "../lib/leccion/animacion.ts";
 import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { repararEquivalencias } from "../src/preLight.js";
+import { crearVozCompartida } from "../lib/leccion/voz.ts";
+import { fraccionEnTexto, geometriaDeFraccion } from "../lib/leccion/diagramas.ts";
 import {
   avatarDe,
   crearSincronizador,
@@ -450,6 +452,114 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   );
 }
 
+titulo("A0. Un solo dueño del sintetizador");
+
+{
+  // El cliente pidió centralizar el audio: dos que hablan y un solo
+  // sintetizador. La regla vive en lib/leccion/voz.ts y es ésta: hablar te da
+  // el turno, callar sólo te calla a ti.
+  const dicho = [];
+  const tts = {
+    enabled: true,
+    voice: { name: "falsa" },
+    describe: () => "voz falsa",
+    speak(texto) {
+      dicho.push(texto);
+      return new Promise((res) => {
+        tts._resolver = res;
+      });
+    },
+    cancel() {
+      dicho.push("[cancel]");
+      tts._resolver?.();
+      tts._resolver = null;
+    },
+  };
+
+  const voz = crearVozCompartida(tts);
+  const tutor = voz.para("tutor");
+  const pizarra = voz.para("pizarra");
+
+  check("al empezar no habla nadie", voz.quienHabla() === null);
+
+  tutor.speak("Sumamos las unidades.");
+  check("hablar da el turno", voz.quienHabla() === "tutor");
+
+  // Ésta es la línea que costó tres rondas: la pizarra se recoloca siguiendo
+  // al tutor y, al hacerlo, cancelaba. Si el sintetizador le hiciera caso,
+  // cortaría la frase del tutor y su `onend` la daría por dicha.
+  pizarra.cancel();
+  check(
+    "quien no tiene el turno no puede callar al que lo tiene",
+    voz.quienHabla() === "tutor" && !dicho.includes("[cancel]"),
+    JSON.stringify(dicho),
+  );
+
+  tutor.cancel();
+  check("pero uno sí puede callarse a sí mismo", voz.quienHabla() === null);
+
+  tutor.speak("El tutor habla otra vez.");
+  pizarra.speak("Y ahora manda la pizarra.");
+  check("hablar arrebata el turno", voz.quienHabla() === "pizarra");
+  check(
+    "y al arrebatarlo se corta al anterior, una sola vez",
+    dicho.filter((d) => d === "[cancel]").length === 2,
+    JSON.stringify(dicho),
+  );
+
+  voz.callarATodos();
+  check("y al cambiar de tema se calla a todos", voz.quienHabla() === null);
+
+  // Y la regla no puede estar duplicada en la máquina: si vuelve allí, vuelve
+  // el desacuerdo entre las dos copias.
+  const maquina = readFileSync(
+    new URL("../lib/leccion/sincronizacion.ts", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la máquina ya no lleva su propia contabilidad del turno",
+    !maquina.includes("let hablando"),
+  );
+
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  check(
+    "el aula reparte una vista a cada uno, en lugar de pasar el sintetizador",
+    aula.includes('voz.para("tutor")') && aula.includes('voz.para("pizarra")'),
+  );
+  check(
+    "y nadie llama a window.speechSynthesis por su cuenta",
+    !aula.includes("window.speechSynthesis") &&
+      !readFileSync(
+        new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+        "utf8",
+      ).includes("window.speechSynthesis"),
+  );
+}
+
+titulo("A0b. Cambiar de fase o de tema empieza de cero");
+
+{
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const panel = readFileSync(
+    new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+    "utf8",
+  );
+
+  check(
+    "la clave de reinicio junta tema y fase",
+    /const reinicioAnimacion = `\$\{tema\?\.clave \?\? ""\}·\$\{faseAbierta\}`/.test(aula),
+  );
+  check("y se le pasa a la pizarra", aula.includes("reinicio={reinicioAnimacion}"));
+  check(
+    "que al cambiar vuelve a su primer paso",
+    /useEffect\(\(\) => \{[\s\S]{0,200}mandos\.detener\(\);[\s\S]{0,40}\}, \[reinicio, mandos\]\)/.test(panel),
+  );
+  check(
+    "al dejar el tema se calla a todos",
+    aula.includes("vozRef.current?.callarATodos()"),
+  );
+}
+
 titulo("A1c. Una equivalencia no puede llevar el signo cambiado");
 
 {
@@ -476,6 +586,69 @@ titulo("A1c. Una equivalencia no puede llevar el signo cambiado");
   check(
     "ni una línea que ya trae su igual",
     repararEquivalencias("1/2 = 3/6").correcciones === 0,
+  );
+}
+
+titulo("A1d. El diagrama dibuja la fracción de la que se habla");
+
+{
+  // Lo pidió el cliente: el gráfico era un SVG fijo de cuatro barras, dijera lo
+  // que dijera el tutor. Ahora se construye con el numerador y el denominador
+  // que se estén explicando, y las leyendas los dicen.
+  const g = geometriaDeFraccion(2, 6);
+  check("se dibujan tantas partes como dice el denominador", g.fraccion.partes === 6);
+  check("y se sombrean las del numerador", g.fraccion.tomadas === 2);
+  check(
+    "las leyendas llevan los números de esa fracción",
+    g.etiquetas.some((e) => e.texto === "numerador: 2 (lo que tomamos)") &&
+      g.etiquetas.some((e) => e.texto === "denominador: 6 (partes iguales del todo)") &&
+      g.etiquetas.some((e) => e.texto === "2 de 6 partes iguales"),
+    JSON.stringify(g.etiquetas.map((e) => e.texto)),
+  );
+  check(
+    "y se pueden poner las del cliente",
+    geometriaDeFraccion(1, 4, {
+      numerador: "Numerador (partes tomadas)",
+      denominador: "Denominador (total)",
+    }).etiquetas[0].texto === "Numerador (partes tomadas)",
+  );
+
+  // Y el dibujo cabe en el lienzo con cualquier denominador razonable.
+  let caben = 0;
+  const denominadores = [2, 3, 4, 5, 6, 8, 10, 12];
+  for (const d of denominadores) {
+    const geo = geometriaDeFraccion(1, d);
+    const f = geo.fraccion;
+    if (f.margen + f.partes * f.celda <= geo.ancho - f.margen + 0.001) caben++;
+  }
+  check("ninguna división se sale del lienzo", caben === denominadores.length, `${caben}/${denominadores.length}`);
+
+  check(
+    "un denominador imposible de dibujar no rompe nada",
+    geometriaDeFraccion(3, 0).fraccion.partes === 1,
+  );
+
+  // Y la fracción sale de lo que hay en pantalla, no de una constante.
+  check(
+    "se lee la fracción de la línea en curso",
+    JSON.stringify(fraccionEnTexto("1/4 = una de 4 partes iguales")) ===
+      JSON.stringify({ numerador: 1, denominador: 4 }) &&
+      JSON.stringify(fraccionEnTexto("2/6 + 1/6")) ===
+        JSON.stringify({ numerador: 2, denominador: 6 }),
+  );
+  check(
+    "una fracción que no se puede dibujar se ignora",
+    fraccionEnTexto("18/45") === null && fraccionEnTexto("sin fracciones") === null,
+  );
+
+  const pizarraTsx = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "y la pizarra se la pasa al diagrama",
+    pizarraTsx.includes("numerador={fraccionEnCurso?.numerador}") &&
+      pizarraTsx.includes("denominador={fraccionEnCurso?.denominador}"),
   );
 }
 
@@ -1415,7 +1588,8 @@ titulo("D. Máquina de estados del avatar");
   );
   check(
     "y no se pinta si es de una fase que ya se cerró",
-    /subtitulo && faseDelSubtitulo === \(fases\[fases\.length - 1\]\?\.id \?\? ""\)/.test(aula),
+    aula.includes("subtitulo && faseDelSubtitulo === faseAbierta") &&
+      /const faseAbierta = fases\[fases\.length - 1\]\?\.id \?\? ""/.test(aula),
   );
   check(
     "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
@@ -1567,11 +1741,13 @@ titulo("D. Máquina de estados del avatar");
   check(
     "el paso se encadena con el fin de la locución, no con un reloj propio",
     maquina.includes(".hablar(texto, { alEmpezar: mostrar })") &&
-      /\.then\(\(\) => \{\s*resuelta = true;\s*hablando = false;\s*seguir\(\);/.test(maquina),
+      /\.then\(\(\) => \{\s*resuelta = true;\s*seguir\(\);/.test(maquina),
   );
+  const servicioVoz = readFileSync(new URL("../lib/leccion/voz.ts", import.meta.url), "utf8");
   check(
     "la pizarra sólo cancela la voz si la locución la lanzó ella",
-    /if \(!hablando\) return;/.test(maquina) && /hablando = true;/.test(maquina),
+    /if \(turno !== quien\) return;/.test(servicioVoz) &&
+      !maquina.includes("let hablando"),
   );
   check(
     "si el tutor retoma la palabra, el repaso se calla",

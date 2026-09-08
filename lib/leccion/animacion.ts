@@ -408,17 +408,32 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const c = Number(derechaCruda);
 
   const unitario = coeficiente === 1 || coeficiente === -1;
+
+  /**
+   * LA ECUACIÓN SE COMPONE MIEMBRO A MIEMBRO.
+   *
+   * Y las marcas se ponen DENTRO de un miembro, nunca sobre la cadena entera.
+   * Es la diferencia entre señalar el término que se cancela y señalar un tramo
+   * que empieza en un miembro y acaba en el otro: eso último se llevaba por
+   * delante el signo igual y el número del otro lado —"+ 6 = 16 - 6"—, que como
+   * afirmación matemática es falsa.
+   *
+   * El igual se escribe aquí, entre los dos, y no forma parte de ninguna marca.
+   */
   // El coeficiente sólo se marca cuando está escrito. En "x + 5 = 20" no hay
   // un 1 que señalar, y dibujar un recuadro sobre nada deja la caja flotando.
-  const izquierda = unitario
-    ? `${coeficiente === -1 ? "-" : ""}${variable}`
-    : `${marcar("pz-coef-despeje", String(coeficiente))}${variable}`;
+  const coefLatex = unitario
+    ? `${coeficiente === -1 ? "-" : ""}`
+    : marcar("pz-coef-despeje", String(coeficiente));
   // Cada término que se cancela lleva SU clase además de la común: la común
   // identifica el foco, las propias delimitan una caja por término.
   const terminoLatex =
     b === 0
       ? ""
       : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela pz-cancela-izq", String(Math.abs(b)))}`;
+
+  /** El miembro izquierdo, con sus marcas y sólo las suyas. */
+  const izquierda = `${coefLatex}${variable}${terminoLatex}`;
 
   // Cuántos focos habrá, para saber en cuál se destapa la solución. La ecuación
   // no puede empezar con el resultado escrito: eso es dar la respuesta antes de
@@ -433,8 +448,11 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`;
 
   const solucion = formatearRacional(c - b, coeficiente);
+  /** El miembro derecho: el número y, al cancelar, su compensación. */
+  const derecha = `${c}${compensacion}`;
+
   const latex =
-    `${izquierda}${terminoLatex} = ${c}${compensacion}` +
+    `${izquierda} = ${derecha}` +
     ` ${marcar(
       `pz-rev-${pasoSolucion}`,
       `\\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,

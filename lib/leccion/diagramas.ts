@@ -50,6 +50,20 @@ export interface GeometriaDiagrama {
   ancho: number;
   alto: number;
   etiquetas: EtiquetaDiagrama[];
+  /**
+   * Medidas del dibujo de una fracción concreta, cuando el diagrama es ése.
+   *
+   * Se calculan junto a las etiquetas —y no dentro del componente— para que la
+   * suite pueda comprobar sin navegador que las celdas caben en el lienzo sea
+   * cual sea el denominador.
+   */
+  fraccion?: {
+    tomadas: number;
+    partes: number;
+    margen: number;
+    celda: number;
+    centroPrimera: number;
+  };
 }
 
 /**
@@ -115,15 +129,85 @@ export const GEOMETRIA_DERIVADAS: GeometriaDiagrama = {
  * indicación de cuál es cuál. Un dibujo que no dice qué señala no enseña; el
  * alumno tiene que atar cada palabra a una parte del dibujo.
  */
-export const GEOMETRIA_FRACCIONES: GeometriaDiagrama = {
-  ancho: 240,
-  alto: 132,
-  etiquetas: [
-    { texto: "numerador: lo que tomamos", x: 20, y: 12, anclaje: "start", tamano: 9, tono: "acento" },
-    { texto: "denominador: partes iguales del todo", x: 120, y: 104, anclaje: "middle", tamano: 9, tono: "acento" },
-    { texto: "1 de 4 partes iguales", x: 120, y: 124, anclaje: "middle", tamano: 10, tono: "tenue" },
-  ],
-};
+export const GEOMETRIA_FRACCIONES: GeometriaDiagrama = geometriaDeFraccion(1, 4);
+
+/**
+ * La geometría del dibujo de una fracción CONCRETA.
+ *
+ * Antes el dibujo era fijo: cuatro barras con una sombreada, dijera lo que
+ * dijera el tutor. Si la lección explicaba 2/6, el alumno oía una cosa y veía
+ * otra. Ahora el dibujo se construye con el numerador y el denominador de los
+ * que se está hablando, y las leyendas dicen sus números.
+ *
+ * El ancho del lienzo es fijo (240) y las celdas se reparten dentro, así que
+ * vale para 2 partes o para 10 sin salirse ni deformarse.
+ */
+export function geometriaDeFraccion(
+  numerador: number,
+  denominador: number,
+  etiquetas?: { numerador?: string; denominador?: string },
+): GeometriaDiagrama {
+  const partes = Math.min(12, Math.max(1, Math.round(denominador) || 1));
+  const tomadas = Math.min(partes, Math.max(0, Math.round(numerador) || 0));
+  const ancho = 240;
+  const margen = 20;
+  const celda = (ancho - margen * 2) / partes;
+
+  // La flecha del numerador cae sobre la primera celda tomada; si no se toma
+  // ninguna, sobre la primera, que es donde el tutor señalaría.
+  const centroPrimera = margen + celda / 2;
+
+  return {
+    ancho,
+    alto: 132,
+    etiquetas: [
+      {
+        texto: etiquetas?.numerador ?? `numerador: ${tomadas} (lo que tomamos)`,
+        x: margen,
+        y: 12,
+        anclaje: "start",
+        tamano: 9,
+        tono: "acento",
+      },
+      {
+        texto: etiquetas?.denominador ?? `denominador: ${partes} (partes iguales del todo)`,
+        x: ancho / 2,
+        y: 104,
+        anclaje: "middle",
+        tamano: 9,
+        tono: "acento",
+      },
+      {
+        texto: `${tomadas} de ${partes} partes iguales`,
+        x: ancho / 2,
+        y: 124,
+        anclaje: "middle",
+        tamano: 10,
+        tono: "tenue",
+      },
+    ],
+    // Lo que el componente necesita para dibujar, ya calculado aquí: la suite
+    // comprueba que ninguna celda se sale del lienzo sin montar React.
+    fraccion: { tomadas, partes, margen, celda, centroPrimera },
+  };
+}
+
+/**
+ * La fracción de la que habla una línea de la lección: "2/6", "1/4"...
+ *
+ * Se lee la PRIMERA que aparezca y sólo si es representable —hasta doce partes,
+ * y sin pasarse del todo—; con "18/45" el dibujo no enseñaría nada.
+ */
+export function fraccionEnTexto(texto: string): { numerador: number; denominador: number } | null {
+  for (const [, a, b] of String(texto ?? "").matchAll(/(\d{1,2})\s*\/\s*(\d{1,2})/g)) {
+    const numerador = Number(a);
+    const denominador = Number(b);
+    if (denominador >= 2 && denominador <= 12 && numerador >= 0 && numerador <= denominador) {
+      return { numerador, denominador };
+    }
+  }
+  return null;
+}
 
 export const GEOMETRIA_LINEALES: GeometriaDiagrama = {
   ancho: 240,

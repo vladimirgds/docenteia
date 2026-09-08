@@ -21,6 +21,11 @@ import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import {
+  crearVozCompartida,
+  type VozCompartida,
+  type VozUtilizable,
+} from "@/lib/leccion/voz";
+import {
   Pizarra,
   tituloDeFase,
   type FaseAbierta,
@@ -222,7 +227,16 @@ export function Aula({
    * animada lo recibe como prop, y una referencia rellenada en un efecto no
    * provoca el repintado que se lo entregaría.
    */
-  const [tts, setTts] = useState<TTS | null>(null);
+  /**
+   * La vista del sintetizador que usa la pizarra animada.
+   *
+   * En estado, y no sólo en una referencia, porque la pizarra la recibe como
+   * prop y una referencia rellenada en un efecto no provoca el repintado que se
+   * la entregaría.
+   */
+  const [vozPizarra, setVozPizarra] = useState<VozUtilizable | null>(null);
+  /** El reparto de turnos, para poder callar a todos al cambiar de tema. */
+  const vozRef = useRef<VozCompartida | null>(null);
   /**
    * La pizarra en TRES estados independientes.
    *
@@ -453,8 +467,19 @@ export function Aula({
   useEffect(() => {
     const tts = new TTS();
     ttsRef.current = tts;
-    setTts(tts);
     setEstadoVoz(tts.describe());
+
+    // EL SINTETIZADOR ES UNO Y SE REPARTE POR TURNOS.
+    //
+    // Ni el motor de la lección ni la pizarra animada hablan con él
+    // directamente: cada uno recibe su vista, y el turno lo lleva
+    // `lib/leccion/voz.ts`. Así la regla —hablar te da el turno, callar sólo te
+    // calla a ti— vive en UN sitio, en vez de repartida por los tres ficheros
+    // que la tenían que respetar.
+    const voz = crearVozCompartida(tts);
+    vozRef.current = voz;
+    const vozTutor = voz.para("tutor");
+    setVozPizarra(voz.para("pizarra"));
 
     // El avatar y la voz son dependencias del motor; aquí se le entregan como
     // adaptadores que, en lugar de tocar el DOM, actualizan el estado de React.
@@ -560,7 +585,7 @@ export function Aula({
         }),
     };
 
-    pseRef.current = new PSELight({ avatar, tts, ui });
+    pseRef.current = new PSELight({ avatar, tts: vozTutor, ui });
     setListo(true);
 
     return () => {
@@ -893,6 +918,16 @@ export function Aula({
    * con él, porque lo va siguiendo—, en lugar de abrir una segunda
    * reproducción que cuente algo distinto.
    */
+  useEffect(() => {
+    if (!tema) return;
+    return () => {
+      // Al cambiar de tema —o al salir de la lección— se calla lo que estuviera
+      // sonando, venga del tutor o del repaso. Una frase de Aritmética narrada
+      // sobre la pantalla de Fracciones es exactamente lo que se reportó.
+      vozRef.current?.callarATodos();
+    };
+  }, [tema?.clave]);
+
   const mandosLeccion = useMemo(
     () => ({
       pausar: () => pseRef.current?.pause(),
@@ -912,6 +947,23 @@ export function Aula({
    * el desarrollo vuelve entero para poder repasarlo.
    */
   const ocultarDesarrollo = !animacionCompleta && controles.playing && lineasAnimadas.length > 0;
+
+  /** La fase que está abierta ahora mismo. */
+  const faseAbierta = fases[fases.length - 1]?.id ?? "";
+
+  /**
+   * CAMBIAR DE FASE O DE TEMA EMPIEZA DE CERO.
+   *
+   * Lo pidió el cliente y tiene razón de fondo: al pasar de Concepto a Reglas
+   * —o de Aritmética a Fracciones— no puede quedar nada de lo anterior. El
+   * subtítulo ya va etiquetado con su fase; esto se ocupa de lo que faltaba:
+   * la pizarra animada vuelve a su primer paso, en lugar de seguir donde la
+   * dejó la fase que se acaba de cerrar.
+   *
+   * La clave viaja al panel como prop: es él quien tiene la máquina, y un aviso
+   * declarativo evita tener que sacarle una API de mandos al aula.
+   */
+  const reinicioAnimacion = `${tema?.clave ?? ""}·${faseAbierta}`;
 
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
@@ -1107,13 +1159,14 @@ export function Aula({
               cuando hay algo que animar. */}
           <PanelAnimado
             lineas={lineasAnimadas}
-            tts={tts}
+            tts={vozPizarra}
             vozActiva={vozActiva}
             // Lo que el tutor está diciendo: con esto la pizarra se coloca
             // sola donde va la voz, sin esperar a que nadie pulse Reproducir.
             narracion={subtitulo}
             alCambiarAvatar={alCambiarAvatar}
             alProgresar={alProgresarAnimacion}
+            reinicio={reinicioAnimacion}
             // Un solo mando de reproducción: mientras el tutor explica, los
             // botones de la pizarra actúan sobre ÉL, no sobre una segunda
             // reproducción en paralelo.
@@ -1138,7 +1191,7 @@ export function Aula({
               la fase anterior que llegue tarde no se pinta bajo el rótulo de la
               nueva: contaría una cosa mientras la pizarra enseña otra.
           */}
-          {subtitulo && faseDelSubtitulo === (fases[fases.length - 1]?.id ?? "") && (
+          {subtitulo && faseDelSubtitulo === faseAbierta && (
             <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
               <TextoMatematico texto={subtitulo} />
             </p>
