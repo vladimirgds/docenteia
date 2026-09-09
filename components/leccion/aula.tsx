@@ -18,6 +18,7 @@ import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
+import { esAnimable } from "@/lib/leccion/animacion";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
@@ -56,6 +57,7 @@ import {
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
 import {
+  cuentaDeArrayLatex,
   esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
@@ -892,6 +894,53 @@ export function Aula({
   /** La fase que está abierta ahora mismo. */
   const faseAbierta = fases[fases.length - 1]?.id ?? "";
 
+  /**
+   * ¿LA CUENTA DE LA REGLA SE ANIMA, O SE QUEDA EN SU TARJETA?
+   *
+   * El cliente lo repitió dos veces: en "Reglas y propiedades" hay una cuenta
+   * estática en una esquina. Es el enunciado de la regla —la suma en columna de
+   * "Suma con llevada"—, que en el catálogo viene como un `array` de LaTeX ya
+   * montado: KaTeX lo compone entero de una vez y ahí se queda.
+   *
+   * Deshecho hasta la cuenta que representa, la pizarra la monta columna por
+   * columna como cualquier otra, y la tarjeta deja de componerla: una sola
+   * cuenta en pantalla, la que se mueve. Si no hay cuenta que sacar —una regla
+   * que es una fórmula y no una operación—, todo se queda como estaba.
+   */
+  /**
+   * LA REGLA QUE SE ESTÁ EXPLICANDO, RESUELTA EN UN SOLO SITIO.
+   *
+   * Esto vivía dentro de la pizarra, y por eso la primera corrección no sirvió
+   * de nada: el aula miraba `reglaDetectada` —que en aritmética casi siempre es
+   * null, porque el motor NARRA la regla y no la escribe— mientras la tarjeta
+   * caía en su último recurso y componía la primera del tema. Las dos vistas
+   * hablaban de reglas distintas: aquí no había cuenta que animar y allí había
+   * una compuesta y quieta. Exactamente lo que se ve en la captura.
+   *
+   * Resuelta aquí y bajada ya elegida, las dos enseñan la misma.
+   */
+  const reglaEnCurso = useMemo(() => {
+    if (!esFaseDeReglas(faseAbierta) || reglasDelTema.length === 0) return null;
+    if (reglaDetectada) return reglaDetectada;
+    const porPizarra = reglaActiva(
+      [ejercicio?.texto ?? "", ...desarrollo.map((l) => l.texto)],
+      reglasDelTema,
+    );
+    // Y si no se deduce ninguna, la primera del tema: una fase de "Reglas y
+    // propiedades" en blanco no es aceptable, y el catálogo siempre tiene una.
+    return porPizarra ?? reglasDelTema[0];
+  }, [faseAbierta, reglasDelTema, reglaDetectada, ejercicio, desarrollo]);
+
+  const cuentaDeLaRegla = useMemo(() => {
+    const enunciado = reglaEnCurso?.enunciado;
+    if (!enunciado) return null;
+    const cuenta = cuentaDeArrayLatex(enunciado);
+    if (cuenta) return cuenta;
+    return esAnimable(enunciado) ? enunciado : null;
+  }, [reglaEnCurso]);
+
+  const reglaAnimada = cuentaDeLaRegla != null;
+
   const lineasAnimadas = useMemo(() => {
     // Cada línea viaja como PASO: su LaTeX y, si el generador la envió, la
     // instrucción de foco. Con etiqueta, la pizarra marca exactamente lo que
@@ -904,9 +953,10 @@ export function Aula({
     // estática en una esquina, y al oír "llevo 1" no se destacaba nada. Metida
     // en la pizarra animada, la cuenta se monta paso a paso y el acarreo
     // aparece cuando el tutor lo nombra.
-    if (esFaseDeReglas(faseAbierta) && reglaDetectada?.enunciado) {
-      pasos.push({ latex: reglaDetectada.enunciado });
-    }
+    // Sólo si de la regla sale una cuenta que se pueda animar. Si no —una
+    // notación que no es una operación—, se queda donde estaba: en su tarjeta.
+    // Empujarla igualmente la quitaría de arriba sin ponerla en ninguna parte.
+    if (cuentaDeLaRegla) pasos.push({ latex: cuentaDeLaRegla });
 
     if (ejercicio?.texto) {
       pasos.push({ latex: ejercicio.texto, ...(ejercicio.operacion ? { operacion: ejercicio.operacion } : {}) });
@@ -916,7 +966,10 @@ export function Aula({
       pasos.push({ latex: linea.texto, ...(linea.operacion ? { operacion: linea.operacion } : {}) });
     }
     return pasos;
-  }, [ejercicio, desarrollo]);
+    // `cuentaDeLaRegla` entra en la lista: sin ella el guion no se rehacía al
+    // detectarse la regla —la fase de Reglas no cambia el ejercicio ni el
+    // desarrollo—, y la cuenta no llegaba nunca a la pizarra animada.
+  }, [ejercicio, desarrollo, cuentaDeLaRegla]);
 
   /**
    * EL DESARROLLO NO PUEDE ADELANTAR EL RESULTADO.
@@ -1169,7 +1222,12 @@ export function Aula({
             faseDelContenido={faseDelContenido}
             resaltado={resaltado}
             reglas={reglasDelTema}
-            reglaDetectada={reglaDetectada}
+            // La regla ya resuelta: la tarjeta y la pizarra animada tienen que
+            // estar hablando de la MISMA, o una compone lo que la otra anima.
+            reglaDetectada={reglaEnCurso}
+            // Si la cuenta de la regla se está animando abajo, la tarjeta no la
+            // compone: era la "cuenta estática en una esquina" del informe.
+            reglaAnimada={reglaAnimada}
             tema={tema.tema}
           />
 

@@ -8,6 +8,7 @@ import { planoALatex } from "../matematicas/index.ts";
 import {
   escenaDePasoSemantico,
   leerAmplificacion,
+  leerSumaDeFracciones,
   type PasoSemantico,
 } from "./marcado.ts";
 
@@ -88,6 +89,7 @@ export interface Escena {
     | "despeje"
     | "simplificacion"
     | "amplificacion"
+    | "suma-fracciones"
     | "distributiva"
     | "semantica"
     | "texto";
@@ -668,8 +670,17 @@ export function escenaDeAmplificacion(texto: string, id: string): Escena | null 
   if (!f) return null;
 
   const factor = (donde: string) => marcar(`pz-factor pz-factor-${donde}`, String(f.factor));
+
+  // LA LÍNEA ENTERA, DESTAPADA POR PARTES.
+  //
+  // Antes se componía sólo el producto y su resultado, y la fracción de partida
+  // se perdía: en pantalla aparecía "1×3/2×3 = 3/6" sin decir de dónde salía.
+  // Escrita entera —origen, producto, resultado— y con cada trozo saliendo en
+  // su paso, se lee como lo que es: la misma fracción, escrita de otra forma.
+  const producto = `\\frac{${f.a} \\times ${factor("num")}}{${f.b} \\times ${factor("den")}}`;
   const latex =
-    `\\frac{${f.a} \\times ${factor("num")}}{${f.b} \\times ${factor("den")}}` +
+    `\\frac{${f.a}}{${f.b}}` +
+    ` ${marcar("pz-rev-0", `= ${producto}`)}` +
     ` ${marcar("pz-rev-1", `= ${marcar("pz-resultado", `\\frac{${f.c}}{${f.d}}`)}`)}`;
 
   return {
@@ -692,6 +703,68 @@ export function escenaDeAmplificacion(texto: string, id: string): Escena | null 
         clase: "pz-resultado",
         tipo: "ovalo",
         narracion: `Queda ${f.c} entre ${f.d}.`,
+      },
+    ],
+  };
+}
+
+// ── Suma de fracciones con el mismo denominador ──────────────────────────────
+
+/**
+ * `6/10 + 5/10 = 11/10` contado como la regla que es.
+ *
+ * Es la segunda mitad de la lección de fracciones y era una línea muerta: la
+ * tarjeta de desarrollo la escribía entera, sin un resaltado, y el panel
+ * animado ni se montaba. Aquí se separa en los dos gestos que enseña la regla
+ * —arriba se opera, abajo NO se toca— con un recuadro sobre cada numerador y
+ * otro sobre cada denominador, y el resultado no sale hasta el final.
+ */
+export function escenaDeSumaDeFracciones(texto: string, id: string): Escena | null {
+  const s = leerSumaDeFracciones(texto);
+  if (!s) return null;
+
+  const arriba = (i: number, valor: number) => marcar(`pz-numerador pz-num-${i}`, String(valor));
+  const abajo = (i: number) => marcar(`pz-denominador pz-den-${i}`, String(s.d));
+
+  const verbo = s.operador === "+" ? "Sumamos" : "Restamos";
+  const dicho = s.operador === "+" ? "más" : "menos";
+
+  const latex =
+    `\\frac{${arriba(0, s.n1)}}{${abajo(0)}} ${s.operador} \\frac{${arriba(1, s.n2)}}{${abajo(1)}}` +
+    // El paso intermedio con la operación a la vista, que es lo que hace ver
+    // que el denominador viaja intacto mientras los numeradores se juntan.
+    ` ${marcar("pz-rev-0", `= \\frac{${s.n1} ${s.operador} ${s.n2}}{${s.d}}`)}` +
+    ` ${marcar("pz-rev-2", `= ${marcar("pz-solucion", `\\frac{${s.total}}{${s.d}}`)}`)}`;
+
+  return {
+    id,
+    texto,
+    latex,
+    narracion: `${s.n1} entre ${s.d} ${dicho} ${s.n2} entre ${s.d}.`,
+    clase: "suma-fracciones",
+    focos: [
+      {
+        clase: "pz-numerador",
+        // Cada numerador con SU recuadro: en una sola caja que abarcara los dos
+        // quedaría dentro el signo y el denominador de en medio.
+        piezas: ["pz-num-0", "pz-num-1"],
+        tipo: "caja",
+        narracion: `${verbo} los numeradores: ${s.n1} ${s.operador} ${s.n2} = ${s.total}.`,
+        etiqueta: "numeradores",
+        pista: "numeradores",
+      },
+      {
+        clase: "pz-denominador",
+        piezas: ["pz-den-0", "pz-den-1"],
+        tipo: "caja",
+        narracion: `El denominador ${s.d} no cambia: se queda en ${s.d}.`,
+        etiqueta: `entre ${s.d}`,
+        pista: "denominador",
+      },
+      {
+        clase: "pz-solucion",
+        tipo: "ovalo",
+        narracion: `Queda ${s.total} entre ${s.d}.`,
       },
     ],
   };
@@ -859,6 +932,7 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
     escenaDeDespeje(texto, id) ??
     escenaDeDistributiva(texto, id) ??
     escenaDeAmplificacion(texto, id) ??
+    escenaDeSumaDeFracciones(texto, id) ??
     escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
     escenaDeTexto(texto, id)

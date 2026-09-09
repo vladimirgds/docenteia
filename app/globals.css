@@ -290,6 +290,7 @@
 
 .pz-factor,
 .pz-reparte,
+.pz-numerador,
 .pz-coef-despeje {
   color: hsl(221 83% 45%);
   font-weight: 600;
@@ -297,18 +298,33 @@
 
 .dark .pz-factor,
 .dark .pz-reparte,
+.dark .pz-numerador,
 .dark .pz-coef-despeje {
   color: hsl(213 94% 72%);
 }
 
+/* El denominador, en su propio color y a propósito: la regla que se enseña es
+   que arriba se opera y abajo NO se toca. Con los dos en azul, el alumno vería
+   cuatro números marcados igual y la mitad del mensaje se perdería. */
+.pz-denominador {
+  color: hsl(32 85% 38%);
+  font-weight: 600;
+}
+
+.dark .pz-denominador {
+  color: hsl(38 92% 62%);
+}
+
 /* Y el resultado, cuando ya está, en verde: es la meta, no un paso. */
 .pz-solucion,
+.pz-resultado,
 .pz-simplificada {
   color: hsl(160 84% 30%);
   font-weight: 600;
 }
 
 .dark .pz-solucion,
+.dark .pz-resultado,
 .dark .pz-simplificada {
   color: hsl(160 84% 55%);
 }

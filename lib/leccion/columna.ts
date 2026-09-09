@@ -146,6 +146,49 @@ export function operacionDeLinea(texto: string): OperacionEnColumna | null {
 }
 
 /**
+ * LA CUENTA QUE HAY DENTRO DE UNA REGLA DEL CATÁLOGO.
+ *
+ * El enunciado de "Suma con llevada" no es una frase: es la cuenta en columna
+ * dibujada con un `array` de LaTeX, llevada incluida. Compuesta tal cual, sale
+ * una imagen fija —la que el cliente lleva dos revisiones señalando en la
+ * esquina de "Reglas y propiedades"—, porque no hay nada que un guion pueda
+ * animar en un bloque de LaTeX ya montado.
+ *
+ * Aquí se deshace el dibujo hasta la cuenta que representa ("24 + 17 = 41"), y
+ * con ella la pizarra animada la monta columna por columna como cualquier otra.
+ * Se reaprovecha el lector de cuentas dibujadas en vez de escribir un segundo
+ * intérprete: las filas del `array` y las líneas de un dibujo con guiones son
+ * lo mismo con otra sintaxis, y ese lector ya sabe negarse cuando el total no
+ * cuadra.
+ */
+export function cuentaDeArrayLatex(latex: string): string | null {
+  const texto = String(latex ?? "");
+  if (!/\\begin\{array\}/.test(texto)) return null;
+
+  const cuerpo = texto
+    .replace(/\\begin\{array\}(\{[^}]*\})?/g, "")
+    .replace(/\\end\{array\}/g, "")
+    .replace(/\\(?:script|display|text)style/g, "");
+
+  const lineas = cuerpo
+    // Las filas del array van separadas por "\\"…
+    .split(/\\\\/)
+    // …y la raya de la cuenta es la "\hline", que puede compartir fila con el
+    // total. Se convierte en una línea propia, que es como la espera el lector.
+    .flatMap((fila) => fila.split(/\\hline/).flatMap((t, i) => (i === 0 ? [t] : ["---", t])))
+    // Las celdas de una misma fila forman el número: "& 2 & 4" es el 24.
+    .map((t) => t.replace(/&/g, "").replace(/\s+/g, ""))
+    .filter(Boolean);
+
+  const op = leerOperacionDibujada(lineas.join("\n"));
+  // Sin el total escrito —o con uno que no sale— no se compone nada: la regla
+  // se queda como está antes que enseñar una cuenta que no es la suya.
+  if (!op?.completa) return null;
+
+  return `${op.a} ${op.operador} ${op.b} = ${op.resultado}`;
+}
+
+/**
  * ¿Las dos líneas son la MISMA cuenta?
  *
  * El motor la redibuja entera en cada paso, así que en la pizarra se apilaban

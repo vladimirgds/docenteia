@@ -135,6 +135,7 @@ export function Pizarra({
   resaltado,
   reglas = [],
   reglaDetectada = null,
+  reglaAnimada = false,
   tema,
   ocultarDesarrollo = false,
   className,
@@ -168,6 +169,16 @@ export function Pizarra({
   reglas?: ReglaPizarra[];
   /** Regla que el aula ha detectado como activa a partir de lo narrado. */
   reglaDetectada?: ReglaPizarra | null;
+  /**
+   * La cuenta de la regla la está animando la pizarra de abajo.
+   *
+   * Entonces esta tarjeta NO la compone. El cliente lo reportó dos veces —"en
+   * Reglas y propiedades sigue apareciendo una cuenta estática fija en una
+   * esquina"— y la causa era ésta: la misma suma en columna salía dos veces,
+   * quieta aquí arriba y animándose abajo. La tarjeta se queda con el nombre de
+   * la regla, que es lo que la sitúa; la cuenta la enseña quien la mueve.
+   */
+  reglaAnimada?: boolean;
   /** Tema en curso, para elegir el diagrama de la fase de Concepto. */
   tema?: string;
   /**
@@ -407,7 +418,11 @@ export function Pizarra({
                     regla que el tutor está explicando en este momento. Mostrar
                     el catálogo entero desincronizaba la pizarra del audio. */}
                 {esFaseDeReglas(actual.id) && reglaEnCurso && (
-                  <TarjetaRegla key={reglaEnCurso.clave} regla={reglaEnCurso} />
+                  <TarjetaRegla
+                    key={reglaEnCurso.clave}
+                    regla={reglaEnCurso}
+                    sinFormula={reglaAnimada}
+                  />
                 )}
 
                 {/* En la fase de Concepto, un diagrama que enseñe la idea: la
@@ -580,7 +595,14 @@ function esOperacionDispuesta(enunciado: string): boolean {
   return String(enunciado ?? "").includes("\\begin{array}");
 }
 
-function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
+function TarjetaRegla({
+  regla,
+  sinFormula = false,
+}: {
+  regla: ReglaPizarra;
+  /** La cuenta se está animando abajo: aquí sólo el nombre de la regla. */
+  sinFormula?: boolean;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -602,15 +624,25 @@ function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
           el tutor está narrando y lo que se lee en el subtítulo, así que en el
           lienzo era el mismo texto por tercera vez. La pizarra es para la
           notación; la prosa, para la voz. */}
-      <div className="overflow-x-auto py-1">
-        <Formula latex={regla.enunciado} display />
-      </div>
+      {/* La notación de la regla, salvo cuando es la pizarra animada la que la
+          está montando paso a paso: dos copias de la misma cuenta —una quieta
+          arriba y otra moviéndose abajo— es exactamente lo que el cliente
+          señaló como "una cuenta estática fija en una esquina". */}
+      {sinFormula ? (
+        <p className="py-1 text-xs text-muted-foreground">
+          La cuenta se monta paso a paso aquí debajo.
+        </p>
+      ) : (
+        <div className="overflow-x-auto py-1">
+          <Formula latex={regla.enunciado} display />
+        </div>
+      )}
 
       {/* Y el ejemplo sólo cuando el enunciado NO es ya una operación resuelta.
           En "Suma con llevada" el enunciado es la propia cuenta en columna, con
           su llevada y su total: debajo quedaba un "19 + 45 = 64" horizontal que
           no añade nada y desdice el formato que se está enseñando. */}
-      {regla.ejemplo && !esOperacionDispuesta(regla.enunciado) && (
+      {!sinFormula && regla.ejemplo && !esOperacionDispuesta(regla.enunciado) && (
         <div className="mt-2 overflow-x-auto border-t pt-2">
           <Formula latex={regla.ejemplo} />
         </div>

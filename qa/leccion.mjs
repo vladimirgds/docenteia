@@ -2706,10 +2706,12 @@ console.log("\n · La tarjeta de regla no compone prosa");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
-  const tarjeta = fuentePzI.slice(
-    fuentePzI.indexOf("function TarjetaRegla"),
-    fuentePzI.indexOf("function TarjetaRegla") + 1800,
-  );
+  // El cuerpo ENTERO de la función, no sus primeros 1.800 caracteres: con una
+  // ventana fija, documentar una propiedad nueva empujaba fuera la línea que se
+  // comprobaba y la batería denunciaba un cambio que nadie había hecho.
+  const desdeTarjeta = fuentePzI.indexOf("function TarjetaRegla");
+  const siguiente = fuentePzI.indexOf("\nfunction ", desdeTarjeta + 1);
+  const tarjeta = fuentePzI.slice(desdeTarjeta, siguiente < 0 ? undefined : siguiente);
 
   check(
     "la tarjeta compone el nombre de la regla",

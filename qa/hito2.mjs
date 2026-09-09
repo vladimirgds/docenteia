@@ -40,10 +40,15 @@ import {
   reglasDeRevelado,
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
-import { marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
+import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { repararEquivalencias } from "../src/preLight.js";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
-import { leerAmplificacion, marcarTerminos, miembros } from "../lib/leccion/marcado.ts";
+import {
+  leerAmplificacion,
+  leerSumaDeFracciones,
+  marcarTerminos,
+  miembros,
+} from "../lib/leccion/marcado.ts";
 import { fraccionEnTexto, geometriaDeFraccion } from "../lib/leccion/diagramas.ts";
 import {
   avatarDe,
@@ -596,6 +601,111 @@ titulo("A00a. La distributiva se reparte a la vista");
   );
 }
 
+titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
+
+{
+  // LA LECCIÓN QUE EL CLIENTE TENÍA DELANTE, LÍNEA POR LÍNEA.
+  //
+  // Esta batería probaba la amplificación con "1/2 = 3/6", que es como la
+  // escribe el generador de mentira. El de verdad escribe el producto entero
+  // —"3/5 = (3 * 2)/(5 * 2) = 6/10"—, ninguna lectura lo reconocía, y el guion
+  // salía VACÍO: el panel animado no llegaba a montarse y en pantalla quedaba
+  // la tarjeta de desarrollo, estática, con la solución entera a la vista. Es
+  // exactamente lo que se reportó como "una imagen estática con audio de
+  // fondo". Se prueba con las líneas reales, no con las cómodas.
+  const LECCION = [
+    "3/5 + 1/2 = ?",
+    "3/5 = (3 * 2)/(5 * 2) = 6/10",
+    "1/2 = (1 * 5)/(2 * 5) = 5/10",
+    "6/10 + 5/10 = (6 + 5)/10 = 11/10",
+  ];
+
+  const guion = guionDeLeccion(LECCION);
+  check("la lección de fracciones produce escenas que animar", guion.length === 3, `${guion.length}`);
+  check(
+    "y ninguna se queda sin focos",
+    guion.every((e) => e.focos.length > 0),
+  );
+
+  // El paso intermedio que el cliente marcó como indispensable.
+  const amp = escenaDeLinea("3/5 = (3 * 2)/(5 * 2) = 6/10", "e");
+  check("el producto explícito se lee como amplificación", amp.clase === "amplificacion");
+  check(
+    "la línea se compone entera: origen, producto y resultado",
+    /\\frac\{3\}\{5\}/.test(amp.latex) &&
+      /3 \\times/.test(amp.latex) &&
+      /5 \\times/.test(amp.latex) &&
+      /\\frac\{6\}\{10\}/.test(amp.latex),
+    amp.latex,
+  );
+  check(
+    "el factor va marcado arriba Y abajo, cada uno con su recuadro",
+    amp.focos[0].piezas?.join(",") === "pz-factor-num,pz-factor-den",
+  );
+  check("con su rótulo", amp.focos[0].etiqueta === "× 2");
+  check(
+    "el producto no está en pantalla desde el principio",
+    /pz-rev-0/.test(amp.latex) && /pz-rev-1/.test(amp.latex),
+  );
+
+  // Las tres formas en que puede llegar el mismo paso.
+  check(
+    "se lee con el producto delante, detrás o sin él",
+    Boolean(leerAmplificacion("3/5 = (3 * 2)/(5 * 2) = 6/10")) &&
+      Boolean(leerAmplificacion("3/5 = (3 * 2)/(5 * 2)")) &&
+      Boolean(leerAmplificacion("3/5 = 6/10")),
+  );
+  check(
+    "y en LaTeX, con aspa o con asterisco",
+    Boolean(leerAmplificacion("\\frac{1}{2} = \\frac{3}{6}")) &&
+      Boolean(leerAmplificacion("1/2 = (1 × 3)/(2 × 3)")),
+  );
+  check(
+    "una amplificación que no sale NO se adorna",
+    leerAmplificacion("1/2 = (1 * 3)/(2 * 3) = 3/7") === null &&
+      leerAmplificacion("1/2 = (1 * 3)/(2 * 4)") === null &&
+      leerAmplificacion("1/2 = 2/5") === null,
+  );
+
+  // Y la otra mitad de la lección: sumar ya con el mismo denominador.
+  const suma = escenaDeLinea("6/10 + 5/10 = (6 + 5)/10 = 11/10", "e");
+  check("la suma con el mismo denominador también se anima", suma.clase === "suma-fracciones");
+  check(
+    "arriba se opera y abajo no: un foco para cada cosa",
+    suma.focos[0].piezas?.join(",") === "pz-num-0,pz-num-1" &&
+      suma.focos[1].piezas?.join(",") === "pz-den-0,pz-den-1",
+  );
+  check(
+    "y el resultado no sale hasta el final",
+    /pz-rev-2\}\{= \\htmlClass\{pz-solucion\}/.test(suma.latex),
+    suma.latex,
+  );
+  check(
+    "con denominadores distintos no se compone: ése es otro paso",
+    leerSumaDeFracciones("3/5 + 1/2 = 11/10") === null,
+  );
+  check(
+    "y una suma que no sale tampoco",
+    leerSumaDeFracciones("1/4 + 2/4 = 4/4") === null,
+  );
+  check("la resta se lee igual", Boolean(leerSumaDeFracciones("3/4 - 1/4 = 2/4")));
+
+  // KaTeX tiene que conservar TODAS las marcas: sin ellas no hay nada que medir.
+  for (const escena of guion) {
+    const html = katex.renderToString(escena.latex, {
+      displayMode: true,
+      throwOnError: false,
+      strict: false,
+      trust: (ctx) => ctx.command === "\\htmlClass",
+    });
+    const piezas = escena.focos.flatMap((f) => f.piezas ?? [f.clase]);
+    check(
+      `KaTeX conserva las marcas de "${escena.texto}"`,
+      piezas.every((p) => html.includes(p)) && !/katex-error/.test(html),
+    );
+  }
+}
+
 titulo("A00a2. El acarreo se destaca cuando el tutor lo nombra");
 
 {
@@ -610,10 +720,66 @@ titulo("A00a2. El acarreo se destaca cuando el tutor lo nombra");
     JSON.stringify(destino),
   );
 
+  // Y LA CUENTA DE LA REGLA, TAL COMO ESTÁ EN EL CATÁLOGO.
+  //
+  // Esto se comprobaba leyendo el código del aula con una expresión regular, y
+  // por eso pasó lo que pasó: la línea estaba escrita, la comprobación la veía,
+  // y en pantalla la cuenta seguía quieta. El enunciado de la regla es un
+  // `array` de LaTeX ya montado —no una operación—, así que no había nada que
+  // el guion supiera animar. Se comprueba el CAMINO ENTERO, sobre el dato real
+  // de la semilla: del enunciado a la cuenta, y de la cuenta a sus focos.
+  const catalogo = JSON.parse(
+    readFileSync(new URL("../prisma/seed-data/reglas-matematicas.json", import.meta.url), "utf8"),
+  );
+  const reglas = Array.isArray(catalogo) ? catalogo : (catalogo.reglas ?? []);
+  const llevada = reglas.find((r) => r.clave === "arit-suma-llevando");
+  check("el catálogo trae la regla de la suma con llevada", Boolean(llevada));
+
+  const cuenta = llevada ? cuentaDeArrayLatex(llevada.enunciado) : null;
+  check(
+    "su enunciado en LaTeX no se puede animar tal cual",
+    llevada ? !esAnimable(llevada.enunciado) : false,
+  );
+  check("pero de él se saca la cuenta que representa", cuenta === "24 + 17 = 41", String(cuenta));
+
+  const guionRegla = cuenta ? guionDeLeccion([cuenta]) : [];
+  check("y esa cuenta sí se anima", guionRegla.length === 1 && guionRegla[0].focos.length >= 2);
+  check(
+    "con su acarreo entre los focos",
+    guionRegla[0]?.focos.some((f) => f.etiqueta === "llevo 1"),
+  );
+
+  // Una regla que no es una operación no se toca: se queda en su tarjeta.
+  check(
+    "una regla que no es una cuenta se deja donde está",
+    cuentaDeArrayLatex("a^2 + b^2 = c^2") === null &&
+      cuentaDeArrayLatex(
+        "\\begin{array}{rcc} & 2 & 4 \\\\ + & 1 & 7 \\\\ \\hline & 9 & 9 \\end{array}",
+      ) === null,
+  );
+
+  // Y en el aula: la cuenta llega a la pizarra animada Y desaparece de la
+  // tarjeta. Las dos mitades, porque tenerla en los dos sitios es el defecto.
   const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
   check(
-    "y en la fase de reglas la cuenta de la regla entra en la pizarra animada",
-    /esFaseDeReglas\(faseAbierta\) && reglaDetectada\?\.enunciado/.test(aula),
+    "el aula saca la cuenta de la regla del catálogo",
+    /cuentaDeArrayLatex\(enunciado\)/.test(aula),
+  );
+  check(
+    "y la mete en las líneas que se animan",
+    /if \(cuentaDeLaRegla\) pasos\.push/.test(aula),
+  );
+  check(
+    "recalculándolas cuando la regla cambia",
+    /\}, \[ejercicio, desarrollo, cuentaDeLaRegla\]\)/.test(aula),
+  );
+  const pizarraClasica = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "y la tarjeta deja de componerla cuando se está animando",
+    /sinFormula \? \(/.test(pizarraClasica) && /sinFormula=\{reglaAnimada\}/.test(pizarraClasica),
   );
 }
 
@@ -627,7 +793,11 @@ titulo("A00a3. Lo marcado se ve como una etiqueta, no como una raya");
   );
   check(
     "lo que se opera va en el color del tema",
-    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
+    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-numerador,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
+  );
+  check(
+    "y el denominador en el suyo, porque abajo NO se opera",
+    /\.pz-denominador \{[^}]*color:/.test(estilos),
   );
   check(
     "el fondo del recuadro se ve de verdad",

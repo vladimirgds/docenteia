@@ -1212,3 +1212,80 @@ distributiva —dos pasos, el factor con cada sumando, el resultado destapado al
 final y el resultado correcto con signo menos—, el acarreo respondiendo a
 "llevo", y el aspecto de etiqueta del marcado. `npm test` completo: **3.588
 comprobaciones, 0 fallos**.
+
+---
+
+## 24. Por qué la pizarra seguía siendo una foto: el guion salía vacío
+
+El cliente revisó el despliegue `d6ccb29` —ya con el marcado semántico dentro— y
+respondió lo mismo que la vez anterior: *«sigue igual»*. Tenía razón, y la
+corrección anterior no le había llegado a la pantalla por dos motivos distintos,
+los dos de fondo.
+
+### El generador no escribe como el generador de mentira
+
+La lectura de amplificaciones aceptaba `3/5 = 6/10`, que es como escribe el paso
+el generador de pruebas. El de verdad escribe la multiplicación entera:
+
+```
+3/5 = (3 * 2)/(5 * 2) = 6/10
+```
+
+Tres miembros, con el producto en medio. Ninguna lectura del guion la reconocía,
+así que esa línea —y las otras dos de la lección— caían en *prosa*, que no se
+anima. Con las tres líneas descartadas, **el guion salía vacío y el panel
+animado ni se montaba**: en pantalla quedaba la tarjeta de desarrollo, con la
+solución completa a la vista y sin un solo resaltado. Eso es, literalmente, *«una
+imagen estática con audio de fondo»*.
+
+Ahora se leen las tres formas en que puede llegar el mismo paso —con el producto
+delante, detrás o sin él, en texto plano o en LaTeX, con asterisco o con aspa— y
+todas acaban en la misma escena. La línea se compone entera y se destapa por
+partes: primero `3/5`, luego el producto con el factor recuadrado arriba y abajo,
+y sólo al final el resultado.
+
+Y con ella entró la otra mitad de la lección, que tampoco se animaba: sumar una
+vez igualados los denominadores. `6/10 + 5/10 = (6 + 5)/10 = 11/10` se cuenta
+ahora con un recuadro sobre cada numerador —*«sumamos los numeradores»*— y otro
+sobre cada denominador —*«el denominador no cambia»*—, que es exactamente la
+regla que se enseña. Van en colores distintos a propósito: con los cuatro
+números marcados igual, la mitad del mensaje se pierde.
+
+Una amplificación que no sale (`1/2 = (1×3)/(2×3) = 3/7`) o una suma que no
+cuadra (`1/4 + 2/4 = 4/4`) no se adornan: se dejan pasar sin marcar.
+
+### Las dos vistas hablaban de reglas distintas
+
+En «Reglas y propiedades» seguía la cuenta estática en una esquina, y la
+corrección anterior no podía funcionar por una razón que sólo se ve ejecutando:
+
+- El enunciado de «Suma con llevada» **no es una operación**, es un `array` de
+  LaTeX ya montado. No había nada que un guion supiera animar. Ahora se deshace
+  hasta la cuenta que representa —`24 + 17 = 41`— y se anima columna por columna.
+  Si el total dibujado no cuadra, no se compone nada.
+- Y la regla se resolvía **en dos sitios con criterios distintos**: el aula
+  miraba la regla *detectada* —que en aritmética casi siempre es nula, porque el
+  motor narra la regla y no la escribe— mientras la tarjeta caía en su último
+  recurso y componía la primera del tema. Una vista no tenía cuenta que animar y
+  la otra tenía una compuesta y quieta. Ahora se resuelve **una sola vez**, en el
+  aula, y baja ya elegida; cuando la cuenta se anima, la tarjeta deja de
+  componerla y se queda con el nombre de la regla.
+
+### Y una lección para las propias pruebas
+
+Las dos comprobaciones que cubrían esto miraban el **código fuente** con una
+expresión regular. Las dos pasaban. Y las dos cosas estaban rotas en pantalla:
+la línea estaba escrita, sí, pero el dato real nunca llegaba a ella. Se han
+sustituido por comprobaciones de **comportamiento sobre el catálogo real** —del
+enunciado a la cuenta, y de la cuenta a sus focos— y por dos observaciones en el
+navegador: que mientras «Suma con llevada» está en pantalla la cuenta se está
+animando, y que la tarjeta no compone una segunda copia.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **358 comprobaciones**, con el bloque nuevo A00a1 que
+prueba la lección de fracciones *con las líneas que escribe el generador de
+verdad*, no con las cómodas. `qa/navegador.mjs` sube a **19** y añade una
+lección de fracciones completa en Chrome: el paso llega marcado, el término va
+en color —no en negro—, su recuadro se dibuja y lo que aún no ha salido sigue
+oculto. `npm test` completo: **0 fallos**.

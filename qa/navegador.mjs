@@ -287,6 +287,12 @@ while (Date.now() - inicio < 45_000) {
       // ¿Hay una locución sonando AHORA? Es la condición con la que la lección
       // decide esconder el desarrollo, así que la comprobación la necesita.
       hablando: (window.__locuciones ?? []).some((l) => l.inicio != null && l.fin == null),
+      // La fase abierta, la regla que se está explicando y si su tarjeta ha
+      // cedido la cuenta a la pizarra animada. Es la "cuenta estática fija en
+      // una esquina" del informe del cliente.
+      fase: [...document.querySelectorAll("h2")].map((h) => h.textContent?.trim()).join(" | "),
+      regla: [...document.querySelectorAll("h3")].map((h) => h.textContent?.trim()).join(" | "),
+      reglaCedida: document.body.textContent?.includes("La cuenta se monta paso a paso aquí debajo"),
       cajaX: caja ? Number(caja.getAttribute("x") ?? caja.getAttribute("cx")) : null,
       destapadas,
       locuciones: (window.__locuciones ?? []).map((l) => ({
@@ -304,6 +310,44 @@ while (Date.now() - inicio < 45_000) {
 
 const conPanel = fotos.filter((f) => f.hayPanel);
 check("la pizarra animada llega a montarse", conPanel.length > 0, `${fotos.length} muestras`);
+
+// LA CUENTA DE LA REGLA NO PUEDE QUEDARSE QUIETA EN UNA ESQUINA.
+//
+// El cliente lo reportó dos veces sobre la misma pantalla: en "Reglas y
+// propiedades" hay una suma en columna compuesta y parada.
+//
+// Sólo se exige de las reglas que SON una cuenta. "Propiedad conmutativa" es
+// una identidad —"a + b = b + a"—, no hay columnas que encender, y su tarjeta
+// la compone con todo el derecho. Cuál de las dos toca lo decide el generador
+// según lo que esté explicando, así que la comprobación mira qué regla hay en
+// pantalla en lugar de dar por hecho que salió la de la llevada.
+const CUENTAS = /Suma con llevada|Resta con préstamo/;
+const enReglas = fotos.filter(
+  (f) => /Reglas y propiedades/.test(f.fase ?? "") && CUENTAS.test(f.regla ?? ""),
+);
+if (enReglas.length === 0) {
+  const vistas = [
+    ...new Set(
+      fotos
+        .filter((f) => /Reglas y propiedades/.test(f.fase ?? ""))
+        .map((f) => (f.regla ?? "").replace("Paso a paso animado", "").replace(/^\s*\|\s*/, "")),
+    ),
+  ].filter(Boolean);
+  console.log(
+    `  · en esta lección la fase de Reglas no explicó una cuenta en columna (${vistas.join(", ") || "sin regla en pantalla"})`,
+  );
+} else {
+  console.log(`  · regla en pantalla: ${enReglas[0].regla}`);
+  check(
+    "la cuenta de la regla se anima, no se compone quieta",
+    enReglas.every((f) => f.hayPanel),
+    `${enReglas.filter((f) => f.hayPanel).length} de ${enReglas.length} muestras con panel`,
+  );
+  check(
+    "y la tarjeta no compone una segunda copia mientras tanto",
+    enReglas.every((f) => f.reglaCedida),
+  );
+}
 
 // La secuencia tal como la vive el alumno: cada cambio de paso o de escena.
 const recorrido = [];
@@ -526,6 +570,119 @@ if (!cancelacion) {
     "y ningún recuadro encierra el signo igual",
     !cancelacion.cajas.some((c) => cancelacion.iguales.some((s) => s.x1 >= c.x1 && s.x2 <= c.x2)),
     JSON.stringify(cancelacion.cajas),
+  );
+}
+
+// ── Fracciones: el paso intermedio tiene que estar EN LA PIZARRA ─────────────
+//
+// Es la queja que se repitió tres revisiones seguidas: "la experiencia sigue
+// viéndose como una imagen estática con audio de fondo". Y era literal. El
+// generador escribe la equivalencia con el producto entero —"3/5 = (3 * 2)/(5 *
+// 2) = 6/10"—, ninguna lectura del guion la reconocía, el guion salía vacío y el
+// panel animado NI SE MONTABA: lo único en pantalla era la tarjeta de
+// desarrollo, con la solución completa y sin un solo resaltado.
+//
+// Que las lecturas funcionen ya se comprueba en hito2. Aquí se comprueba lo que
+// sólo se ve abriendo la página: que en una lección de fracciones de verdad el
+// panel se monta, el factor sale marcado y su recuadro se dibuja.
+console.log("\n── Fracciones: el paso intermedio se ve, y se ve marcado ──");
+
+const emailFr = `qa.fracciones.${Date.now().toString(36)}@mentoriamath.local`;
+const altaFr = await registrarAlumno(BASE, {
+  email: emailFr,
+  password: clave,
+  nombre: "QA Fracciones",
+});
+await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", cookie: altaFr.sesion },
+  body: JSON.stringify({ etapa: "PRIMARIA", curso: 6 }),
+});
+const pruebaFr = await (
+  await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: altaFr.sesion } })
+).json();
+await fetch(`${BASE}/api/diagnostico`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", cookie: altaFr.sesion },
+  body: JSON.stringify({
+    respuestas: (pruebaFr.preguntas ?? []).map((p) => ({
+      preguntaId: p.id,
+      respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0",
+    })),
+  }),
+});
+const galletaFr = (await iniciarSesion(BASE, emailFr, clave)) ?? altaFr.sesion;
+
+const ctxFr = await navegador.newContext({ viewport: { width: 1280, height: 1400 } });
+await ctxFr.addCookies(
+  galletaFr.split(";").map((par) => {
+    const [nombre, ...resto] = par.trim().split("=");
+    return {
+      name: nombre,
+      value: resto.join("="),
+      domain: url.hostname,
+      path: "/",
+      httpOnly: false,
+      secure: url.protocol === "https:",
+    };
+  }),
+);
+const paginaFr = await ctxFr.newPage();
+await paginaFr.goto(`${BASE}/estudiante/leccion`, { waitUntil: "networkidle" });
+
+const temasFr = await paginaFr.locator(".text-lg").allTextContents();
+const cualFr = temasFr.findIndex((t) => /fracci/i.test(t));
+check("la vista ofrece Fracciones", cualFr >= 0, temasFr.join(", "));
+await paginaFr
+  .getByRole("button", { name: /Empezar|Desde el principio/ })
+  .nth(cualFr < 0 ? 0 : cualFr)
+  .click();
+
+let fraccion = null;
+for (let k = 0; k < 100 && !fraccion; k++) {
+  fraccion = await paginaFr.evaluate(() => {
+    const panel = document.querySelector(".pz-animada");
+    if (!panel) return null;
+    const formula = panel.querySelector(".pz-formula");
+    // Las marcas del paso de fracciones: el factor de la amplificación o los
+    // numeradores de la suma. Sin ellas no hay nada que resaltar.
+    const marcas = [...(formula?.querySelectorAll(".pz-factor, .pz-numerador") ?? [])];
+    if (marcas.length === 0) return null;
+    return {
+      latex: panel.querySelector("annotation")?.textContent ?? "",
+      marcas: marcas.length,
+      // ¿Están coloreadas? Es lo que el cliente pidió: que se lean como una
+      // etiqueta y no como texto negro con una raya encima.
+      colores: [...new Set(marcas.map((m) => getComputedStyle(m).color))],
+      recuadros: panel.querySelectorAll(".pz-resaltado rect, .pz-resaltado ellipse").length,
+      // Lo que todavía no ha salido tiene que estar invisible de verdad.
+      ocultas: [...panel.querySelectorAll("[class*='pz-rev-']")].filter(
+        (el) => Number(getComputedStyle(el).opacity) < 0.5,
+      ).length,
+      total: panel.querySelectorAll("[class*='pz-rev-']").length,
+    };
+  });
+  if (!fraccion) await paginaFr.waitForTimeout(750);
+}
+
+if (!fraccion) {
+  check("la lección de fracciones llega a marcar un paso", false, "no apareció en 75 s");
+} else {
+  console.log(`  · fórmula: ${fraccion.latex.slice(0, 90)}`);
+  console.log(`  · marcas: ${fraccion.marcas} · colores: ${fraccion.colores.join(" ")}`);
+  console.log(`  · piezas por destapar: ${fraccion.ocultas} de ${fraccion.total}`);
+
+  check("el paso de fracciones llega a la pizarra animada con sus marcas", fraccion.marcas >= 1);
+  check(
+    "y el término marcado NO va en negro",
+    fraccion.colores.every((c) => c !== "rgb(0, 0, 0)"),
+    fraccion.colores.join(" "),
+  );
+  check("con su recuadro dibujado encima", fraccion.recuadros > 0, `${fraccion.recuadros}`);
+  check(
+    "y lo que aún no ha salido sigue oculto",
+    fraccion.total === 0 || fraccion.ocultas > 0,
+    `${fraccion.ocultas}/${fraccion.total}`,
   );
 }
 
