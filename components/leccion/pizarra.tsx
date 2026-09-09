@@ -20,6 +20,7 @@ import {
   CLASE_EXPONENTE,
   lineaResaltada,
 } from "@/lib/leccion/destacar";
+import { escenaDeLinea } from "@/lib/leccion/animacion";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
 import { rotulosALatex } from "@/lib/leccion/rotulos";
 import {
@@ -680,6 +681,29 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+/**
+ * EL LaTeX DE UNA LÍNEA, POR LA SUBRUTINA DE MARCADO.
+ *
+ * Es el mismo camino que sigue la pizarra animada, y a propósito: el paso llega
+ * con su instrucción de foco —tipo de operación, términos y rótulo— cuando el
+ * generador la manda, y se deduce del contenido cuando no. La subrutina pone el
+ * recuadro, el color o el tachado sobre el término que toque sin saber de qué
+ * tema se trata ni qué números lleva.
+ *
+ * Devuelve `null` cuando no reconoce nada que marcar: entonces manda el
+ * conversor de siempre, que es lo correcto para una línea de prosa.
+ *
+ * Las marcas de revelado progresivo (`pz-rev-N`) viajan en el LaTeX, pero sólo
+ * esconden algo dentro de `.pz-animada`: aquí se ve la línea entera.
+ */
+function latexDeLaSubrutina(linea: LineaPizarra): string | null {
+  const escena = escenaDeLinea(
+    linea.operacion ? { latex: linea.texto, operacion: linea.operacion } : linea.texto,
+    "pizarra",
+  );
+  return escena.focos.length > 0 ? escena.latex : null;
+}
+
 function LineaRenderizada({
   linea,
   resaltada,
@@ -737,6 +761,21 @@ function LineaRenderizada({
       // El coeficiente y el exponente marcados, para que se vea lo que se oye.
       ?? (destacarTerminos ? lineaResaltada(texto) : null)
       ?? notacionFormal(texto)
+      // LA MISMA SUBRUTINA QUE ANIMA COMPONE TAMBIÉN LO QUIETO.
+      //
+      // Aquí se caía a texto plano: el paso "3/5 = (3 * 2)/(5 * 2) = 6/10"
+      // salía con sus asteriscos y sus barras, con aspecto de consola, porque
+      // el conversor genérico no sabe leer un producto dentro de una fracción.
+      // El cliente lo señaló como degradación de la notación, y tenía razón:
+      // la misma línea que abajo se compone como fracción con el factor en
+      // color, arriba salía en crudo.
+      //
+      // Se compone con `escenaDeLinea`, que es LA subrutina: recibe el paso
+      // —con su instrucción de foco si el generador la manda, y deduciéndola
+      // si no— y devuelve el LaTeX ya marcado. La misma para las dos pizarras,
+      // para el desarrollo y para lo que responda "Explicar regla", sin una
+      // sola rama por tipo de ejercicio.
+      ?? latexDeLaSubrutina(linea)
       ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
     if (!latex) return null;
 

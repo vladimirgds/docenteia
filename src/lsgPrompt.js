@@ -677,10 +677,20 @@ const MODULO_BLOQUE = ["concepto", "regla"];
 const dirsConcepto = (v) => {
   const out = [];
   v.bloques.forEach((par, i) => {
-    // Las redacciones ya venían en este orden: el primer bloque dice QUÉ ES (concepto) y el segundo,
-    // la REGLA o propiedad. Solo faltaba nombrarlo para poder entregarlo como módulos.
-    out.push({ tipo: "hablar", texto: par[0], _mod: MODULO_BLOQUE[i] || "regla" });
-    if (par[1]) out.push({ tipo: "pizarra", accion: "escribir", contenido: par[1] });
+    // El módulo lo DICE el bloque; la posición sólo decide cuando no lo dice.
+    //
+    // La regla por posición —primero el QUÉ ES, después la REGLA— vale para
+    // derivadas y para factorización, donde el segundo bloque es literalmente la
+    // regla de la potencia o la diferencia de cuadrados. En fracciones NO: sus
+    // dos bloques explican qué es una fracción, y el segundo —el de la pizza en
+    // porciones— acababa etiquetado como "regla". Con eso, al abrirse "Reglas y
+    // propiedades" lo que sonaba y se leía debajo era el ejemplo de la pizza,
+    // que es de "Concepto". El cliente lo reportó como texto congelado de la
+    // pantalla anterior; en realidad era contenido colocado en el módulo que no
+    // le tocaba.
+    const modulo = par[2] || MODULO_BLOQUE[i] || "regla";
+    out.push({ tipo: "hablar", texto: par[0], _mod: modulo });
+    if (par[1]) out.push({ tipo: "pizarra", accion: "escribir", contenido: par[1], _mod: modulo });
   });
   return out;
 };
@@ -718,17 +728,20 @@ const CONCEPTO_FACTORIZ = [
 const CONCEPTO_FRACCION = [
   // OJO: la marca NO debe llevar espacios dobles — el PRE Light los colapsa al sanear la pizarra y
   // entonces nunca casaba con el resumen previo, así que siempre salía esta misma redacción.
+  // Los DOS bloques son concepto: qué es una fracción y el mismo qué es contado
+  // con una pizza. Ninguno enuncia una regla, así que ninguno va a "Reglas y
+  // propiedades" — ese módulo lo abre la equivalencia que se empuja después.
   { marca: "numerador / denominador", bloques: [
     ["Una fracción representa partes de un todo: el número de arriba es el numerador (las partes que tomamos) y el de abajo es el denominador (en cuántas partes iguales se divide el todo).",
-     "Fracción:  numerador / denominador"],
+     "Fracción:  numerador / denominador", "concepto"],
     ["Por ejemplo, si partes una pizza en 4 porciones iguales y tomas 1, eso es 1/4: el 4 (denominador) dice en cuántas partes se dividió, y el 1 (numerador) cuántas tomaste. Si tomas 2 de esas 4, es 2/4, que es lo mismo que la mitad, 1/2.",
-     "1/4 = una de 4 partes iguales    ·    2/4 = 1/2 (la mitad)"],
+     "1/4 = una de 4 partes iguales    ·    2/4 = 1/2 (la mitad)", "concepto"],
   ] },
   { marca: "cuántas partes tomo", bloques: [
     ["Otra forma de leerla: la fracción responde a dos preguntas. El de abajo dice EN CUÁNTAS partes se ha dividido algo, y el de arriba CUÁNTAS de esas partes tomo. En 3/5 hay cinco partes y me quedo con tres.",
-     "Fracción:  cuántas partes tomo de las que hay"],
+     "Fracción:  cuántas partes tomo de las que hay", "concepto"],
     ["Y cuanto MÁS grande es el número de abajo, más pequeña es cada parte: 1/8 de una tarta es menos que 1/4, aunque el 8 sea mayor que el 4. Veámoslo con otro ejemplo.",
-     "1/8 < 1/4  (más partes ⇒ cada parte más pequeña)"],
+     "1/8 < 1/4  (más partes ⇒ cada parte más pequeña)", "concepto"],
   ] },
 ];
 // Forma compacta y comparable de una expresión (sin espacios, superíndices → ^n) para rotar sin repetir.

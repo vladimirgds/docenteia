@@ -444,7 +444,12 @@ export function Aula({
       // "Concepto" a "Reglas", el ejemplo de la pizza seguía debajo mientras el
       // tutor ya explicaba otra cosa: lo que se lee y lo que se oye contaban
       // cosas distintas. Se limpia y lo repone la primera frase de la fase nueva.
+      //
+      // Y se limpia también SU ETIQUETA. Sin eso quedaba un subtítulo vacío
+      // marcado con la fase anterior: inofensivo hoy, pero es media limpieza, y
+      // media limpieza de estado es justo lo que hay que dejar de hacer.
       setSubtitulo("");
+      setFaseDelSubtitulo("");
 
       // El enunciado se conoce desde que llegó la lección; y si esta fase no lo
       // trae, vale el que el alumno tiene entre manos. En una fase de ejercicio

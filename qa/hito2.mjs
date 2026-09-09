@@ -42,6 +42,11 @@ import {
 } from "../lib/leccion/animacion.ts";
 import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { repararEquivalencias } from "../src/preLight.js";
+import {
+  derivadaResueltaLSG,
+  factorizacionResueltaLSG,
+  fraccionResueltaLSG,
+} from "../src/lsgPrompt.js";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
 import {
   leerAmplificacion,
@@ -706,6 +711,153 @@ titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
   }
 }
 
+titulo("A00a1d. Cada bloque, en el módulo que le toca");
+
+{
+  // EL TEXTO DE LA PIZZA SONABA EN "REGLAS Y PROPIEDADES".
+  //
+  // El cliente lo leyó como estado congelado de la pantalla anterior. No lo
+  // era: el bloque estaba COLOCADO en el módulo equivocado. Las redacciones de
+  // concepto se repartían por POSICIÓN —el primer bloque es el qué es, el
+  // segundo la regla—, y eso vale para derivadas y factorización, cuyo segundo
+  // bloque es la regla de la potencia o la diferencia de cuadrados. En
+  // fracciones los dos bloques explican qué es una fracción, así que el de la
+  // pizza acababa en "regla" y se narraba con la fase de reglas abierta.
+  const modulosDe = (lsg) => {
+    const dentro = new Map();
+    for (const mod of lsg.modulos ?? []) {
+      for (const d of mod.directivas ?? []) {
+        const texto = String(d.texto ?? d.contenido ?? "");
+        if (texto.trim()) dentro.set(texto, mod.id);
+      }
+    }
+    return dentro;
+  };
+
+  const fracciones = modulosDe(fraccionResueltaLSG({ concepto: true, nivel: "normal" }));
+  const pizza = [...fracciones.keys()].find((t) => /pizza en 4 porciones/.test(t));
+  check("la lección de fracciones trae el ejemplo de la pizza", Boolean(pizza));
+  check(
+    "y va en Concepto, no en Reglas y propiedades",
+    pizza ? fracciones.get(pizza) === "concepto" : false,
+    pizza ? fracciones.get(pizza) : "",
+  );
+  check(
+    "la fase de Reglas sigue existiendo, con la equivalencia",
+    [...fracciones.entries()].some(
+      ([texto, mod]) => mod === "regla" && /Fracciones equivalentes/.test(texto),
+    ),
+  );
+
+  // Y las dos lecciones que SÍ usan el reparto por posición no pueden perder su
+  // fase de reglas: es el mismo camino y se rompería sin que se notara aquí.
+  for (const [nombre, generador] of [
+    ["derivadas", derivadaResueltaLSG],
+    ["factorización", factorizacionResueltaLSG],
+  ]) {
+    const mods = modulosDe(generador({ concepto: true }));
+    check(
+      `${nombre} conserva su módulo de reglas`,
+      [...mods.values()].includes("regla"),
+      [...new Set(mods.values())].join(", "),
+    );
+  }
+}
+
+titulo("A00a1c. Una sola subrutina compone las dos pizarras");
+
+{
+  // LA NOTACIÓN NO PUEDE DEGRADARSE A TEXTO PLANO.
+  //
+  // La pizarra de arriba componía las líneas con el conversor genérico, que no
+  // sabe leer un producto dentro de una fracción: "3/5 = (3 * 2)/(5 * 2) =
+  // 6/10" salía con sus asteriscos y sus barras, con aspecto de consola,
+  // mientras la de abajo componía LA MISMA línea como fracción con el factor en
+  // color. Ahora las dos pasan por `escenaDeLinea`, que es la subrutina.
+  const pizarraTsx = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la pizarra clásica compone con la misma subrutina que anima",
+    /import \{ escenaDeLinea \} from "@\/lib\/leccion\/animacion"/.test(pizarraTsx) &&
+      /\?\? latexDeLaSubrutina\(linea\)/.test(pizarraTsx),
+  );
+  check(
+    "y le pasa la instrucción de foco del paso cuando viene dada",
+    /linea\.operacion \? \{ latex: linea\.texto, operacion: linea\.operacion \}/.test(pizarraTsx),
+  );
+  check(
+    "sólo cae al conversor genérico si la subrutina no reconoce nada",
+    /latexDeLaSubrutina\(linea\)\s*\?\? \(pareceMatematica/.test(pizarraTsx),
+  );
+
+  // Y el resultado: fracciones de verdad, con el factor marcado, para las tres
+  // líneas de la lección que salían en crudo.
+  for (const linea of [
+    "3/5 = (3 * 2)/(5 * 2) = 6/10",
+    "1/2 = (1 * 5)/(2 * 5) = 5/10",
+    "6/10 + 5/10 = (6 + 5)/10 = 11/10",
+  ]) {
+    const escena = escenaDeLinea(linea, "estatica");
+    check(
+      `"${linea}" se compone como fracción, no como texto de consola`,
+      escena.focos.length > 0 && !/\*/.test(escena.latex) && /\\frac/.test(escena.latex),
+      escena.latex,
+    );
+  }
+}
+
+titulo("A00a1b. La pizarra empieza en reposo y avanza en orden");
+
+{
+  // EL DESFASE QUE REPORTÓ EL CLIENTE.
+  //
+  // Mientras el avatar daba la bienvenida de "Reglas y propiedades" —"Cuando
+  // los números tienen varias cifras…"—, la pizarra ya estaba en "Paso 3 de 4"
+  // con la columna de las decenas resuelta. La frase enumera columnas ("primero
+  // las unidades, luego las decenas") y repite un par de unos, y con eso puntúa
+  // más alto en el paso de las decenas que en ningún otro sitio.
+  const guion = guionDeLeccion(["24 + 17 = 41"]);
+  const APERTURA =
+    "Cuando los números tienen varias cifras, sumamos columna por columna, de derecha a izquierda (primero las unidades, luego las decenas...). Si una columna pasa de 9, escribimos la cifra de las unidades y LLEVAMOS 1 a la siguiente. Veámoslo con un ejemplo.";
+
+  const enReposo = situacionParaNarracion(guion, APERTURA, 0, -1);
+  check(
+    "la locución que presenta la regla NO saca a la pizarra del reposo",
+    enReposo?.foco === -1,
+    enReposo ? `foco ${enReposo.foco}` : "sin situación",
+  );
+
+  // Y desde el reposo, la lección entera en orden: unidades, decenas, resultado.
+  const LECCION = [
+    [APERTURA, -1],
+    ["Sumamos las unidades: 4 más 7 son 11, escribimos el 1 y llevamos 1 a las decenas.", 0],
+    ["Decenas: 2 más 1 más 1 que llevábamos son 4.", 1],
+    ["Así, 24 más 17 son 41.", 2],
+  ];
+  let escena = 0;
+  let foco = -1;
+  for (const [dicho, esperado] of LECCION) {
+    const destino = situacionParaNarracion(guion, dicho, escena, foco);
+    if (destino) {
+      escena = destino.escena;
+      foco = destino.foco;
+    }
+    check(`"${dicho.slice(0, 32)}…" deja la pizarra en el paso ${esperado + 2}`, foco === esperado, `foco ${foco}`);
+  }
+
+  // La regla de orden, en seco: ni saltos hacia adelante, ni bloqueo al volver.
+  check(
+    "no se salta ningún paso: se avanza de uno en uno",
+    situacionParaNarracion(guion, "El resultado es 41.", 0, -1)?.foco === 0,
+  );
+  check(
+    "retroceder sigue siendo libre, para poder repetir un paso",
+    situacionParaNarracion(guion, "Unidades: 4 más 7 son 11. Escribo 1 y llevo 1.", 0, 2)?.foco === 0,
+  );
+}
+
 titulo("A00a2. El acarreo se destaca cuando el tutor lo nombra");
 
 {
@@ -1324,10 +1476,17 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     ["El resultado es 412.", 3],
   ];
 
+  // Se le va diciendo DÓNDE ESTÁ, locución a locución, como hace el componente:
+  // la pizarra avanza en orden desde el reposo, así que su posición anterior es
+  // parte de la pregunta.
   let escenaActual = 0;
+  let focoActual = -1;
   for (const [dicho, focoEsperado] of recorrido) {
-    const destino = situacionParaNarracion(guion, dicho, escenaActual);
-    if (destino) escenaActual = destino.escena;
+    const destino = situacionParaNarracion(guion, dicho, escenaActual, focoActual);
+    if (destino) {
+      escenaActual = destino.escena;
+      focoActual = destino.foco;
+    }
     check(
       `"${dicho.slice(0, 34)}…" coloca la pizarra en el paso ${focoEsperado + 2}`,
       destino?.foco === focoEsperado,
@@ -1443,9 +1602,13 @@ titulo("B2. La pizarra sigue a la voz del tutor");
   ];
 
   let escenaActual = 0;
+  let focoActual = -1;
   for (const [dicho, esperado] of recorrido) {
-    const destino = situacionParaNarracion(guion, dicho, escenaActual);
-    if (destino) escenaActual = destino.escena;
+    const destino = situacionParaNarracion(guion, dicho, escenaActual, focoActual);
+    if (destino) {
+      escenaActual = destino.escena;
+      focoActual = destino.foco;
+    }
     check(
       `"${dicho.slice(0, 40)}…" lleva la pizarra al paso ${esperado + 2}`,
       destino?.foco === esperado,
@@ -2021,7 +2184,11 @@ titulo("D. Máquina de estados del avatar");
 
   check(
     "el subtítulo se limpia al cambiar de fase",
-    /setFaseDelContenido\(clave\);[\s\S]{0,400}setSubtitulo\(""\);/.test(aula),
+    /setFaseDelContenido\(clave\);[\s\S]{0,900}setSubtitulo\(""\);/.test(aula),
+  );
+  check(
+    "y su etiqueta de fase también: limpieza entera, no media",
+    /setSubtitulo\(""\);\s*setFaseDelSubtitulo\(""\);/.test(aula),
   );
 }
 

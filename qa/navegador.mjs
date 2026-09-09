@@ -394,6 +394,59 @@ check(
   spoiler.length ? `visible en ${spoiler.length} muestras (p. ej. "${spoiler[0].contador}")` : "",
 );
 
+// A2. LA PIZARRA NO SE ADELANTA NI SE SALTA PASOS
+//
+// El cliente la fotografió en "Paso 3 de 4", con la columna de las decenas ya
+// resuelta, mientras el avatar apenas estaba dando la bienvenida de la fase. La
+// cuenta se cuenta en orden: del reposo al primer paso, y de ahí de uno en uno.
+{
+  const paso = (c) => {
+    const m = /^Paso (\d+) de (\d+)/.exec(c ?? "");
+    return m ? { n: Number(m[1]), de: Number(m[2]), linea: (c ?? "").split("·")[1] ?? "" } : null;
+  };
+  const secuencia = [];
+  for (const f of conPanel) {
+    const p = paso(f.contador);
+    if (!p) continue;
+    const anterior = secuencia.at(-1);
+    if (!anterior || anterior.n !== p.n || anterior.linea !== p.linea) secuencia.push(p);
+  }
+
+  const primeros = secuencia.filter((p, i) => i === 0 || secuencia[i - 1].linea !== p.linea);
+  check(
+    "cada cuenta empieza por su primer paso, no por en medio",
+    primeros.every((p) => p.n <= 2),
+    primeros.map((p) => `Paso ${p.n} de ${p.de}`).join(" · "),
+  );
+
+  const saltos = secuencia.filter(
+    (p, i) => i > 0 && secuencia[i - 1].linea === p.linea && p.n - secuencia[i - 1].n > 1,
+  );
+  check(
+    "y de ahí avanza de uno en uno, sin saltarse ninguno",
+    saltos.length === 0,
+    saltos.map((p) => `salta a ${p.n}`).join(" · "),
+  );
+}
+
+// A3. LA NOTACIÓN NO SE DEGRADA A TEXTO PLANO
+//
+// "(3 * 2)/(5 * 2) = 6/10" compuesto tal cual, con asteriscos y barras. El
+// cliente lo llamó sintaxis de consola, y lo es: se mira en TODA la pantalla,
+// venga de la pizarra animada o de la tarjeta de desarrollo.
+{
+  const crudo = await pagina.evaluate(() => {
+    const texto = document.body.innerText ?? "";
+    const sospechas = texto.match(/\(\s*\d+\s*\*\s*\d+\s*\)\s*\/\s*\(\s*\d+\s*\*\s*\d+\s*\)/g) ?? [];
+    return sospechas.slice(0, 3);
+  });
+  check(
+    "ninguna fórmula se compone con sintaxis de consola",
+    crudo.length === 0,
+    crudo.join(" · "),
+  );
+}
+
 // B. El resaltado no adelanta a la voz
 const movimientos = [];
 for (let i = 1; i < conPanel.length; i++) {
@@ -638,6 +691,38 @@ await paginaFr
   .nth(cualFr < 0 ? 0 : cualFr)
   .click();
 
+// EL ESTADO SE LIMPIA AL CAMBIAR DE PESTAÑA.
+//
+// Lo pidió el cliente con estas palabras: al pasar a "Reglas y propiedades" la
+// pizarra mostraba la fórmula de las fracciones equivalentes mientras el
+// subtítulo y la voz seguían con el ejemplo de la pizza, que es de "Concepto".
+// Se vigila durante toda la lección: en ninguna muestra puede leerse el texto
+// de una fase bajo el rótulo de otra.
+const vigilanciaFr = [];
+const desdeFr = Date.now();
+while (Date.now() - desdeFr < 40_000) {
+  vigilanciaFr.push(
+    await paginaFr.evaluate(() => {
+      const fase = [...document.querySelectorAll("h2")]
+        .map((h) => h.textContent?.trim())
+        .find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "";
+      return { fase, texto: document.body.innerText ?? "" };
+    }),
+  );
+  await paginaFr.waitForTimeout(400);
+}
+
+const pizzaFueraDeSitio = vigilanciaFr.filter(
+  (v) => /Reglas y propiedades/.test(v.fase) && /pizza en 4 porciones/.test(v.texto),
+);
+const fasesVistas = [...new Set(vigilanciaFr.map((v) => v.fase).filter(Boolean))];
+console.log(`  · fases observadas: ${fasesVistas.join(" → ")}`);
+check(
+  "el ejemplo de Concepto no se lee bajo el rótulo de Reglas",
+  pizzaFueraDeSitio.length === 0,
+  `${pizzaFueraDeSitio.length} muestras`,
+);
+
 let fraccion = null;
 for (let k = 0; k < 100 && !fraccion; k++) {
   fraccion = await paginaFr.evaluate(() => {
@@ -679,6 +764,46 @@ if (!fraccion) {
     fraccion.colores.join(" "),
   );
   check("con su recuadro dibujado encima", fraccion.recuadros > 0, `${fraccion.recuadros}`);
+  check(
+    "y ninguna fórmula de la lección en sintaxis de consola",
+    !/\(\s*\d+\s*\*\s*\d+\s*\)\s*\/\s*\(\s*\d+\s*\*\s*\d+\s*\)/.test(
+      vigilanciaFr.map((v) => v.texto).join(" "),
+    ),
+  );
+}
+
+// "EXPLICAR REGLA", QUE ES DONDE EL CLIENTE VIO ROMPERSE LA NOTACIÓN.
+//
+// El botón pide una aclaración al servidor y sus líneas entran por el mismo
+// sitio que las demás. Se pulsa de verdad y se mira lo que queda en pantalla.
+{
+  const boton = paginaFr.getByRole("button", { name: /Explicar regla/ }).first();
+  if ((await boton.count()) === 0) {
+    console.log('  · el botón "Explicar regla" no estaba disponible en esta lección');
+  } else {
+    await boton.click();
+    let tras = null;
+    for (let k = 0; k < 40; k++) {
+      await paginaFr.waitForTimeout(750);
+      tras = await paginaFr.evaluate(() => {
+        const texto = document.body.innerText ?? "";
+        return {
+          consola: texto.match(/\(\s*\d+\s*\*\s*\d+\s*\)\s*\/\s*\(\s*\d+\s*\*\s*\d+\s*\)/g) ?? [],
+          // Barras de dividir sueltas entre números: la otra cara del texto
+          // plano. Una fracción compuesta por KaTeX no deja "6/10" en el texto.
+          formulas: document.querySelectorAll(".katex").length,
+        };
+      });
+      if (tras.consola.length > 0) break;
+    }
+    console.log(`  · fórmulas compuestas tras "Explicar regla": ${tras.formulas}`);
+    check(
+      'tras "Explicar regla" la notación sigue compuesta, no en crudo',
+      tras.consola.length === 0,
+      tras.consola.join(" · "),
+    );
+    check("y la pizarra sigue teniendo fórmulas", tras.formulas > 0, `${tras.formulas}`);
+  }
   check(
     "y lo que aún no ha salido sigue oculto",
     fraccion.total === 0 || fraccion.ocultas > 0,

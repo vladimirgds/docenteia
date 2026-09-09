@@ -1028,6 +1028,8 @@ export function situacionParaNarracion(
   escenas: readonly Escena[],
   narracion: string,
   escenaActual = 0,
+  /** Dónde está la pizarra AHORA. -1 es el reposo: la escena sin resaltar. */
+  focoActual = -1,
 ): Situacion | null {
   const dicho = normalizar(narracion);
   if (!dicho.trim() || escenas.length === 0) return null;
@@ -1052,6 +1054,9 @@ export function situacionParaNarracion(
   const cierre = cierreDeColumna(escenas, palabras, escenaActual);
   if (cierre) return cierre;
 
+  // ¿Está el tutor DANDO un paso, o describiendo el método?
+  const enumera = enumeraColumnas(dicho);
+
   // Se buscan por separado la mejor escena CON algo que señalar y la mejor sin
   // nada. Una línea de prosa cuya narración es la frase entera encaja al 100 %
   // y le robaba el turno a la columna que el tutor estaba explicando; entre las
@@ -1070,7 +1075,7 @@ export function situacionParaNarracion(
 
     for (const candidato of candidatos) {
       let puntos = solapamiento(candidato.texto, palabras);
-      if (candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
+      if (!enumera && candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
       // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
       // escena por un decimal es peor que quedarse.
       if (indice === escenaActual) puntos += 0.05;
@@ -1098,7 +1103,50 @@ export function situacionParaNarracion(
     }
   }
 
-  return eleccion ?? respaldo;
+  return enOrden(eleccion ?? respaldo, escenaActual, focoActual, enumera);
+}
+
+/**
+ * LA CUENTA SE CUENTA EN ORDEN, Y EMPIEZA EN REPOSO.
+ *
+ * El parecido entre frases elige BIEN el sitio casi siempre, pero cuando se
+ * equivoca lo hace de la peor manera: la locución que abre la fase de reglas
+ * —"…primero las unidades, luego las decenas… si pasa de 9, LLEVAMOS 1"— repite
+ * la palabra "decenas" y un par de unos, y con eso puntúa más alto en el paso de
+ * las decenas que en ningún otro sitio. La pizarra arrancaba en "Paso 3 de 4",
+ * con la columna de las decenas ya resuelta, mientras el tutor apenas estaba
+ * presentando la regla. El cliente lo describió exactamente así.
+ *
+ * Contra eso no vale afinar la puntuación —un "1" suelto aparece en cualquier
+ * frase—: hace falta una regla de orden, que es la que sigue una cuenta de
+ * verdad.
+ *
+ *   1. Estando en reposo, una frase que ENUMERA columnas no puede llevar la
+ *      pizarra MÁS ALLÁ del primer paso. Enumerar es presentar el método, no
+ *      operar una columna. Al primer paso sí puede llevarla: "sumamos las
+ *      unidades y llevamos 1 a las decenas" nombra dos y es un paso de verdad,
+ *      y bloquearlo dejaría la pizarra un paso por detrás del audio.
+ *   2. No se salta ningún paso: se avanza de uno en uno. Así, si una locución
+ *      apunta tres pasos más allá, la pizarra da UNO. Retroceder sí es libre:
+ *      "repito el paso anterior" tiene que poder volver.
+ *
+ * La segunda regla es además la que impide que la primera congele nada: pase lo
+ * que pase, la locución siguiente puede avanzar un paso.
+ */
+function enOrden(
+  destino: Situacion | null,
+  escenaActual: number,
+  focoActual: number,
+  enumera: boolean,
+): Situacion | null {
+  if (!destino) return null;
+
+  // Al cambiar de escena se entra por el principio, no por en medio.
+  const desde = destino.escena === escenaActual ? focoActual : -1;
+
+  if (enumera && desde < 0 && destino.foco > 0) return { escena: destino.escena, foco: -1 };
+
+  return { escena: destino.escena, foco: Math.min(destino.foco, desde + 1) };
 }
 
 /**
@@ -1153,6 +1201,28 @@ function cierreDeColumna(
 /** Los números enteros de un texto, tal como se dicen. */
 function cifrasDe(texto: string): string[] {
   return normalizar(texto).match(/\d+/g) ?? [];
+}
+
+/**
+ * ¿La frase ENUMERA columnas en vez de estar en una?
+ *
+ * "…de derecha a izquierda (primero las unidades, luego las decenas…)" nombra
+ * dos: no está en ninguna, las está presentando. Es la locución con la que se
+ * abre la fase de reglas, y con ella la pizarra se plantaba en el paso de las
+ * decenas —"Paso 3 de 4", con la columna ya resuelta— mientras el tutor apenas
+ * estaba diciendo de qué va la regla. El cliente lo reportó como un desfase de
+ * estado, y lo es: la pizarra iba por delante del audio desde el primer segundo.
+ *
+ * Una frase así no puede ganar por NOMBRAR una columna. Sigue puntuando por
+ * parecido, que es lo que deja pasar los pasos de verdad: "sumamos las unidades
+ * y llevamos 1 a las decenas" también nombra dos, pero repite las cifras de su
+ * columna y gana por ellas, no por la palabra.
+ */
+function enumeraColumnas(dicho: string): boolean {
+  const nombradas = ["unidades", "decenas", "centenas", "millar"].filter((posicion) =>
+    dicho.includes(posicion),
+  );
+  return nombradas.length >= 2;
 }
 
 /** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */

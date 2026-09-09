@@ -1289,3 +1289,105 @@ verdad*, no con las cómodas. `qa/navegador.mjs` sube a **19** y añade una
 lección de fracciones completa en Chrome: el paso llega marcado, el término va
 en color —no en negro—, su recuadro se dibuja y lo que aún no ha salido sigue
 oculto. `npm test` completo: **0 fallos**.
+
+---
+
+## 25. Desfase de estado, texto en el módulo equivocado y una sola subrutina
+
+Cuarta revisión sobre el despliegue `7deff5d`. Cuatro puntos, y tres de ellos
+tenían la misma raíz: algo colocado donde no iba.
+
+### La pizarra iba tres pasos por delante del audio
+
+Mientras el avatar daba la bienvenida de «Reglas y propiedades» —*«Cuando los
+números tienen varias cifras…»*—, la pizarra ya estaba en **Paso 3 de 4**, con
+la columna de las decenas encerrada y resuelta.
+
+La pizarra sigue a la voz comparando lo que se oye con la narración de cada
+paso. Y esa locución de apertura dice *«…primero las unidades, luego las
+decenas…»* y *«…LLEVAMOS 1…»*: repite la palabra «decenas» y un par de unos, y
+con eso puntúa más alto en el paso de las decenas que en ningún otro sitio.
+
+Afinar la puntuación no arregla esto —un «1» suelto aparece en cualquier frase—.
+Lo que faltaba era una regla de orden, que es la que sigue una cuenta de verdad:
+
+- Estando en reposo, una frase que **enumera** columnas no puede llevar la
+  pizarra más allá del primer paso: enumerar es presentar el método, no operar
+  ninguna columna.
+- Y no se salta ningún paso: se avanza **de uno en uno**. Si una locución apunta
+  tres pasos más allá, la pizarra da uno. Retroceder sigue siendo libre, porque
+  «repito el paso anterior» tiene que poder volver.
+
+La segunda regla es la que impide que la primera congele nada: pase lo que pase,
+la locución siguiente puede avanzar.
+
+### El texto de la pizza no estaba congelado: estaba en el módulo equivocado
+
+En «Reglas y propiedades» de Fracciones se leía y se oía el ejemplo de la pizza,
+que es de «Concepto». Parecía estado sin limpiar. No lo era.
+
+Las redacciones de concepto se repartían en módulos **por posición**: el primer
+bloque es el *qué es*, el segundo la *regla*. Eso vale para derivadas y para
+factorización, cuyo segundo bloque es literalmente la regla de la potencia o la
+diferencia de cuadrados. En fracciones **no**: sus dos bloques explican qué es
+una fracción, así que el de la pizza acababa etiquetado como «regla» y se
+narraba con la fase de reglas ya abierta. El audio y el rótulo decían cosas
+distintas porque el contenido estaba en el sitio equivocado.
+
+Ahora el módulo **lo dice el bloque**, y la posición sólo decide cuando el bloque
+no lo dice. Fracciones conserva su fase de Reglas —la abre la equivalencia que se
+empuja a continuación— y derivadas y factorización conservan la suya.
+
+De paso, la limpieza al cambiar de fase se completa: el subtítulo se vaciaba pero
+su etiqueta de fase no. Media limpieza de estado es justo lo que hay que dejar de
+hacer.
+
+*(Lo que no se hace es cancelar el sintetizador en cada cambio de fase. Las fases
+se abren DENTRO de la misma narración continua: cancelar ahí cortaría al tutor a
+media frase. Al cambiar de tema sí se calla todo, y eso ya estaba.)*
+
+### La notación se caía a texto plano
+
+`3/5 = (3 * 2)/(5 * 2) = 6/10` se componía con sus asteriscos y sus barras, con
+aspecto de consola. La causa: la pizarra de arriba componía con el conversor
+genérico, que no sabe leer un producto dentro de una fracción, mientras la de
+abajo componía **la misma línea** como fracción con el factor en color.
+
+Eran dos caminos para lo mismo, y ese es el problema de fondo que señala el
+punto 4 del informe.
+
+### Una sola subrutina para las dos pizarras
+
+Las dos componen ahora con `escenaDeLinea`, que es la subrutina de marcado:
+
+- Recibe el paso **con su instrucción de foco** —tipo de operación, términos y
+  rótulo— cuando el generador la manda, y la deduce del contenido cuando no.
+- Pone el recuadro, el color o el tachado sobre el término que toque **sin saber
+  de qué tema se trata ni qué números lleva**.
+- Sólo se cae al conversor genérico cuando no reconoce nada que marcar, que es
+  lo correcto para una línea de prosa.
+
+Lo que responde «Explicar regla» entra por ese mismo sitio, así que sale con el
+mismo formato y con las mismas marcas. No hay una sola rama por tipo de
+ejercicio en ninguna de las dos vistas.
+
+Queda dicho con precisión: el **contrato** de metadatos viaja de punta a punta
+—el generador puede emitirlo, `preLight` lo valida, el reproductor lo entrega y
+las dos pizarras lo aplican—, pero el generador todavía no etiqueta la mayoría de
+los pasos, así que hoy el trabajo lo hace la deducción. Cuando el catálogo
+empiece a etiquetar, no hay nada que tocar en el frontend: es el camino que ya
+usan los pasos etiquetados.
+
+### Comprobado en local, como se pidió
+
+`qa/hito2.mjs` sube a **359 comprobaciones**, con tres bloques nuevos: el reparto
+de bloques en su módulo, la subrutina compartida, y la pizarra empezando en
+reposo y avanzando en orden.
+
+`qa/navegador.mjs` sube a **26** y abre Chrome de verdad para lo que sólo se ve
+ejecutando: que cada cuenta empieza por su primer paso y avanza de uno en uno,
+que en ninguna muestra se lee el ejemplo de Concepto bajo el rótulo de Reglas,
+que no queda en pantalla ni una fórmula con sintaxis de consola, y que **se pulsa
+«Explicar regla»** y la notación sigue compuesta.
+
+`npm test` completo: **0 fallos**.

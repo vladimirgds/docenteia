@@ -480,10 +480,15 @@ export function PanelAnimado({
   // en el primer paso, esperando a que alguien pulsara Reproducir.
   useEffect(() => {
     if (!narracion) return;
-    const destino = situacionParaNarracion(escenas, narracion, estado.escena);
+    // Se le dice DÓNDE ESTÁ, no sólo en qué escena: la cuenta se cuenta en
+    // orden y desde el reposo, así que una locución no puede plantar la pizarra
+    // tres pasos más allá. Sin esto, la frase que abre la fase de reglas la
+    // dejaba en "Paso 3 de 4" —con las decenas ya resueltas— mientras el tutor
+    // apenas estaba presentando la regla.
+    const destino = situacionParaNarracion(escenas, narracion, estado.escena, estado.foco);
     if (!destino) return;
     mandos.situar(destino.escena, destino.foco);
-  }, [narracion, escenas, estado.escena, mandos]);
+  }, [narracion, escenas, estado.escena, estado.foco, mandos]);
 
   // Lo que la lección necesita saber: si la animación ya lo ha destapado todo.
   // Mientras no lo haya hecho, la pizarra de arriba no puede adelantar el
