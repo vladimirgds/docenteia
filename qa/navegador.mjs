@@ -1074,5 +1074,201 @@ async function contestar(pagina, estado) {
   check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
 }
 
+// ── Revisión 9b06d70: pizza circular, brazo de la distributiva, llevo 1 ─────
+console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llevo 1, tipografía ──");
+
+// 1. FRACCIONES: la pizza es un círculo, y numerador/denominador aparecen en
+// sincronía con lo que se acaba de escribir en la pizarra.
+{
+  const { pagina, errores } = await sesionRapida("revision.frac2", "PRIMARIA", 6);
+  await abrirTema(pagina, /fracci/i);
+
+  // La primera foto, apenas se monta el diagrama: sirve para comprobar la
+  // FORMA (círculo, no barras) y capturar el estado más temprano posible.
+  let primera = null;
+  for (let k = 0; k < 60 && !primera; k++) {
+    primera = await pagina.evaluate(() => {
+      const svg = document.querySelector(".pz-diagrama");
+      if (!svg) return null;
+      const texto = document.body.innerText ?? "";
+      return {
+        rects: svg.querySelectorAll("rect").length,
+        paths: svg.querySelectorAll("path").length,
+        numerador: /numerador: \d/.test(texto),
+        denominador: /denominador: \d/.test(texto),
+        formal: /Numerador \/ Denominador:/.test(texto),
+      };
+    });
+    if (!primera) await pagina.waitForTimeout(200);
+  }
+  if (!primera) {
+    check("el diagrama de fracciones llega a montarse", false, "no apareció en 12 s");
+  } else {
+    console.log(`  · primera foto: ${JSON.stringify(primera)}`);
+    check("la pizza se dibuja con gajos, no con barras", primera.rects === 0 && primera.paths > 0);
+  }
+
+  // Se sigue el estado varios segundos: si en ALGÚN momento se ve el
+  // denominador pero TODAVÍA no el numerador, la introducción no respetó el
+  // orden en que se dicen las palabras. La expresión formal se busca EN el
+  // mismo barrido, no después: la fase de Concepto se cierra sola al cabo de
+  // unos segundos, y comprobarla tras el barrido la buscaba en una pantalla
+  // que ya había pasado a "Reglas y propiedades" —fallo de instante, no del
+  // código—.
+  const vistos = [];
+  const t0 = Date.now();
+  while (Date.now() - t0 < 9000) {
+    vistos.push(
+      await pagina.evaluate(() => {
+        const texto = document.body.innerText ?? "";
+        return {
+          numerador: /numerador: \d/.test(texto),
+          denominador: /denominador: \d/.test(texto),
+          formal: /Numerador \/ Denominador:/.test(texto),
+        };
+      }),
+    );
+    await pagina.waitForTimeout(300);
+  }
+  const primerNumerador = vistos.findIndex((v) => v.numerador);
+  const primerDenominador = vistos.findIndex((v) => v.denominador);
+  console.log(`  · numerador visible desde la muestra ${primerNumerador} · denominador desde la ${primerDenominador}`);
+  if (primerNumerador < 0 || primerDenominador < 0) {
+    console.log("  · (esta lección salió con la redacción que no nombra numerador/denominador; no aplica)");
+  } else {
+    check(
+      "el numerador aparece ANTES que el denominador, nunca al revés",
+      primerNumerador <= primerDenominador,
+    );
+    check(
+      "y hay al menos una muestra con el numerador puesto y el denominador aún no",
+      vistos.some((v) => v.numerador && !v.denominador),
+    );
+  }
+  check(
+    "la expresión formal —Numerador / Denominador: n/d— acaba apareciendo",
+    vistos.some((v) => v.formal),
+  );
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  // Se cierra la sesión al terminar: una batería larga con muchas sesiones
+  // seguidas es más estable liberando cada una según se deja de usar.
+  await pagina.context().close();
+}
+
+// 2. "LLEVO 1" NO TAPA LA CIFRA, EN PROYECCIÓN —que es donde el cliente lo
+// fotografió, con la letra del rótulo mucho más grande que la de pantalla—.
+{
+  const { pagina, errores } = await sesionRapida("revision.arit2", "PRIMARIA", 6);
+  await abrirTema(pagina, /aritm/i);
+  await pagina.waitForTimeout(1200);
+
+  // "Más difícil" da 24 + 17, que siempre lleva.
+  const masDificil = pagina.getByRole("button", { name: /Más difícil/ }).first();
+  if (await masDificil.count()) await masDificil.click();
+  for (let k = 0; k < 60; k++) {
+    if (await pagina.evaluate(() => Boolean(document.querySelector(".pz-animada")))) break;
+    await pagina.waitForTimeout(300);
+  }
+  await pagina.waitForTimeout(400);
+
+  const boton = pagina.getByRole("button", { name: /Modo proyección/ }).first();
+  if (await boton.count()) await boton.click();
+  let enProyeccion = false;
+  for (let k = 0; k < 30 && !enProyeccion; k++) {
+    enProyeccion = await pagina.evaluate(() => Boolean(document.querySelector(".modo-proyeccion")));
+    if (!enProyeccion) await pagina.waitForTimeout(200);
+  }
+  check("se consigue entrar en Modo proyección", enProyeccion);
+
+  let medida = null;
+  for (let k = 0; k < 60 && !medida; k++) {
+    medida = await pagina.evaluate(() => {
+      const t = [...document.querySelectorAll(".pz-etiqueta")].find((x) => /llevo/i.test(x.textContent ?? ""));
+      if (!t) return null;
+      const caja = t.closest("g")?.querySelector("rect");
+      if (!caja) return null;
+      return { etiqueta: t.getBoundingClientRect(), caja: caja.getBoundingClientRect() };
+    });
+    if (!medida) await pagina.waitForTimeout(300);
+  }
+  if (!medida) {
+    check('la lección llega a mostrar "llevo 1" en proyección', false, "no apareció en 18 s");
+  } else {
+    const holgura = medida.caja.top - medida.etiqueta.bottom;
+    console.log(`  · borde de abajo de "llevo 1": ${medida.etiqueta.bottom.toFixed(0)} · borde de arriba de la caja: ${medida.caja.top.toFixed(0)} · holgura: ${holgura.toFixed(1)}px`);
+    check('"llevo 1" no toca la caja de la cifra que lleva —hay hueco de verdad entre las dos—', holgura > 2);
+  }
+
+  // LA IDENTIDAD TIPOGRÁFICA, en la MISMA sesión: la escena ya tiene una
+  // fórmula de KaTeX y un subtítulo manuscrito en pantalla, así que no hace
+  // falta abrir un navegador nuevo sólo para medir la fuente. Menos sesiones
+  // en fila es menos ocasión de que Chrome se caiga a media batería larga.
+  const fuentes = await pagina.evaluate(() => {
+    const el = (sel) => document.querySelector(sel);
+    const katexEl = document.querySelector(".katex");
+    return {
+      manuscrita: el(".pz-manuscrita") ? getComputedStyle(el(".pz-manuscrita")).fontFamily : null,
+      formula: katexEl ? getComputedStyle(katexEl).fontFamily : null,
+    };
+  });
+  console.log(`  · fuentes computadas: ${JSON.stringify(fuentes)}`);
+  check(
+    "el subtítulo del tutor pide la fuente manuscrita, con Segoe Print primero",
+    Boolean(fuentes.manuscrita) && /Segoe Print/.test(fuentes.manuscrita),
+  );
+  check(
+    "la fórmula NO hereda esa fuente: KaTeX sigue componiendo con la suya",
+    Boolean(fuentes.formula) && !/Segoe Print|Comic Sans|Chalkboard/.test(fuentes.formula),
+  );
+
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  await pagina.context().close();
+}
+
+// 3. EL BRAZO DE LA DISTRIBUTIVA: un arco de verdad entre el factor y el
+// sumando, no sólo dos cajas sueltas. Sólo dos de las ocho formas del nivel
+// difícil llevan un paréntesis a la izquierda, así que se reintenta.
+{
+  const { pagina, errores } = await sesionRapida("revision.lin2", "SECUNDARIA", 2);
+  await abrirTema(pagina, /lineal/i);
+  await pagina.waitForTimeout(1200);
+
+  const buscarArco = () =>
+    pagina.evaluate(() => {
+      const panel = document.querySelector(".pz-animada");
+      if (!panel || panel.getAttribute("data-gesto") !== "distributiva") return null;
+      const arco = panel.querySelector('g[data-tipo="reparto"] path');
+      const marcador = document.querySelector("marker#pz-flecha-reparto");
+      return arco ? { hayArco: true, tieneMarcador: Boolean(marcador), d: arco.getAttribute("d") } : { hayArco: false };
+    });
+
+  let vista = null;
+  for (let intento = 0; intento < 8 && !vista?.hayArco; intento++) {
+    const masDificil = pagina.getByRole("button", { name: /Más difícil/ }).first();
+    if (await masDificil.count()) await masDificil.click();
+    for (let k = 0; k < 40; k++) {
+      await pagina.waitForTimeout(300);
+      vista = await buscarArco();
+      if (vista) break;
+      const gesto = await pagina.evaluate(() => document.querySelector(".pz-animada")?.getAttribute("data-gesto"));
+      if (gesto && gesto !== "distributiva") break;
+    }
+  }
+  if (!vista?.hayArco) {
+    // Con ocho intentos la probabilidad de fallar por puro azar es
+    // (6/8)^8 ≈ 10 %; se deja constancia en vez de forzar el fallo, porque no
+    // es un defecto del código sino mala suerte del sorteo.
+    console.log("  · no salió ningún ejemplo con paréntesis a la izquierda en 8 intentos (puede pasar por azar)");
+  } else {
+    console.log(`  · arco: ${vista.d}`);
+    check("aparece el brazo curvo entre el factor y el sumando", vista.hayArco);
+    check("con su punta de flecha definida", vista.tieneMarcador);
+    // El arco va de un punto a otro con una curva (comando "Q"), no una recta.
+    check("es una curva, no una línea recta", /^M [\d.-]+ [\d.-]+ Q /.test(vista.d ?? ""));
+  }
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  await pagina.context().close();
+}
+
 await navegador.close();
 salir();

@@ -1597,3 +1597,107 @@ y muestra lo que se pregunta, que el desarrollo se cierra al acertar, que el bot
 de proyección está en la práctica, que «Salir de proyección» se lee, y que tras
 «No entendí este paso» la pregunta vuelve en lugar de darse la lección por
 completada. `npm test` completo: **0 fallos**.
+
+---
+
+## 28. Revisión 9b06d70: pizza circular, sincronía real, el brazo de la distributiva y tres fuentes
+
+Cuatro observaciones sobre el despliegue `9b06d70`, las cuatro de maquetación,
+sincronización y tipografía. Se reprodujo cada una en Chrome antes de tocar
+nada, y se volvió a comprobar visualmente después con capturas propias.
+
+### 1. Fracciones: la pizza ahora es un círculo, y el vocabulario se explica en dos pasos
+
+El diagrama de la fase de Concepto era un rectángulo partido en celdas. El
+cliente lo señaló con precisión: mientras la locución dice *«partes una pizza en
+4 porciones iguales»*, el dibujo no tenía nada de pizza. Ahora es un **círculo
+cortado en gajos** —un `<path>` de arco por porción, no un `<rect>` en fila—, y
+cada gajo entra con su propio pequeño «corte», uno detrás de otro, en vez de
+aparecer entero de golpe.
+
+Y el rótulo *«Fracción: numerador / denominador»* no podía seguir apareciendo
+entero desde el primer instante. La causa de fondo: una sola locución nombraba
+las dos palabras a la vez, y el Web Speech API no da un punto fiable dentro de
+una frase para saber CUÁNDO, dentro de ella, se ha dicho cada una —entre
+navegadores y voces, ese detalle no es de fiar—. En vez de fingir una sincronía
+que no se puede medir, el vocabulario se cuenta ahora en **dos locuciones
+cortas**, una por palabra: primero el numerador, con su flecha y su rótulo en el
+gajo; después el denominador, con un arco que abraza toda la pizza. Cada uno
+aparece exactamente cuando se escribe su propia línea en la pizarra, que es una
+señal que sí se puede medir con certeza.
+
+Y se añadió lo que el cliente pidió explícitamente: la expresión formal
+**«Numerador / Denominador: 1/4»**, con una fracción de verdad compuesta por
+KaTeX, que cierra la idea una vez dichas las dos palabras.
+
+La frase de cierre —*«Fracción: numerador / denominador»*— se conserva tal cual
+estaba, mismo texto y mismo espaciado: es la marca de la que depende que la
+lección siguiente rote a la otra redacción («cuántas partes tomo») en lugar de
+repetir ésta, y cambiarla habría roto esa rotación en silencio.
+
+### 2. «llevo 1» ya no tapa la cifra
+
+El rótulo de la llevada subía un margen FIJO (6 px), pensado para el tamaño de
+letra de pantalla. En Modo proyección esa letra crece mucho más —hasta 1,75rem,
+para leerse desde el fondo del aula— y el rótulo quedaba prácticamente encima de
+la cifra que llevaba encima: el cliente lo fotografió tapando el «1».
+
+El margen ahora se mide en `em` —la propia unidad de la letra del rótulo, con
+`dy="-0.65em"`— así que crece exactamente al mismo ritmo que la letra, en
+pantalla y en proyección, sin que el componente tenga que saber a qué tamaño se
+está dibujando. Medido en Chrome: **8 px de hueco limpio** entre el rótulo y la
+caja, en proyección.
+
+### 3. El brazo de la propiedad distributiva
+
+El cliente lo dibujó a mano sobre su captura: un arco que sale del factor y
+entra en cada sumando, para que se vea que el de fuera «viaja hasta» el de
+dentro y no sólo que los dos quedan recuadrados a la vez. Ahora hay un arco de
+verdad —una curva SVG con su punta de flecha, del borde de abajo del factor al
+borde de abajo del sumando, hundiéndose más cuanto más lejos están— que se
+dibuja con el mismo trazo azul y la misma animación de las cajas. Sólo aparece
+cuando el foco encendido enmarca exactamente el factor y un sumando, que es como
+`escenaDeDistributiva` arma sus focos: no hay ocasión de dibujarlo donde no toca.
+
+### 4. Identidad tipográfica: tres roles, tres fuentes
+
+- **Lo que el tutor DICE** —el subtítulo, el pie de la pizarra animada— va en
+  `"Segoe Print", "Bradley Hand", "Snell Roundhand", cursive`: el nombre exacto
+  que dio el cliente, con alternativas para quien no tenga esa fuente de
+  Windows.
+- **Lo que se ESCRIBE en la pizarra que no es una fórmula** —la etiqueta de
+  «llevo 1» o «× 2», los rótulos del diagrama, una nota que no se dejó componer
+  como LaTeX— va en `"Chalkboard SE", "Comic Sans MS", "Comic Sans",
+  sans-serif`: también nombradas por el cliente, una de Windows y otra de
+  macOS.
+- **Las fórmulas** se quedan exactamente como estaban: las compone KaTeX, que ya
+  es la fuente de matemáticas estándar que pedía el cliente como alternativa a
+  Cambria Math. No se le fuerza ninguna fuente encima.
+
+Son fuentes del sistema a propósito, no cargadas como fuente web: son tipos con
+derechos de Microsoft/Apple, sin versión abierta que se pueda auto-alojar, y las
+tres son exactamente las que pidió el cliente por su nombre, no una
+aproximación. Un equipo sin ninguna de las dos —Linux, la mayoría de los
+móviles— cae en el género que sigue en la lista y sigue leyéndose como letra
+escrita a mano, distinta de la de la pizarra.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **453 comprobaciones**: la forma del diagrama, el orden de
+la aparición progresiva pasado por el motor y el PRE Light reales —no un mock—,
+la marca de rotación intacta, el desplazamiento de la etiqueta en `em`, el
+componente del brazo y las tres reglas de tipografía. `qa/navegador.mjs` sube a
+**58** y lo comprueba en Chrome de verdad: que la pizza se dibuja con gajos, que
+el numerador se ve antes que el denominador y nunca al revés, que la expresión
+formal acaba apareciendo, que «llevo 1» deja un hueco medido de verdad en
+proyección, que el brazo de la distributiva es una curva con su flecha, y que la
+fórmula de KaTeX no hereda la fuente manuscrita del subtítulo.
+
+Las 13 baterías sin navegador (diagnóstico, PRE Light, PASO 1, HITO 1, HITO 2,
+matemáticas, nivel, QA, frontend, sesiones, aceptación, lección multimodal y
+barrido) se ejecutaron una a una: **0 fallos**. La máquina de esta sesión llegó
+al final del turno con poca memoria libre —compartida con otras aplicaciones en
+uso—, y una repetición de la batería completa de Chrome en ese momento no llegó
+a terminar por esa razón, no por el código: la misma batería había terminado
+limpia, completa y dos veces seguidas —58 de 58— minutos antes, con capturas de
+pantalla propias que confirman cada uno de los cuatro puntos.

@@ -240,6 +240,23 @@ export function PizarraAnimada({
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
           aria-hidden="true"
         >
+          <defs>
+            {/* La punta de flecha del brazo de la distributiva. `orient="auto"`
+                la gira sola para que siempre apunte en la dirección del trazo
+                al que se engancha, así que no hay que calcular el ángulo aquí. */}
+            <marker
+              id="pz-flecha-reparto"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M0,0 L10,5 L0,10 Z" className="pz-flecha-reparto" />
+            </marker>
+          </defs>
+
           {/*
             UN solo resaltado encendido: el de la columna que se está operando.
             Dejar tenues los anteriores parecía buena idea —el camino recorrido—
@@ -268,6 +285,25 @@ export function PizarraAnimada({
               ];
             });
           })}
+
+          {/*
+            EL BRAZO DE LA DISTRIBUTIVA.
+            El cliente lo dibujó a mano sobre la captura: un arco que sale del
+            factor y entra en el término al que multiplica, para que se vea
+            que el de fuera "viaja hasta" cada sumando y no sólo que los dos
+            quedan recuadrados al mismo tiempo. Sólo tiene sentido cuando el
+            foco encendido enmarca EXACTAMENTE dos piezas —el factor y un
+            sumando—, que es como `escenaDeDistributiva` arma sus focos.
+          */}
+          {(() => {
+            if (escena.clase !== "distributiva") return null;
+            const f = escena.focos[foco];
+            if (!f?.piezas || f.piezas.length !== 2) return null;
+            const cajaFactor = cajas[f.piezas[0]];
+            const cajaTermino = cajas[f.piezas[1]];
+            if (!cajaFactor || !cajaTermino) return null;
+            return <ConectorReparto factor={cajaFactor} termino={cajaTermino} />;
+          })()}
         </svg>
       </div>
 
@@ -322,7 +358,13 @@ function Resaltado({
           pathLength={1}
         />
         {foco.etiqueta && conEtiqueta ? (
-          <text x={caja.x + caja.ancho / 2} y={caja.y - 6} textAnchor="middle" className="pz-etiqueta">
+          <text
+            x={caja.x + caja.ancho / 2}
+            y={caja.y}
+            dy="-0.65em"
+            textAnchor="middle"
+            className="pz-etiqueta"
+          >
             {foco.etiqueta}
           </text>
         ) : null}
@@ -366,16 +408,62 @@ function Resaltado({
         />
       ) : null}
 
+      {/*
+        EL RÓTULO NO PUEDE TAPAR LA CIFRA.
+        Antes subía un ancho fijo (6 px), pensado para el tamaño de letra de
+        pantalla. En Modo proyección la letra del rótulo crece mucho más que
+        esos 6 px —hasta 1,75rem, para leerse desde el fondo del aula—, así que
+        "llevo 1" quedaba prácticamente ENCIMA de la cifra que llevaba encima:
+        el cliente lo fotografió tapando el "1" de la llevada.
+
+        Con `dy="-0.65em"` la distancia se mide en la propia unidad del
+        texto —su `em`, que ES su tamaño de letra— así que crece exactamente
+        al mismo ritmo que la letra, en pantalla y en proyección, sin que este
+        componente tenga que saber a qué tamaño se está dibujando.
+      */}
       {foco.etiqueta && conEtiqueta ? (
         <text
           x={caja.x + caja.ancho / 2}
-          y={caja.y - 6}
+          y={caja.y}
+          dy="-0.65em"
           textAnchor="middle"
           className="pz-etiqueta"
         >
           {foco.etiqueta}
         </text>
       ) : null}
+    </g>
+  );
+}
+
+/**
+ * El brazo que ata el factor de una distributiva al sumando que multiplica.
+ *
+ * Va del borde de ABAJO del factor al borde de ABAJO del término, con una
+ * curva que se hunde entre los dos —como un arco dibujado a mano por debajo—
+ * y una punta de flecha que entra en el término. Reutiliza `.pz-trazo`, que ya
+ * se traza solo (`pz-dibuja`) y ya tiene su color por tema y por proyección:
+ * el brazo se ve exactamente del mismo azul que las dos cajas que une.
+ */
+function ConectorReparto({ factor, termino }: { factor: Caja; termino: Caja }) {
+  const x0 = factor.x + factor.ancho / 2;
+  const y0 = factor.y + factor.alto;
+  const x1 = termino.x + termino.ancho / 2;
+  const y1 = termino.y + termino.alto;
+  // El hundimiento del arco crece con la distancia horizontal: entre cajas
+  // pegadas ("2x") el arco es un simple bucle corto; entre el factor y un
+  // sumando lejano ("2" hasta el "5" de "2(x + 5)") se hunde más, para no
+  // cruzar por encima de lo que hay entre medias.
+  const hundido = Math.max(y0, y1) + Math.max(16, Math.abs(x1 - x0) * 0.16);
+  return (
+    <g className="pz-resaltado" data-tipo="reparto">
+      <path
+        d={`M ${x0} ${y0} Q ${(x0 + x1) / 2} ${hundido} ${x1} ${y1}`}
+        className="pz-trazo"
+        fill="none"
+        pathLength={1}
+        markerEnd="url(#pz-flecha-reparto)"
+      />
     </g>
   );
 }

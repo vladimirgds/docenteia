@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── IDENTIDAD TIPOGRÁFICA DE LA PIZARRA ──────────────────────────────────────
+   Lo pidió el cliente: tres roles, tres fuentes, para que la pizarra se lea
+   como una clase de verdad y no como una sola voz tipográfica repetida en todo.
+
+     · Lo que el tutor DICE (el subtítulo, el pie de la animación) va en una
+       fuente de letra manuscrita — como "Segoe Print", que es exactamente el
+       nombre que dio el cliente.
+     · Lo que se ESCRIBE en la pizarra que NO es una fórmula —las etiquetas de
+       "llevo 1" o "× 2", los rótulos del diagrama, una nota suelta— va en una
+       fuente de tiza, como "Chalkboard SE" o "Comic Sans MS", también nombradas
+       por el cliente.
+     · Las FÓRMULAS se quedan tal como están: las compone KaTeX, que ya es "la
+       fuente de matemáticas estándar" que pedía el cliente como alternativa a
+       Cambria Math. Aquí no se toca nada.
+
+   SON FUENTES DEL SISTEMA, A PROPÓSITO. "Segoe Print" es de Windows;
+   "Chalkboard SE" es de macOS; "Comic Sans MS" está en los dos. No se cargan
+   como fuente web porque son tipos con derechos de Microsoft/Apple —no hay una
+   versión abierta que pueda auto-alojarse— y porque las tres son EXACTAMENTE
+   las que pidió el cliente, no una aproximación. Un equipo sin ninguna de ellas
+   —Linux, la mayoría de los móviles— cae en el género que sigue en la lista
+   (cursive / sans-serif de mano), que sigue leyéndose como letra escrita.
+*/
+.pz-manuscrita {
+  font-family: "Segoe Print", "Bradley Hand", "Snell Roundhand", cursive;
+}
+
+.pz-tiza {
+  font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", sans-serif;
+}
+
 /* Tokens de shadcn/ui. Se declara la paleta clara completa en :root y sólo se
    redefinen los tokens en modo oscuro, de modo que ningún color tenga su única
    definición dentro de un media query. */
@@ -387,16 +418,29 @@
   stroke: hsl(152 60% 55%);
 }
 
-/* El rótulo de la llevada o de la reagrupación, sobre la caja. */
+/* El rótulo de la llevada o de la reagrupación, sobre la caja. Es una nota
+   escrita a mano sobre la pizarra —"llevo 1", "× 2"—, así que va en la fuente
+   de tiza, igual que los rótulos del diagrama. */
 .pz-etiqueta {
   fill: hsl(25 95% 38%);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", sans-serif;
 }
 
 .dark .pz-etiqueta {
   fill: hsl(38 96% 60%);
+}
+
+/* El pie de la pizarra animada: lo que el tutor está DICIENDO mientras el foco
+   está encendido. Es habla, no escritura, así que va en la fuente manuscrita.
+   Un poco más grande y con más interlineado que el texto corrido: una fuente
+   de mano necesita más aire que una de palo seco para leerse igual de fácil. */
+.pz-pie {
+  font-family: "Segoe Print", "Bradley Hand", "Snell Roundhand", cursive;
+  font-size: 1.05rem;
+  line-height: 1.5;
 }
 
 /* ── Revelado progresivo ────────────────────────────────────────────────────
@@ -583,4 +627,58 @@
    28 % de opacidad es invisible. */
 .modo-proyeccion .pz-resaltado {
   stroke-opacity: 1;
+}
+
+/* ── Diagramas de la fase de Concepto ─────────────────────────────────────────
+   Los rótulos del diagrama —"numerador", "1/8 < 1/4", la nota al pie— son
+   notas escritas a mano sobre el dibujo, no fórmulas: van en la fuente de
+   tiza, igual que la etiqueta de una llevada. */
+.pz-diagrama text {
+  font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", sans-serif;
+}
+
+/* La pizza se corta al entrar, porción a porción, en vez de aparecer entera de
+   golpe. Lo pidió el cliente como mínimo si no se animaba nada más: "al menos
+   animar el corte de las porciones". El `key` de cada porción lleva su índice,
+   así que cada una arranca con su propio retraso (ver el `style` en línea del
+   componente) y se ven cortarse una detrás de otra, no todas a la vez. */
+@keyframes pz-porcion-entra {
+  from {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.pz-porcion {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pz-porcion-entra 340ms ease-out both;
+}
+
+/* ── El brazo de la propiedad distributiva ────────────────────────────────────
+   El cliente lo dibujó a mano sobre la captura: un arco que sale del factor y
+   entra en cada sumando, para que se vea que el de fuera "viaja hasta" el de
+   dentro y no sólo que los dos están recuadrados a la vez. Reutiliza el trazo
+   azul de las cajas —`.pz-trazo` ya se dibuja solo con `pz-dibuja`—; la
+   punta de flecha necesita su propio relleno porque un `marker` de SVG no
+   hereda el `stroke` del trazo al que se engancha. */
+.pz-flecha-reparto {
+  fill: hsl(221 83% 45%);
+}
+
+.dark .pz-flecha-reparto {
+  fill: hsl(213 94% 72%);
+}
+
+.modo-proyeccion .pz-flecha-reparto {
+  fill: hsl(45 96% 60%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pz-porcion {
+    animation: none;
+  }
 }

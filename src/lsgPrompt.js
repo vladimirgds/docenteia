@@ -785,8 +785,32 @@ const CONCEPTO_FRACCION = [
   // Los DOS bloques son concepto: qué es una fracción y el mismo qué es contado
   // con una pizza. Ninguno enuncia una regla, así que ninguno va a "Reglas y
   // propiedades" — ese módulo lo abre la equivalencia que se empuja después.
+  // EL VOCABULARIO SE INTRODUCE EN DOS PASOS, NO EN UNO.
+  //
+  // Antes había un solo bloque que hablaba de las dos palabras a la vez y
+  // escribía "Fracción: numerador / denominador" de golpe. El cliente lo
+  // señaló con precisión: la pizarra no puede tener el rótulo puesto desde el
+  // primer instante, tiene que aparecer "en sincronía exacta" con lo que se
+  // está diciendo. Con una sola locución que menciona las dos palabras no hay
+  // forma honesta de saber CUÁNDO, dentro de esa frase, se ha dicho cada una
+  // —el Web Speech API no da ese detalle de forma fiable entre voces y
+  // navegadores—, así que en vez de fingir una sincronía que no se puede
+  // medir, se cuenta en DOS locuciones cortas, una por palabra: el numerador
+  // primero, el denominador después. `Pizarra` sabe exactamente cuándo aparece
+  // cada una, porque cada una llega con su propia directiva de pizarra.
+  //
+  // El bloque de cierre recupera la frase original —"Fracción: numerador /
+  // denominador"— tal cual estaba, MISMO texto y mismo espaciado: es la marca
+  // que usa `varianteConcepto` para no repetir esta redacción en la lección
+  // siguiente, y cambiarla habría roto esa rotación en silencio. Aquí llega
+  // como cierre, después de haber dicho las dos palabras por separado, así que
+  // no es un rótulo estático: es el resumen de lo que se acaba de explicar.
   { marca: "numerador / denominador", bloques: [
-    ["Una fracción representa partes de un todo: el número de arriba es el numerador (las partes que tomamos) y el de abajo es el denominador (en cuántas partes iguales se divide el todo).",
+    ["Fíjate en el número de ARRIBA de una fracción: es el numerador, y dice cuántas partes tomamos.",
+     "Numerador: las partes que tomamos", "concepto"],
+    ["Y el número de ABAJO es el denominador: dice en cuántas partes iguales se divide el todo.",
+     "Denominador: en cuántas partes se divide el todo", "concepto"],
+    ["Cada fracción tiene siempre estas dos partes, con su propio nombre.",
      "Fracción:  numerador / denominador", "concepto"],
     ["Por ejemplo, si partes una pizza en 4 porciones iguales y tomas 1, eso es 1/4: el 4 (denominador) dice en cuántas partes se dividió, y el 1 (numerador) cuántas tomaste. Si tomas 2 de esas 4, es 2/4, que es lo mismo que la mitad, 1/2.",
      "1/4 = una de 4 partes iguales    ·    2/4 = 1/2 (la mitad)", "concepto"],

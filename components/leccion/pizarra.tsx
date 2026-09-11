@@ -107,6 +107,16 @@ export interface FaseAbierta {
 /** Desarrollo vacío, estable: evita rehacer el array en cada composición. */
 const SIN_DESARROLLO: LineaPizarra[] = [];
 
+/**
+ * Las dos líneas con las que la fase de Concepto introduce el vocabulario de
+ * una fracción, una detrás de otra. Detectarlas por cómo EMPIEZAN —y no por
+ * si contienen la palabra en cualquier parte— evita un falso positivo con la
+ * frase que las precede en pantalla ("Fracción: numerador / denominador"),
+ * que nombra las dos palabras a la vez y adelantaría la revelación entera.
+ */
+const RE_NUMERADOR_ESCRITO = /^numerador\s*:/i;
+const RE_DENOMINADOR_ESCRITO = /^denominador\s*:/i;
+
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
 export interface ReglaPizarra {
   clave: string;
@@ -347,6 +357,36 @@ export function Pizarra({
     [pasoSuelto, ejercicio],
   );
 
+  /**
+   * ¿YA SE HA DICHO "numerador" / "denominador"?
+   *
+   * El cliente lo pidió así: el rótulo del diagrama —y la etiqueta de la
+   * pizarra— no pueden estar puestos desde el primer fotograma, tienen que
+   * aparecer cuando la locución menciona cada palabra. Una de las dos
+   * redacciones de esta fase introduce los términos EN DOS PASOS —primero
+   * "Numerador: …", luego "Denominador: …"—, y aquí se mira si esas líneas ya
+   * se han escrito en `desarrollo`, que acumula todo lo dicho en la fase.
+   *
+   * La OTRA redacción ("cuántas partes tomo") no usa esas dos palabras nunca,
+   * y con ella no hay nada que progresar: los dos términos se dan por vistos
+   * desde el principio, que es como se comportaba el diagrama antes de este
+   * pedido. Por eso la introducción progresiva sólo se activa en cuanto
+   * aparece la PRIMERA de las dos líneas —"enIntroduccion"—; hasta entonces,
+   * o si nunca aparece ninguna, los dos términos están vistos.
+   */
+  const { vistoNumerador, vistoDenominador } = useMemo(() => {
+    if (!actual || !esFaseDeConcepto(actual.id) || tema !== "FRACCIONES") {
+      return { vistoNumerador: true, vistoDenominador: true };
+    }
+    const numeradorEscrito = desarrollo.some((l) => RE_NUMERADOR_ESCRITO.test(l.texto));
+    const denominadorEscrito = desarrollo.some((l) => RE_DENOMINADOR_ESCRITO.test(l.texto));
+    const enIntroduccion = numeradorEscrito || denominadorEscrito;
+    return {
+      vistoNumerador: !enIntroduccion || numeradorEscrito,
+      vistoDenominador: !enIntroduccion || denominadorEscrito,
+    };
+  }, [actual, tema, desarrollo]);
+
   const compacta =
     actual != null && !esFaseDeEjemplo(actual.id) && !esFaseDePractica(actual.id);
 
@@ -438,7 +478,27 @@ export function Pizarra({
                     // fijo —1 de 4— dijera lo que dijera el tutor.
                     numerador={fraccionEnCurso?.numerador}
                     denominador={fraccionEnCurso?.denominador}
+                    // Los rótulos de la pizza no aparecen hasta que se ha
+                    // dicho la palabra: ver el porqué en `vistoNumerador`.
+                    vistoNumerador={vistoNumerador}
+                    vistoDenominador={vistoDenominador}
                   />
+                )}
+
+                {/* LA FRACCIÓN FORMAL, PARA CERRAR LA IDEA.
+                    El cliente lo pidió con estas palabras: "falta mostrar la
+                    expresión matemática explícita correspondiente al
+                    gráfico". El dibujo y la palabra hablada dicen lo mismo con
+                    otro lenguaje —una pizza cortada, "el número de arriba"—,
+                    pero la NOTACIÓN con la que se escribe en cualquier otro
+                    sitio no aparecía en ningún lado. Se destapa cuando ya se
+                    han dicho las dos palabras: antes de eso no cierra nada
+                    todavía. */}
+                {esFaseDeConcepto(actual.id) && tema === "FRACCIONES" && vistoNumerador && vistoDenominador && (
+                  <p className="flex flex-wrap items-baseline justify-center gap-2 text-sm text-muted-foreground">
+                    <span className="pz-tiza">Numerador / Denominador:</span>
+                    <Formula latex={`\\dfrac{${fraccionEnCurso?.numerador ?? 1}}{${fraccionEnCurso?.denominador ?? 4}}`} />
+                  </p>
                 )}
 
                 {/* Fases con ejercicio: el enunciado anclado arriba y su
@@ -851,6 +911,13 @@ function LineaRenderizada({
     );
   }
 
+  // DOS TIPOS DE PROSA, DOS FUENTES.
+  //
+  // Una línea "explicacion" es lo que el tutor DICE (viene de una directiva
+  // `hablar`): va en la manuscrita, igual que el subtítulo y el pie de la
+  // pizarra animada. Una línea "formula" que no se ha dejado componer como
+  // fórmula sigue siendo algo ESCRITO en la pizarra —una nota, un rótulo que
+  // el motor no supo convertir a LaTeX—, así que va en la fuente de tiza.
   return (
     <div>
       {etiqueta}
@@ -858,8 +925,8 @@ function LineaRenderizada({
         className={cn(
           "rounded-md px-3 py-1.5 leading-relaxed transition-colors",
           linea.clase === "explicacion"
-            ? "text-sm text-muted-foreground"
-            : "text-base font-medium",
+            ? "pz-manuscrita text-base text-muted-foreground"
+            : "pz-tiza text-base font-medium",
           resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
         )}
       >

@@ -8,6 +8,7 @@ import {
   type GeometriaDiagrama,
   type TonoEtiqueta,
 } from "@/lib/leccion/diagramas";
+import { cn } from "@/lib/utils";
 
 /**
  * Diagramas de la fase de Concepto (Módulo 7).
@@ -33,6 +34,20 @@ export interface PropiedadesFraccion {
   denominador?: number;
   etiquetaNumerador?: string;
   etiquetaDenominador?: string;
+  /**
+   * ¿Ya se ha dicho la palabra "numerador" / "denominador"?
+   *
+   * El cliente lo pidió con estas palabras: la etiqueta no puede estar puesta
+   * desde el primer instante, tiene que aparecer "en sincronía exacta cuando
+   * la locución menciona" cada término. `Pizarra` lleva la cuenta —mirando lo
+   * que ya se ha escrito en esta fase— y aquí sólo se obedece: sin el aviso, el
+   * dibujo se queda con la porción coloreada pero sin la flecha ni el rótulo
+   * que dicen qué es. Por defecto los dos están vistos, que es como se
+   * comportaba el diagrama antes de este pedido y cómo se sigue comportando en
+   * la redacción que no usa estas dos palabras.
+   */
+  vistoNumerador?: boolean;
+  vistoDenominador?: boolean;
 }
 
 const CLASES_TONO: Record<TonoEtiqueta, string> = {
@@ -42,21 +57,44 @@ const CLASES_TONO: Record<TonoEtiqueta, string> = {
 };
 
 /** Pinta las etiquetas de un diagrama con la geometría ya validada. */
-function Etiquetas({ geometria }: { geometria: GeometriaDiagrama }) {
+function Etiquetas({
+  geometria,
+  mostrar,
+}: {
+  geometria: GeometriaDiagrama;
+  /**
+   * Qué etiquetas dejar ver, para el diagrama de fracciones.
+   *
+   * `geometriaDeFraccion` siempre entrega sus etiquetas EN ESTE ORDEN: la del
+   * numerador, la del denominador y —sólo si hay una tercera— la síntesis
+   * final ("2 de 6 partes iguales"), que necesita las dos palabras dichas para
+   * tener sentido. Es una convención local a esta llamada, no un contrato del
+   * tipo `GeometriaDiagrama`: los otros tres diagramas no pasan `mostrar` y
+   * siguen viendo sus etiquetas todas de una vez, como siempre.
+   */
+  mostrar?: { numerador: boolean; denominador: boolean };
+}) {
   return (
     <>
-      {geometria.etiquetas.map((e: EtiquetaDiagrama) => (
-        <text
-          key={e.texto}
-          x={e.x}
-          y={e.y}
-          textAnchor={e.anclaje}
-          fontSize={e.tamano}
-          className={CLASES_TONO[e.tono]}
-        >
-          {e.texto}
-        </text>
-      ))}
+      {geometria.etiquetas.map((e: EtiquetaDiagrama, i: number) => {
+        if (mostrar) {
+          if (i === 0 && !mostrar.numerador) return null;
+          if (i === 1 && !mostrar.denominador) return null;
+          if (i === 2 && !(mostrar.numerador && mostrar.denominador)) return null;
+        }
+        return (
+          <text
+            key={e.texto}
+            x={e.x}
+            y={e.y}
+            textAnchor={e.anclaje}
+            fontSize={e.tamano}
+            className={cn(CLASES_TONO[e.tono], mostrar && "pz-porcion")}
+          >
+            {e.texto}
+          </text>
+        );
+      })}
     </>
   );
 }
@@ -84,7 +122,7 @@ function CurvaYTangente() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-sm"
       role="img"
       aria-label="La parábola y = x al cuadrado con su recta tangente en el punto x = 1: la pendiente de esa recta, que vale 2, es la derivada en ese punto."
     >
@@ -156,7 +194,7 @@ function JuntarCantidades() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-sm"
       role="img"
       aria-label="Tres fichas y dos fichas se juntan para formar cinco."
     >
@@ -184,18 +222,36 @@ function JuntarCantidades() {
   );
 }
 
+/** Un punto sobre una circunferencia de centro (cx, cy) y radio r, en grados. */
+function puntoEnCirculo(cx: number, cy: number, r: number, grados: number): [number, number] {
+  const rad = (grados * Math.PI) / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
 /**
  * Un todo dividido en partes iguales: la idea de fracción.
  *
- * El dibujo se construye con la fracción de la que se está hablando. Antes era
- * fijo —cuatro barras con una sombreada— y si la lección explicaba 2/6, el
- * alumno oía una cosa y veía otra.
+ * El dibujo se construye con la fracción de la que se está hablando, así que
+ * si la lección explicaba 2/6, el alumno oye 2/6 y ve 2/6.
+ *
+ * SE DIBUJA COMO UNA PIZZA, no como una barra.
+ *
+ * Era un rectángulo partido en celdas, y el cliente lo señaló con precisión:
+ * mientras la locución dice "partes una pizza en 4 porciones iguales", el
+ * dibujo no tenía nada de pizza. La metáfora que se cuenta y la que se ve
+ * tienen que ser la misma. Un círculo cortado en porciones es además más
+ * fácil de leer con muchas partes —doce gajos de tarta se distinguen mejor que
+ * doce celdas estrechas en fila— y cada porción entra con su propio pequeño
+ * "corte", una detrás de otra, así que el dibujo no se queda plano y estático
+ * desde el primer fotograma.
  */
 function PartesDeUnTodo({
   numerador = 1,
   denominador = 4,
   etiquetaNumerador,
   etiquetaDenominador,
+  vistoNumerador = true,
+  vistoDenominador = true,
 }: PropiedadesFraccion) {
   const g = geometriaDeFraccion(numerador, denominador, {
     numerador: etiquetaNumerador,
@@ -203,58 +259,108 @@ function PartesDeUnTodo({
   });
   const f = g.fraccion!;
 
+  // La geometría del círculo. Cabe siempre en el mismo lienzo (240×132) sea
+  // cual sea el denominador: lo que cambia es en cuántos gajos se corta, no el
+  // tamaño de la pizza. El radio deja sitio de sobra entre el borde de abajo
+  // de la pizza y el rótulo del denominador —que vive en `geometriaDeFraccion`,
+  // a y=104— para el arco y su flecha: con un radio mayor la punta de la
+  // flecha llegaba a tocar la letra del rótulo.
+  const cx = 120;
+  const cy = 50;
+  const r = 24;
+  const porGajo = 360 / f.partes;
+
+  // El arco de un gajo, de `desde` a `hasta` grados, empezando arriba (-90°) y
+  // girando en el sentido de las agujas del reloj —como se reparte una pizza
+  // de verdad—. Con un solo gajo (f.partes === 1) el arco completo no se puede
+  // describir con un solo comando "A" (los dos extremos coinciden), así que
+  // ese caso se dibuja como una circunferencia entera aparte.
+  const gajo = (indice: number): string => {
+    const desde = -90 + indice * porGajo;
+    const hasta = desde + porGajo;
+    const [x1, y1] = puntoEnCirculo(cx, cy, r, desde);
+    const [x2, y2] = puntoEnCirculo(cx, cy, r, hasta);
+    const arcoLargo = porGajo > 180 ? 1 : 0;
+    return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${arcoLargo} 1 ${x2} ${y2} Z`;
+  };
+
+  // Dónde señala la flecha del numerador: al centro visual del primer gajo
+  // tomado —el primero de todos si no se ha tomado ninguno—, que por cómo se
+  // numeran los gajos es siempre el que empieza arriba o cerca de arriba, así
+  // que la flecha vertical desde el rótulo de encima siempre tiene sentido.
+  const [flechaX, flechaY] = puntoEnCirculo(cx, cy, r * 0.62, -90 + porGajo / 2);
+
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-sm"
       role="img"
-      aria-label={`Un rectángulo dividido en ${f.partes} partes iguales, con ${f.tomadas} sombreada${f.tomadas === 1 ? "" : "s"}.`}
+      aria-label={`Una pizza dividida en ${f.partes} porciones iguales, con ${f.tomadas} sombreada${f.tomadas === 1 ? "" : "s"}.`}
     >
-      {Array.from({ length: f.partes }, (_, i) => (
-        <rect
-          key={i}
-          x={f.margen + i * f.celda}
-          y="20"
-          width={f.celda}
-          height="50"
-          className={
-            i < f.tomadas
-              ? "fill-primary/60 stroke-primary"
-              : "fill-muted stroke-muted-foreground/40"
-          }
+      {f.partes === 1 ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          className={f.tomadas >= 1 ? "pz-porcion fill-primary/60 stroke-primary" : "pz-porcion fill-muted stroke-muted-foreground/40"}
           strokeWidth="1.5"
         />
-      ))}
+      ) : (
+        Array.from({ length: f.partes }, (_, i) => (
+          <path
+            key={`${f.partes}-${f.tomadas}-${i}`}
+            d={gajo(i)}
+            className={
+              i < f.tomadas
+                ? "pz-porcion fill-primary/60 stroke-primary"
+                : "pz-porcion fill-muted stroke-muted-foreground/40"
+            }
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            style={{ animationDelay: `${i * 55}ms` }}
+          />
+        ))
+      )}
 
-      {/* La flecha que ata la palabra "numerador" a la parte sombreada. Sin
-          ella, el alumno oye los dos nombres y ve un rectángulo partido, pero
-          nada le dice cuál es cuál. */}
-      <line
-        x1={f.centroPrimera}
-        y1="15"
-        x2={f.centroPrimera}
-        y2="30"
-        className="stroke-primary"
-        strokeWidth="1.5"
-      />
-      <polygon
-        points={`${f.centroPrimera},36 ${f.centroPrimera - 4},28 ${f.centroPrimera + 4},28`}
-        className="fill-primary"
-      />
+      {/* La flecha que ata la palabra "numerador" a la porción sombreada. Sin
+          ella, el alumno oye el nombre y ve una pizza cortada, pero nada le
+          dice cuál gajo es cuál. Sólo se dibuja una vez dicha la palabra. */}
+      {vistoNumerador && (
+        <g className="pz-porcion">
+          <line
+            x1={flechaX}
+            y1="15"
+            x2={flechaX}
+            y2={flechaY - 8}
+            className="stroke-primary"
+            strokeWidth="1.5"
+          />
+          <polygon
+            points={`${flechaX},${flechaY - 2} ${flechaX - 4},${flechaY - 10} ${flechaX + 4},${flechaY - 10}`}
+            className="fill-primary"
+          />
+        </g>
+      )}
 
-      {/* Y la llave que abarca todas las partes: eso es el denominador. */}
-      <path
-        d={`M ${f.margen} 80 L ${f.margen} 86 L ${g.ancho - f.margen} 86 L ${g.ancho - f.margen} 80`}
-        className="stroke-primary"
-        strokeWidth="1.5"
-        fill="none"
-      />
-      <polygon
-        points={`${g.ancho / 2},94 ${g.ancho / 2 - 4},86 ${g.ancho / 2 + 4},86`}
-        className="fill-primary"
-      />
+      {/* Y el arco que abarca la pizza entera: eso es el denominador —todas
+          las porciones en las que se ha dividido el todo—, y tampoco se
+          dibuja hasta que se ha nombrado. */}
+      {vistoDenominador && (
+        <g className="pz-porcion">
+          <path
+            d={`M ${cx - r * 0.92} ${cy + r + 3} Q ${cx} ${cy + r + 15} ${cx + r * 0.92} ${cy + r + 3}`}
+            className="stroke-primary"
+            strokeWidth="1.5"
+            fill="none"
+          />
+          <polygon
+            points={`${cx},${cy + r + 18} ${cx - 4},${cy + r + 10} ${cx + 4},${cy + r + 10}`}
+            className="fill-primary"
+          />
+        </g>
+      )}
 
-      <Etiquetas geometria={g} />
+      <Etiquetas geometria={g} mostrar={{ numerador: vistoNumerador, denominador: vistoDenominador }} />
     </svg>
   );
 }
@@ -265,7 +371,7 @@ function BalanzaEnEquilibrio() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-sm"
       role="img"
       aria-label="Una balanza equilibrada: lo que se hace a un lado hay que hacerlo al otro."
     >
@@ -302,6 +408,8 @@ export function DiagramaConcepto({
   denominador,
   etiquetaNumerador,
   etiquetaDenominador,
+  vistoNumerador,
+  vistoDenominador,
 }: { tema: string } & PropiedadesFraccion) {
   // La lista de temas con diagrama vive en lib/leccion/diagramas.ts, que es la
   // que consulta también la suite; aquí sólo se resuelve el componente.
@@ -315,6 +423,8 @@ export function DiagramaConcepto({
         denominador={denominador}
         etiquetaNumerador={etiquetaNumerador}
         etiquetaDenominador={etiquetaDenominador}
+        vistoNumerador={vistoNumerador}
+        vistoDenominador={vistoDenominador}
       />
     </div>
   );

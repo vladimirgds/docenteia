@@ -733,6 +733,171 @@ titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
   }
 }
 
+titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, llevo 1 sin tapar");
+
+{
+  const diagramaTsx = readFileSync(
+    new URL("../components/leccion/diagrama-concepto.tsx", import.meta.url),
+    "utf8",
+  );
+  const pizarraTsx = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const panelTsx = readFileSync(
+    new URL("../components/leccion/pizarra-animada.tsx", import.meta.url),
+    "utf8",
+  );
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const aulaTsx = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const lsgPrompt = readFileSync(new URL("../src/lsgPrompt.js", import.meta.url), "utf8");
+
+  // 1a. LA PIZZA ES UN CÍRCULO, NO UNA BARRA.
+  //
+  // "Si el diálogo explica 'partes una pizza en 4 porciones iguales', la
+  // barra abstracta no conecta con la metáfora." Se dibuja con gajos —un
+  // <path> de arco por porción—, no con <rect> en fila.
+  check(
+    "el diagrama de fracciones dibuja gajos de círculo, no barras",
+    /gajo = \(indice: number\)/.test(diagramaTsx) &&
+      /A \$\{r\} \$\{r\} 0 \$\{arcoLargo\} 1/.test(diagramaTsx) &&
+      !/x=\{f\.margen \+ i \* f\.celda\}/.test(diagramaTsx),
+  );
+  check(
+    "y cada gajo entra con su propio pequeño corte, uno detrás de otro",
+    /pz-porcion/.test(diagramaTsx) && /animationDelay: `\$\{i \* 55\}ms`/.test(diagramaTsx),
+  );
+  check(
+    "la animación respeta prefers-reduced-motion",
+    /\.pz-porcion \{/.test(estilos) && /prefers-reduced-motion: reduce\) \{\s*\.pz-porcion/.test(estilos),
+  );
+
+  // 1b. NUMERADOR Y DENOMINADOR APARECEN CUANDO SE DICEN, NO ANTES.
+  check(
+    "PartesDeUnTodo no dibuja la flecha ni el arco hasta que se avisa",
+    /\{vistoNumerador && \(/.test(diagramaTsx) && /\{vistoDenominador && \(/.test(diagramaTsx),
+  );
+  check(
+    "por defecto los dos se ven —la otra redacción no pierde sus rótulos—",
+    /vistoNumerador = true,\s*vistoDenominador = true,/.test(diagramaTsx),
+  );
+  check(
+    "Pizarra deduce lo dicho de lo que ya se ha escrito en la fase, por cómo EMPIEZA la línea",
+    /RE_NUMERADOR_ESCRITO = \/\^numerador\\s\*:\/i/.test(pizarraTsx) &&
+      /RE_DENOMINADOR_ESCRITO = \/\^denominador\\s\*:\/i/.test(pizarraTsx),
+  );
+  check(
+    "y se lo pasa al diagrama",
+    /vistoNumerador=\{vistoNumerador\}/.test(pizarraTsx) && /vistoDenominador=\{vistoDenominador\}/.test(pizarraTsx),
+  );
+
+  // 1c. LA EXPRESIÓN FORMAL, AL CERRAR LA IDEA.
+  check(
+    '"falta mostrar la expresión matemática explícita": aparece cuando ya se han dicho las dos palabras',
+    /Numerador \/ Denominador:<\/span>/.test(pizarraTsx) &&
+      /vistoNumerador && vistoDenominador && \(/.test(pizarraTsx),
+  );
+
+  // 1d. LA NARRACIÓN SE CUENTA EN DOS PASOS, NO EN UNO —Y LA MARCA DE ROTACIÓN
+  //     NO SE ROMPE—.
+  {
+    const crudo = fraccionResueltaLSG({ concepto: true, nivel: "normal", evitar: "cuántas partes tomo" });
+    const salida = processLSG(crudo, "aprender", "fracciones");
+    const modConcepto = salida.lsg.modulos.find((m) => m.id === "concepto");
+    const contenidos = (modConcepto?.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => d.contenido);
+    check(
+      "el numerador y el denominador se escriben en líneas separadas, cada una con su propio hablar antes",
+      contenidos.some((c) => /^Numerador:/.test(c)) && contenidos.some((c) => /^Denominador:/.test(c)),
+      JSON.stringify(contenidos),
+    );
+    const iN = contenidos.findIndex((c) => /^Numerador:/.test(c));
+    const iD = contenidos.findIndex((c) => /^Denominador:/.test(c));
+    check("y el numerador se escribe ANTES que el denominador", iN >= 0 && iD > iN);
+    check(
+      "la frase de cierre conserva la marca exacta de la que depende la rotación",
+      contenidos.some((c) => c === "Fracción: numerador / denominador"),
+    );
+    // Y la otra redacción, sin tocar: sigue sin usar esas dos palabras.
+    const crudo2 = fraccionResueltaLSG({ concepto: true, nivel: "normal", evitar: "numerador / denominador" });
+    const salida2 = processLSG(crudo2, "aprender", "fracciones");
+    const contenidos2 = (salida2.lsg.modulos.find((m) => m.id === "concepto")?.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => d.contenido);
+    check(
+      '"cuántas partes tomo" sigue intacta, sin las palabras "Numerador:"/"Denominador:"',
+      contenidos2.length > 0 &&
+        !contenidos2.some((c) => /^Numerador:/.test(c)) &&
+        !contenidos2.some((c) => /^Denominador:/.test(c)),
+      JSON.stringify(contenidos2),
+    );
+  }
+
+  // 2. "LLEVO 1" NO TAPA LA CIFRA.
+  //
+  // El desplazamiento fijo (6 px) valía para el tamaño de letra de pantalla,
+  // pero en Modo proyección la letra del rótulo crece mucho más —hasta
+  // 1,75rem— y el rótulo quedaba prácticamente encima de la llevada. Con
+  // `dy="-0.65em"` el hueco se mide en la propia unidad del texto, así que
+  // crece con la letra en cualquier tamaño.
+  check(
+    'la etiqueta ya no sube un margen fijo: usa dy="-0.65em", relativo a su propia letra',
+    (panelTsx.match(/dy="-0\.65em"/g) ?? []).length >= 2 && !/y=\{caja\.y - 6\}/.test(panelTsx),
+  );
+
+  // 3. EL BRAZO DE LA DISTRIBUTIVA.
+  //
+  // El cliente lo dibujó a mano: un arco que sale del factor y entra en el
+  // sumando al que multiplica, no sólo dos cajas separadas.
+  check(
+    "hay un componente que dibuja el arco entre el factor y el sumando",
+    /function ConectorReparto/.test(panelTsx) && /markerEnd="url\(#pz-flecha-reparto\)"/.test(panelTsx),
+  );
+  check(
+    "sólo se dibuja para la distributiva, y sólo con exactamente dos piezas",
+    /escena\.clase !== "distributiva"\) return null/.test(panelTsx) &&
+      /f\.piezas\.length !== 2\) return null/.test(panelTsx),
+  );
+  check(
+    "reutiliza el trazo azul de las cajas —mismo color, misma animación de dibujado—",
+    /className="pz-trazo"[\s\S]{0,80}markerEnd/.test(panelTsx),
+  );
+
+  // 4. LA IDENTIDAD TIPOGRÁFICA: tres roles, tres fuentes.
+  check(
+    "hay una fuente para lo que el tutor DICE, con el nombre que pidió el cliente",
+    /\.pz-manuscrita \{\s*font-family: "Segoe Print", "Bradley Hand", "Snell Roundhand", cursive;/.test(estilos),
+  );
+  check(
+    "y otra para lo que se ESCRIBE en la pizarra que no es una fórmula",
+    /\.pz-tiza \{\s*font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", sans-serif;/.test(estilos),
+  );
+  check(
+    "el subtítulo del tutor va en la manuscrita",
+    /pz-manuscrita rounded-md bg-muted\/60/.test(aulaTsx),
+  );
+  check(
+    "el pie de la pizarra animada —lo que dice el foco encendido— también",
+    /\.pz-pie \{\s*font-family: "Segoe Print"/.test(estilos),
+  );
+  check(
+    "la etiqueta de la llevada y los rótulos del diagrama van en tiza",
+    /\.pz-etiqueta \{[\s\S]{0,140}font-family: "Chalkboard SE"/.test(estilos) &&
+      /\.pz-diagrama text \{\s*font-family: "Chalkboard SE"/.test(estilos),
+  );
+  check(
+    "una nota escrita en la pizarra que no se dejó componer como fórmula también va en tiza",
+    /"pz-manuscrita text-base text-muted-foreground"\s*:\s*"pz-tiza text-base font-medium"/.test(pizarraTsx),
+  );
+  // Las fórmulas no se tocan: KaTeX sigue siendo quien las compone, sin una
+  // fuente distinta impuesta encima.
+  check(
+    "las fórmulas siguen sin una fuente propia forzada: las compone KaTeX tal cual",
+    !/\.katex\s*\{[^}]*font-family/.test(estilos),
+  );
+}
+
 titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyección siempre");
 
 {

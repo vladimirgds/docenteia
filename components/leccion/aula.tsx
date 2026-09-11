@@ -1402,7 +1402,13 @@ export function Aula({
               nueva: contaría una cosa mientras la pizarra enseña otra.
           */}
           {subtitulo && faseDelSubtitulo === faseAbierta && (
-            <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
+            // pz-manuscrita: es lo que el tutor DICE, y el cliente pidió una
+            // letra de mano distinta de la de la pizarra —"Segoe Print" para
+            // el habla, "Chalkboard SE / Comic Sans MS" para lo escrito—. El
+            // tamaño y el interlineado suben un poco: una fuente de mano
+            // necesita más aire que una de palo seco para leerse igual de
+            // fácil (mismo ajuste que el pie de la pizarra animada).
+            <p className="pz-manuscrita rounded-md bg-muted/60 px-4 py-3 text-base leading-relaxed">
               <TextoMatematico texto={subtitulo} />
             </p>
           )}
