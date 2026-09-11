@@ -178,6 +178,13 @@
   font-size: 1.08em;
 }
 
+/* La regla de la tarjeta y su ejemplo, a tamaño de pizarra (equivale a text-2xl).
+   A tamaño de texto corrido el "=" entre fracciones se quedaba en dos rayitas
+   que, en una pantalla escalada, se leían como un signo menos. */
+.pz-regla-formula .katex {
+  font-size: 1.5rem;
+}
+
 /* Una fórmula larga nunca debe ensanchar la página: se desplaza dentro de su
    propia caja. */
 .katex-display {
@@ -227,9 +234,9 @@
 }
 
 /* EL MARCADO SE DIBUJA, NO APARECE.
-   Lo pidió el cliente: que el óvalo, la caja y el tachado se tracen como los
+   Lo pidió el cliente: que la caja, el tachado y el subrayado se tracen como los
    traza un profesor en la pizarra, al compás de la voz. `pathLength: 1`
-   normaliza el contorno —da igual que sea un rectángulo, una elipse o una
+   normaliza el contorno —da igual que sea un rectángulo, un visto o una
    raya— y la animación lo recorre de principio a fin.
 
    Se hace con CSS y no con una librería de anotación: RoughNotation dibuja sus
@@ -357,6 +364,29 @@
   stroke: hsl(0 84% 65%);
 }
 
+/* EL RESULTADO SE SUBRAYA Y SE CONFIRMA.
+   Dos rayas bajo el número y un visto a su derecha, trazados uno detrás de otro
+   como se hacen a mano. Ninguno toca las cifras: el óvalo de antes las cruzaba.
+   `both` mantiene cada trazo sin dibujar mientras espera su turno. */
+.pz-resaltado[data-tipo="resultado"] .pz-trazo {
+  animation-fill-mode: both;
+}
+
+.pz-subrayado-2 {
+  animation-delay: 140ms;
+}
+
+.pz-visto {
+  stroke: hsl(152 69% 34%);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+  animation-delay: 300ms;
+}
+
+.dark .pz-visto {
+  stroke: hsl(152 60% 55%);
+}
+
 /* El rótulo de la llevada o de la reagrupación, sobre la caja. */
 .pz-etiqueta {
   fill: hsl(25 95% 38%);
@@ -470,6 +500,19 @@
   stroke: hsl(0 90% 68%);
 }
 
+/* El visto, en verde de tiza: sobre la pizarra oscura también tiene que decir
+   "correcto" sin confundirse con el ámbar de los recuadros. */
+.modo-proyeccion .pz-visto {
+  stroke: hsl(142 70% 62%);
+  stroke-width: 7;
+}
+
+/* Y el doble subrayado, en azul también en proyección —como lo pidió el
+   cliente—, en el tono claro que aguanta sobre la pizarra oscura. */
+.modo-proyeccion .pz-subrayado {
+  stroke: hsl(199 89% 68%);
+}
+
 /* Sobre pizarra oscura el fondo tiene que pesar más para leerse de lejos. */
 .modo-proyeccion .pz-fondo {
   fill: hsl(45 96% 60% / 0.22);
@@ -498,12 +541,37 @@
   color: hsl(210 40% 92%);
 }
 
+/* El fondo del botón también cambia, no sólo la letra. El botón "outline"
+   conserva el fondo blanco de la interfaz, y con la letra en blanco "Salir de
+   proyección" era un rectángulo vacío: el único botón para volver, invisible. */
 .modo-proyeccion button {
   font-size: clamp(0.95rem, 1.3vw, 1.25rem);
   padding: 0.65rem 1.1rem;
   height: auto;
   color: hsl(0 0% 100%);
+  background-color: hsl(222 40% 16%);
   border-color: hsl(210 40% 60% / 0.5);
+}
+
+.modo-proyeccion button:hover {
+  background-color: hsl(222 40% 24%);
+}
+
+/* El avatar sobre la pizarra oscura: la cabeza se aclara y los rasgos pasan a
+   oscuro. Con los colores de la interfaz clara, la cara era un círculo casi del
+   color del fondo y los ojos, oscuros sobre oscuro, desaparecían. */
+.modo-proyeccion .pz-avatar .avatar-cabeza {
+  fill: hsl(214 95% 93%);
+  stroke: hsl(213 94% 72%);
+}
+
+.modo-proyeccion .pz-avatar .avatar-cara circle,
+.modo-proyeccion .pz-avatar .avatar-rasgos circle {
+  fill: hsl(222 47% 11%);
+}
+
+.modo-proyeccion .pz-avatar .avatar-cara path {
+  stroke: hsl(222 47% 11%);
 }
 
 .modo-proyeccion button svg {

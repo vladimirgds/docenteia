@@ -1500,3 +1500,100 @@ pizarra no necesitará ningún cambio: es el camino que ya recorren los pasos de
 motores. Y el generador de Gemini puede enviar la etiqueta —el servidor la valida
 igual—, pero no se le ha pedido todavía: cambiar lo que se le pide a un modelo en
 vivo merece su propia prueba, no un añadido de pasada.
+
+---
+
+## 27. Revisión f515a57: el ejercicio se completa, la marca no tapa y la proyección no falta
+
+Cuatro observaciones del cliente sobre el despliegue `f515a57`. Las cuatro se
+reprodujeron primero en Chrome, con los mismos pasos que él —la lección entera,
+la práctica contestada y los botones de apoyo pulsados en el mismo momento—, y se
+compararon las capturas con las suyas antes de tocar nada.
+
+### 1. "Más difícil" se quedaba en "Preparando el ejercicio…"
+
+Reproducido tal cual. "Más difícil" trae otro ejercicio **sin cambiar de fase**,
+y la tarjeta se vaciaba a la espera de la directiva que lo escribe, que llega
+detrás de dos locuciones: *«Vamos con otro: 2000 + 1800»* y *«Vamos a sumar
+2000 + 1800 paso a paso»*. Todo ese rato el tutor hablaba de una cuenta y la
+tarjeta decía *«Preparando el ejercicio…»*.
+
+Y al llegar la práctica aparecía un segundo defecto, visible en la otra captura
+del cliente: la tarjeta seguía mostrando el **ejemplo** (2000 + 1800) mientras la
+caja de respuesta preguntaba por **otra** cuenta (2411 + 2457).
+
+- La tarjeta toma el ejercicio nuevo **en el acto**: viene en la respuesta del
+  servidor desde el primer momento.
+- Un enunciado para resolver —«19 + 45 = ?»— **se lleva la tarjeta**, y con él se
+  retira el desarrollo del ejemplo, que era de otra cuenta. Lo que se pregunta es
+  lo que se ve.
+
+### 2. El óvalo tapaba el resultado
+
+El resultado ya no se rodea: **se subraya dos veces y se confirma con un visto a
+su derecha**, como lo dibujó el cliente. Nada toca las cifras, y el número —en
+verde— se lee entero. Los tres trazos se dibujan uno detrás de otro, y todo es
+proporcional al tamaño del número: en proyección, con la fórmula multiplicada y
+el trazo engordado, dos rayas a distancia fija se fundían en una sola barra.
+
+Al probarlo sobre una fracción apareció un fallo de medida que venía de antes: la
+caja de un trozo de fórmula se medía por el span que lo envuelve, y en una
+fracción KaTeX sube el numerador y baja el denominador **fuera** de esa caja. La
+doble raya caía encima del denominador. Ahora se miden los glifos y la raya de la
+fracción: la marca abarca la fracción entera, y lo mismo vale para las cajas.
+
+### 3. La regla y su ejemplo, centrados y al mismo tamaño
+
+El ejemplo `1/2 = 2/4 = 3/6` se componía en línea: fracciones de texto diminutas
+en la esquina de abajo, y a ese tamaño el «=» se quedaba en dos rayitas que en la
+pantalla del cliente se leían como un menos. Ahora la regla y su ejemplo van en
+modo display, centrados y con la misma letra grande (equivalente a `text-2xl`).
+
+### 4a. El ejercicio no puede quedar truncado
+
+Aquí había dos causas, y las dos se reprodujeron.
+
+**La explicación se comía la pregunta.** El alumno está ante *«¿Cuánto es 3/5 +
+1/2?»* y pulsa «No entendí este paso». La explicación la redacta el modelo en vivo
+y **se detiene antes del resultado a propósito** —dárselo sería resolverle la
+práctica—. Pero sustituía a la lección entera, y la pregunta pendiente se perdía
+con ella: el tutor explicaba y terminaba con *«¡Lección completada!»* sin que el
+alumno hubiera contestado. Ese es exactamente el «6/10 + 5/10» de la captura.
+Ahora el reproductor recuerda la pregunta que el alumno tiene delante, y la
+explicación termina **devolviéndosela**, con su respuesta esperada: se corrige
+igual, y la lección sólo termina al contestarla.
+
+**Y al acertar, nadie cerraba el desarrollo.** Ahora, con la respuesta ya
+acertada, la pizarra lo cierra: si la última línea es una operación a medias que
+**vale** exactamente la respuesta, se completa —«6/10 + 5/10» pasa a «6/10 + 5/10
+= 11/10»—; si no, se añade el enunciado resuelto. Nunca se escribe una cuenta que
+no se haya comprobado. Y la pizarra animada, al terminar la lección, se queda en
+su último paso con el resultado subrayado y confirmado, en lugar de volver al
+primero con el resultado escondido.
+
+### 4b. El botón de Modo proyección no puede desaparecer
+
+Vivía sólo en el panel animado, y el panel se retiraba cuando la fase no tenía un
+paso animable: en la práctica —con el enunciado y nada más— o en el concepto.
+Ahora el panel **no se retira nunca durante una clase**. Si no hay nada que
+animar, se queda como una barra con el botón —sin repetir debajo lo que ya enseña
+la pizarra— y, al proyectar, pone en grande lo último que hay escrito: el paso, el
+enunciado o la regla, con el avatar al lado.
+
+Al comprobarlo aparecieron dos defectos de la proyección que venían de antes: el
+botón **«Salir de proyección» era un rectángulo blanco sin texto** —letra blanca
+sobre el fondo blanco del botón—, y el avatar, con los colores de la interfaz
+clara, casi desaparecía sobre la pizarra oscura. Los dos están corregidos.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **430 comprobaciones**, con un bloque para esta revisión: la
+marca del resultado, la regla centrada, la tarjeta en el «más difícil», el cierre
+del ejercicio con sus casos límite, la pregunta devuelta tras explicar y el panel
+que no se retira. `qa/navegador.mjs` sube a **43** y reproduce en Chrome los
+cuatro flujos del cliente: mide que las dos rayas quedan **por debajo** de las
+cifras y el visto **a su derecha**, que la tarjeta nunca se queda en «Preparando»
+y muestra lo que se pregunta, que el desarrollo se cierra al acertar, que el botón
+de proyección está en la práctica, que «Salir de proyección» se lee, y que tras
+«No entendí este paso» la pregunta vuelve en lugar de darse la lección por
+completada. `npm test` completo: **0 fallos**.

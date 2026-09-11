@@ -433,9 +433,14 @@ if (catalogo) {
     "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
     /SUSTITUCIÓN, no concatenación[\s\S]{0,320}setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
+  // Cuando llega OTRO ejercicio, la tarjeta deja el anterior —y ya no se queda
+  // vacía esperando al motor: toma el nuevo en el acto (revisión f515a57, donde
+  // el cliente la fotografió en "Preparando el ejercicio…" mientras el tutor ya
+  // hablaba de la cuenta). Lo que se comprueba es la sustitución, en las dos
+  // mitades: tarjeta con el ejercicio nuevo y desarrollo vacío.
   check(
     "aula.tsx retira también el enunciado cuando llega otro ejercicio",
-    /fijarLineaEjercicio\(null\);[\s\S]{0,40}setDesarrollo\(\[\]\);/.test(fuenteAula),
+    /presentacion === "sustituir"[\s\S]{0,1800}fijarLineaEjercicio\([\s\S]{0,500}\);\s*setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
   // El enunciado se adelanta al abrir la fase, sin esperar a la cola de voz.
   check(
@@ -2522,9 +2527,12 @@ console.log("\n · Una aclaración no ocupa la caja de respuesta");
     new URL("../components/leccion/aula.tsx", import.meta.url),
     "utf8",
   );
+  // Sólo de las aclaraciones —y, desde la revisión f515a57, devolviendo al
+  // final la pregunta que el alumno tenía pendiente: la explicación no puede
+  // dejarle sin el ejercicio que estaba resolviendo—.
   check(
     "el aula quita las preguntas SÓLO de las aclaraciones",
-    /opciones\.soloExplicacion \? sinPreguntas\(recortada\) : recortada/.test(fuenteAuF),
+    /opciones\.soloExplicacion\s*\?\s*conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)\s*:\s*recortada/.test(fuenteAuF),
   );
 }
 

@@ -81,6 +81,17 @@ export function enunciadosDeLeccion(lsg: LSGConModulos | null | undefined): Map<
   return porFase;
 }
 
+/**
+ * ¿Es una línea que se le PIDE resolver al alumno?
+ *
+ * El motor escribe así el ejercicio de práctica —"19 + 45 = ?", "3/5 + 1/2 =
+ * ?"—, distinto de los pasos de un desarrollo, que llevan su resultado. Es la
+ * marca de que empieza OTRO ejercicio, y la tarjeta tiene que pasar a él.
+ */
+export function esEnunciadoParaResolver(texto: string): boolean {
+  return /=\s*[?¿]\s*$/.test(String(texto ?? "").trim());
+}
+
 /** Decide cómo presentar una respuesta del servidor. */
 export function presentacionDe(
   lsg: LSGConModulos | null | undefined,
@@ -143,6 +154,36 @@ export function enunciadoTrasPeticion(opciones: {
   if (!opciones.planteaEjercicio) return opciones.enTarjeta;
   const objetivo = opciones.deLaFase || opciones.activo || null;
   return objetivo ?? opciones.enTarjeta;
+}
+
+/**
+ * DESPUÉS DE EXPLICAR, SE VUELVE AL EJERCICIO.
+ *
+ * El alumno está ante "¿Cuánto es 3/5 + 1/2?" y pulsa "No entendí este paso".
+ * La explicación sustituye a la lección, y la pregunta se perdía con ella: el
+ * tutor explicaba —deteniéndose antes del resultado, para no resolverle el
+ * ejercicio— y terminaba con "¡Lección completada!". El cliente lo vio así: el
+ * desarrollo cortado en "6/10 + 5/10" y la lección dada por acabada sin que el
+ * alumno hubiera contestado.
+ *
+ * Aquí la explicación se cierra devolviéndole la pregunta pendiente, con su
+ * respuesta esperada: se corrige igual que antes, y sólo al acertarla termina
+ * la lección —y entonces se completa el desarrollo—.
+ */
+export function conPreguntaPendiente<T extends LSGConModulos>(
+  lsg: T,
+  pregunta: { tipo?: string; texto?: string } | null | undefined,
+): T {
+  if (!lsg || typeof lsg !== "object" || !pregunta?.texto) return lsg;
+  const vuelta = [{ tipo: "hablar", texto: "Ahora inténtalo tú." }, { ...pregunta, tipo: "preguntar" }];
+
+  if (Array.isArray(lsg.modulos) && lsg.modulos.length > 0) {
+    const modulos = lsg.modulos.map((m) => ({ ...m, directivas: [...(m?.directivas ?? [])] }));
+    const ultimo = modulos[modulos.length - 1];
+    ultimo.directivas = [...(ultimo.directivas ?? []), ...vuelta];
+    return { ...lsg, modulos } as T;
+  }
+  return { ...lsg, directivas: [...(Array.isArray(lsg.directivas) ? lsg.directivas : []), ...vuelta] } as T;
 }
 
 /**

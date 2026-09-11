@@ -100,7 +100,7 @@ export function Avatar2D({
             cx="60"
             cy="60"
             r="42"
-            className="fill-primary/10 stroke-primary/40"
+            className="avatar-cabeza fill-primary/10 stroke-primary/40"
             strokeWidth="2"
           />
 
@@ -109,7 +109,7 @@ export function Avatar2D({
           <g key={modo} className="avatar-cara">
             {/* Ojos, con parpadeo constante: es lo que impide que el avatar
                 parezca una imagen fija cuando está callado. */}
-            <g className="avatar-pieza avatar-ojos">
+            <g className="avatar-pieza avatar-ojos avatar-rasgos">
               <circle cx="45" cy="56" r="5" className="fill-foreground" />
               <circle cx="75" cy="56" r="5" className="fill-foreground" />
             </g>

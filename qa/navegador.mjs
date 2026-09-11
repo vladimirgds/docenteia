@@ -832,5 +832,247 @@ if (!fraccion) {
   );
 }
 
+// ── Revisión f515a57: los cuatro flujos del cliente, de principio a fin ─────
+//
+// Cada uno se reproduce como lo hizo él: la lección entera, la práctica
+// contestada, y los botones de apoyo pulsados en el momento en que los pulsó.
+console.log("\n── Revisión f515a57: ejercicio completo, marca limpia, proyección siempre ──");
+
+/** Voz falsa y rápida: 80 ms al arrancar, 450 ms al acabar. */
+function vozRapida() {
+  const voz = { name: "QA es-ES", lang: "es-ES", default: true, localService: true };
+  window.SpeechSynthesisUtterance = class {
+    constructor(t) {
+      Object.assign(this, { text: t, lang: "", voice: null, rate: 1, pitch: 1, onstart: null, onend: null, onerror: null });
+    }
+  };
+  const s = {
+    speaking: false, paused: false, pending: false, getVoices: () => [voz],
+    addEventListener() {}, removeEventListener() {}, onvoiceschanged: null,
+    speak(u) {
+      s.speaking = true;
+      u._a = setTimeout(() => u.onstart?.({ charIndex: 0 }), 80);
+      u._b = setTimeout(() => { s.speaking = false; u.onend?.({ charIndex: u.text.length }); }, 450);
+      u._c = () => { clearTimeout(u._a); clearTimeout(u._b); };
+      s._u = u;
+    },
+    cancel() { const u = s._u; if (u) { u._c?.(); s._u = null; s.speaking = false; u.onend?.({ charIndex: 0 }); } },
+    pause() { s.paused = true; },
+    resume() { s.paused = false; },
+  };
+  Object.defineProperty(window, "speechSynthesis", { value: s, configurable: true });
+}
+
+async function sesionRapida(nombre, etapa, curso) {
+  const correo = `qa.${nombre}.${Date.now().toString(36)}@mentoriamath.local`;
+  const alta = await registrarAlumno(BASE, { email: correo, password: clave, nombre: `QA ${nombre}` });
+  await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", cookie: alta.sesion },
+    body: JSON.stringify({ etapa, curso }),
+  });
+  const diag = await (await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: alta.sesion } })).json();
+  await fetch(`${BASE}/api/diagnostico`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: alta.sesion },
+    body: JSON.stringify({
+      respuestas: (diag.preguntas ?? []).map((p) => ({ preguntaId: p.id, respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0" })),
+    }),
+  });
+  const g = (await iniciarSesion(BASE, correo, clave)) ?? alta.sesion;
+  const ctx = await navegador.newContext({ viewport: { width: 1280, height: 1400 } });
+  await ctx.addCookies(
+    g.split(";").map((par) => {
+      const [name, ...r] = par.trim().split("=");
+      return { name, value: r.join("="), domain: url.hostname, path: "/", httpOnly: false, secure: url.protocol === "https:" };
+    }),
+  );
+  await ctx.addInitScript(vozRapida);
+  const pagina = await ctx.newPage();
+  const errores = [];
+  pagina.on("pageerror", (e) => errores.push(String(e)));
+  await pagina.goto(`${BASE}/estudiante/leccion`, { waitUntil: "networkidle" });
+  return { pagina, errores };
+}
+
+async function abrirTema(pagina, patron) {
+  const temas = await pagina.locator(".text-lg").allTextContents();
+  const i = temas.findIndex((t) => patron.test(t));
+  await pagina.getByRole("button", { name: /Empezar|Desde el principio/ }).nth(Math.max(0, i)).click();
+}
+
+/** Lo que se ve de la tarjeta, la pregunta, el desarrollo y el panel. */
+const estadoVisible = (pagina) =>
+  pagina.evaluate(() => {
+    const porRotulo = (r) => [...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === r)?.parentElement;
+    const input = [...document.querySelectorAll("input")].find((i) => /respuesta/i.test(i.placeholder ?? ""));
+    let pregunta = null;
+    for (let el = input, k = 0; el && k < 6; k++) {
+      el = el.parentElement;
+      const a = el?.querySelector("annotation");
+      if (a) { pregunta = a.textContent; break; }
+    }
+    return {
+      tarjeta: (porRotulo("Ejercicio")?.innerText ?? "").replace(/\s+/g, " ").trim(),
+      tarjetaLatex: porRotulo("Ejercicio")?.querySelector("annotation")?.textContent ?? null,
+      desarrollo: [...(porRotulo("Desarrollo")?.querySelectorAll("annotation") ?? [])].map((a) => a.textContent),
+      pregunta,
+      completada: /¡Lección completada!/.test(document.body.innerText ?? ""),
+      proyeccion: [...document.querySelectorAll("button")].some((b) => /Modo proyección/.test(b.textContent ?? "")),
+    };
+  });
+
+async function esperar(pagina, cond, ms, cada = 300) {
+  const t0 = Date.now();
+  let e = await estadoVisible(pagina);
+  while (!cond(e) && Date.now() - t0 < ms) {
+    await pagina.waitForTimeout(cada);
+    e = await estadoVisible(pagina);
+  }
+  return e;
+}
+
+/** "19 + 45" o "\frac{3}{5} + \frac{1}{2}" → la respuesta, en su forma más simple. */
+function resolverPregunta(latex) {
+  const e = String(latex ?? "").replace(/\\frac\{(\d+)\}\{(\d+)\}/g, "$1/$2").replace(/\s+/g, "");
+  const f = e.match(/^(\d+)\/(\d+)\+(\d+)\/(\d+)$/);
+  if (f) {
+    const [a, b, c, d] = f.slice(1).map(Number);
+    const mcd = (x, y) => (y ? mcd(y, x % y) : x);
+    const n = a * d + c * b, den = b * d, k = mcd(n, den);
+    return den / k === 1 ? String(n / k) : `${n / k}/${den / k}`;
+  }
+  const s = e.match(/^(\d+)([+-])(\d+)$/);
+  return s ? String(s[2] === "+" ? Number(s[1]) + Number(s[3]) : Number(s[1]) - Number(s[3])) : null;
+}
+
+async function contestar(pagina, estado) {
+  const respuesta = resolverPregunta(estado.pregunta);
+  await pagina.locator("input[placeholder*='respuesta' i]").fill(respuesta ?? "0");
+  await pagina.getByRole("button", { name: /Responder/ }).click();
+  return respuesta;
+}
+
+// A. ARITMÉTICA: la marca del resultado, el cierre y el "más difícil".
+{
+  const { pagina, errores } = await sesionRapida("revision.arit", "PRIMARIA", 6);
+  await abrirTema(pagina, /aritm/i);
+
+  // 2. La marca del resultado no puede tapar las cifras.
+  let marca = null;
+  for (let k = 0; k < 160 && !marca; k++) {
+    marca = await pagina.evaluate(() => {
+      const g = document.querySelector('.pz-animada .pz-resaltado[data-tipo="resultado"]');
+      if (!g) return null;
+      const svg = g.ownerSVGElement.getBoundingClientRect();
+      const glifos = [...document.querySelectorAll(".pz-animada .pz-resultado, .pz-animada .pz-solucion")]
+        .flatMap((el) => [el, ...el.querySelectorAll("*")])
+        .filter((el) => el.childElementCount === 0 && (el.textContent ?? "").trim())
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0);
+      if (glifos.length === 0) return null;
+      return {
+        elipses: document.querySelectorAll(".pz-animada ellipse").length,
+        rayas: [...g.querySelectorAll("line")].map((l) => Number(l.getAttribute("y1"))),
+        visto: g.querySelector("path.pz-visto") ? g.querySelector("path.pz-visto").getBBox().x : null,
+        abajo: Math.max(...glifos.map((r) => r.bottom - svg.top)),
+        derecha: Math.max(...glifos.map((r) => r.right - svg.left)),
+      };
+    });
+    if (!marca) await pagina.waitForTimeout(250);
+  }
+  if (!marca) {
+    check("la lección llega a marcar un resultado", false, "no apareció en 40 s");
+  } else {
+    console.log(`  · resultado: rayas en y=${marca.rayas.map((y) => y.toFixed(0)).join(",")} · cifras hasta y=${marca.abajo.toFixed(0)} · visto en x=${marca.visto?.toFixed(0)} · cifras hasta x=${marca.derecha.toFixed(0)}`);
+    check("el resultado ya no se rodea con una elipse", marca.elipses === 0);
+    check("se subraya dos veces", marca.rayas.length === 2);
+    check("y las dos rayas van POR DEBAJO de las cifras, sin cruzarlas", Math.min(...marca.rayas) > marca.abajo);
+    check("con el visto a la derecha del número, sin tocarlo", marca.visto != null && marca.visto > marca.derecha);
+  }
+
+  // 4a. Se contesta la práctica: la lección termina con el ejercicio cerrado.
+  const antes = await esperar(pagina, (e) => Boolean(e.pregunta), 120_000);
+  check("durante la práctica está el botón de Modo proyección", antes.proyeccion);
+  const dada = await contestar(pagina, antes);
+  const fin = await esperar(pagina, (e) => e.completada, 30_000);
+  console.log(`  · práctica "${antes.pregunta}" → ${dada} · desarrollo al terminar: ${fin.desarrollo.length} línea(s)`);
+  check("al acertar, el desarrollo se cierra con el resultado", fin.completada && fin.desarrollo.length > 0);
+  check("y el botón de proyección sigue ahí", fin.proyeccion);
+
+  // 1. "Más difícil": la tarjeta no puede quedarse en "Preparando el ejercicio…".
+  await pagina.getByRole("button", { name: /Más difícil/ }).first().click();
+  const muestras = [];
+  const t0 = Date.now();
+  while (Date.now() - t0 < 9000) {
+    muestras.push({ t: Date.now() - t0, ...(await estadoVisible(pagina)) });
+    await pagina.waitForTimeout(250);
+  }
+  // Se deja un segundo y medio para que responda el servidor; después, nada de "Preparando".
+  const congelada = muestras.filter((m) => m.t > 1500 && /Preparando el ejercicio/.test(m.tarjeta));
+  check(
+    '"Más difícil": la tarjeta no se queda en "Preparando el ejercicio…"',
+    congelada.length === 0,
+    `${congelada.length} muestras`,
+  );
+  const alPreguntar = await esperar(pagina, (e) => Boolean(e.pregunta), 60_000);
+  // Las cifras en orden y sin separar: la tarjeta es una cuenta en columna
+  // ("& 1 & 9 \\ + & 4 & 5") y la pregunta va en línea ("19 + 45").
+  const numeros = (t) => (String(t ?? "").match(/\d/g) ?? []).join("");
+  console.log(`  · tarjeta: "${numeros(alPreguntar.tarjetaLatex)}" · pregunta: "${numeros(alPreguntar.pregunta)}"`);
+  check(
+    "y la tarjeta muestra el ejercicio que se pregunta, no el ejemplo anterior",
+    Boolean(alPreguntar.pregunta) && numeros(alPreguntar.tarjetaLatex).startsWith(numeros(alPreguntar.pregunta)),
+  );
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+}
+
+// B. FRACCIONES: proyección siempre, y la explicación no se come la pregunta.
+{
+  const { pagina, errores } = await sesionRapida("revision.frac", "PRIMARIA", 6);
+  await abrirTema(pagina, /fracci/i);
+
+  const enPractica = await esperar(pagina, (e) => Boolean(e.pregunta), 120_000);
+  check("en la práctica de fracciones está el botón de Modo proyección", enPractica.proyeccion);
+
+  // 4b. Se proyecta, y el botón para salir se ve.
+  await pagina.getByRole("button", { name: /Modo proyección/ }).first().click();
+  await pagina.waitForTimeout(700);
+  const salir = await pagina.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /Salir de proyección/.test(x.textContent ?? ""));
+    if (!b) return null;
+    const cs = getComputedStyle(b);
+    return { fondo: cs.backgroundColor, letra: cs.color, formula: Boolean(document.querySelector(".modo-proyeccion .katex")) };
+  });
+  check("la proyección muestra la fórmula", Boolean(salir?.formula));
+  check(
+    'y el botón "Salir de proyección" se lee: su letra no es del color de su fondo',
+    salir != null && salir.fondo !== salir.letra,
+    salir ? `${salir.letra} sobre ${salir.fondo}` : "no hay botón",
+  );
+  if (salir) await pagina.getByRole("button", { name: /Salir de proyección/ }).first().click();
+  await pagina.waitForTimeout(400);
+
+  // 4a. "No entendí este paso" en mitad de la práctica: tras explicar, vuelve la pregunta.
+  await pagina.getByRole("button", { name: /No entendí este paso/ }).first().click();
+  await pagina.waitForTimeout(1500);
+  const trasExplicar = await esperar(pagina, (e) => Boolean(e.pregunta) || e.completada, 90_000, 500);
+  check(
+    'tras explicar, la pregunta vuelve: la lección no se da por "completada" sin contestar',
+    Boolean(trasExplicar.pregunta) && !trasExplicar.completada,
+    trasExplicar.completada ? "dijo ¡Lección completada! sin pregunta" : "",
+  );
+  if (trasExplicar.pregunta) {
+    const dada = await contestar(pagina, trasExplicar);
+    const fin = await esperar(pagina, (e) => e.completada, 30_000);
+    const ultima = fin.desarrollo.at(-1) ?? "";
+    const [n, d] = String(dada).split("/");
+    const cerrada = d ? ultima.includes(`\\frac{${n}}{${d}}`) : ultima.includes(n);
+    console.log(`  · práctica "${trasExplicar.pregunta}" → ${dada} · última línea: ${ultima.slice(0, 70)}…`);
+    check("y al acertarla, el desarrollo termina con el resultado", fin.completada && cerrada);
+  }
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+}
+
 await navegador.close();
 salir();

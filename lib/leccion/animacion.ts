@@ -39,7 +39,7 @@ import {
  * caja vertical sobre una columna de la cuenta.
  */
 
-export type TipoFoco = "caja" | "ovalo" | "tachado";
+export type TipoFoco = "caja" | "resultado" | "tachado";
 
 export interface Foco {
   /** Clase que marca en el LaTeX las piezas que abarca este foco. */
@@ -280,7 +280,7 @@ function focosDeColumna(
 function focoDelResultado(op: OperacionEnColumna): Foco {
   return {
     clase: "pz-resultado",
-    tipo: "ovalo",
+    tipo: "resultado",
     narracion: `El resultado es ${op.resultado}.`,
   };
 }
@@ -381,7 +381,7 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
       if (t.coeficiente && t.variable) {
         focos.push({
           clase: `pz-coef-${i}`,
-          tipo: "ovalo",
+          tipo: "resultado",
           narracion: `Su coeficiente es ${t.coeficiente}.`,
           etiqueta: "coeficiente",
         });
@@ -389,7 +389,7 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
       if (t.exponente) {
         focos.push({
           clase: `pz-exp-${i}`,
-          tipo: "ovalo",
+          tipo: "resultado",
           narracion: `Su exponente es ${t.exponente}.`,
           etiqueta: "exponente",
         });
@@ -499,14 +499,14 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   if (!unitario) {
     focos.push({
       clase: "pz-coef-despeje",
-      tipo: "ovalo",
+      tipo: "resultado",
       narracion: `Queda ${coeficiente}${variable} = ${c - b}. Dividimos los dos lados entre ${coeficiente}.`,
       etiqueta: "dividimos",
     });
   }
   focos.push({
     clase: "pz-solucion",
-    tipo: "ovalo",
+    tipo: "resultado",
     narracion: `${variable} vale ${solucion}.`,
   });
 
@@ -651,7 +651,7 @@ export function escenaDeSimplificacion(texto: string, id: string): Escena | null
       },
       {
         clase: "pz-simplificada",
-        tipo: "ovalo",
+        tipo: "resultado",
         narracion:
           abajoSimple === "1"
             ? `Queda ${arribaSimple}.`
@@ -712,7 +712,7 @@ export function escenaDeAmplificacion(texto: string, id: string): Escena | null 
       },
       {
         clase: "pz-resultado",
-        tipo: "ovalo",
+        tipo: "resultado",
         narracion: `Queda ${f.c} entre ${f.d}.`,
       },
     ],
@@ -774,7 +774,7 @@ export function escenaDeSumaDeFracciones(texto: string, id: string): Escena | nu
       },
       {
         clase: "pz-solucion",
-        tipo: "ovalo",
+        tipo: "resultado",
         narracion: `Queda ${s.total} entre ${s.d}.`,
       },
     ],
@@ -886,7 +886,7 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
 
   focos.push({
     clase: "pz-resultado",
-    tipo: "ovalo",
+    tipo: "resultado",
     narracion: `Queda ${expandido.replace(/\s+/g, " ").trim()}.`,
   });
 
@@ -951,6 +951,27 @@ function componerPaso(texto: string): string | null {
   const limpio = String(texto ?? "").trim();
   if (!limpio) return null;
   return notacionFormal(limpio) ?? (pareceMatematica(limpio) ? planoALatex(limpio) : null);
+}
+
+/**
+ * Una escena QUIETA: lo escrito, compuesto y sin nada que encender.
+ *
+ * Es lo que el panel proyecta cuando la fase no tiene un paso animable —el
+ * enunciado de la práctica, la regla, una línea del concepto—. Va sin marcas ni
+ * piezas por destapar: no hay voz que las vaya encendiendo, y una pieza oculta
+ * que nadie destapa es un trozo de fórmula que el aula no llega a ver.
+ */
+export function escenaEstatica(texto: string, id: string, latex?: string | null): Escena {
+  const limpio = String(texto ?? "").trim();
+  return {
+    id,
+    texto: limpio,
+    latex: latex?.trim() || componerPaso(limpio),
+    narracion: "",
+    clase: "texto",
+    focos: [],
+    origen: "deduccion",
+  };
 }
 
 /**

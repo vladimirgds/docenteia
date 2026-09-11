@@ -631,12 +631,18 @@ function TarjetaRegla({
           está montando paso a paso: dos copias de la misma cuenta —una quieta
           arriba y otra moviéndose abajo— es exactamente lo que el cliente
           señaló como "una cuenta estática fija en una esquina". */}
+      {/* LA REGLA Y SU EJEMPLO, AL MISMO TAMAÑO Y CENTRADOS.
+          El ejemplo se componía en línea: fracciones de texto diminutas, pegado
+          a la esquina de abajo, y a ese tamaño el "=" de 1/2 = 2/4 = 3/6 se
+          quedaba en dos rayitas que en la pantalla del cliente se leían como
+          un menos. Un ejemplo que se lee peor que la regla no la ilustra: los
+          dos van en modo display, centrados y con la misma letra grande. */}
       {sinFormula ? (
         <p className="py-1 text-xs text-muted-foreground">
           La cuenta se monta paso a paso aquí debajo.
         </p>
       ) : (
-        <div className="overflow-x-auto py-1">
+        <div className="pz-regla-formula overflow-x-auto py-1 text-center">
           <Formula latex={regla.enunciado} display />
         </div>
       )}
@@ -646,8 +652,8 @@ function TarjetaRegla({
           su llevada y su total: debajo quedaba un "19 + 45 = 64" horizontal que
           no añade nada y desdice el formato que se está enseñando. */}
       {!sinFormula && regla.ejemplo && !esOperacionDispuesta(regla.enunciado) && (
-        <div className="mt-2 overflow-x-auto border-t pt-2">
-          <Formula latex={regla.ejemplo} />
+        <div className="pz-regla-formula mt-2 overflow-x-auto border-t pt-2 text-center">
+          <Formula latex={regla.ejemplo} display />
         </div>
       )}
     </motion.div>

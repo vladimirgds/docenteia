@@ -52,6 +52,8 @@ import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
   enunciadoTrasPeticion,
+  conPreguntaPendiente,
+  esEnunciadoParaResolver,
   presentacionDe,
   recortarParaSeguimiento,
   sinPreguntas,
@@ -63,6 +65,7 @@ import {
   leerOperacionDibujada,
   leerSumaOResta,
 } from "@/lib/leccion/columna";
+import { cierreDelDesarrollo } from "@/lib/leccion/cierre";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -223,6 +226,13 @@ export function Aula({
    * dejar al avatar clavado en "esperando" durante el resto de la lección.
    */
   const [avatarPizarra, setAvatarPizarra] = useState<EstadoPedagogico | null>(null);
+  /**
+   * La lección llegó a su final —no sólo se paró—. Con ella terminada, la
+   * pizarra animada se queda en su último paso, con todo destapado: el
+   * cliente vio el panel volver a "Paso 1 de 4" con el resultado escondido
+   * justo cuando la lección decía "¡Lección completada!".
+   */
+  const [terminoLaLeccion, setTerminoLaLeccion] = useState(false);
   const alCambiarAvatar = useCallback((estado: EstadoPedagogico) => {
     setAvatarPizarra(estado === "IDLE" ? null : estado);
   }, []);
@@ -363,6 +373,28 @@ export function Aula({
 
       if (faseConEjercicio() && ejercicioRef.current === null && !esAclaracion.current) {
         fijarLineaEjercicio(linea);
+        return;
+      }
+
+      // UN ENUNCIADO NUEVO SE LLEVA LA TARJETA.
+      //
+      // "2411 + 2457 = ?" es un ejercicio que se le PIDE al alumno. Si la
+      // tarjeta tiene otro —el ejemplo resuelto justo antes, en un "más
+      // difícil" que no cambia de fase—, el enunciado nuevo iba a parar al
+      // desarrollo y la tarjeta seguía mostrando el ejemplo mientras la caja
+      // de respuesta preguntaba por otra cuenta. El cliente lo fotografió así:
+      // 2000 + 1800 arriba y "¿Cuánto es 2411 + 2457?" abajo. Ahora el
+      // ejercicio que se pregunta es el que se ve, y el desarrollo del ejemplo,
+      // que era de otra cuenta, se retira con él.
+      if (
+        !esAclaracion.current &&
+        faseConEjercicio() &&
+        esEnunciadoParaResolver(limpio) &&
+        ejercicioRef.current != null &&
+        ejercicioRef.current.texto !== limpio
+      ) {
+        fijarLineaEjercicio(linea);
+        setDesarrollo([]);
         return;
       }
 
@@ -569,9 +601,36 @@ export function Aula({
         // pantalla junto al "¡Correcto!" en verde.
         if (ok) setVeredicto(veredictoTrasAcierto);
       },
-      onLessonEnd: () => {
+      onLessonEnd: ({ acerto, respuesta } = { respondio: false, acerto: false }) => {
         setPregunta(null);
         setEstadoAvatar("sonriendo");
+        setTerminoLaLeccion(true);
+
+        // EL EJERCICIO ACERTADO SE CIERRA EN LA PIZARRA.
+        //
+        // La explicación que se pide mientras se resuelve se detiene antes del
+        // resultado —dárselo sería resolverle la práctica—, y el cliente vio
+        // la lección terminar con el desarrollo cortado en "6/10 + 5/10". Con
+        // la respuesta ya acertada no hay nada que proteger: se completa la
+        // última línea si vale eso, o se añade el enunciado resuelto. Sólo lo
+        // que se puede comprobar; si no, la pizarra se queda como estaba.
+        if (acerto && respuesta) {
+          const enunciado = ejercicioRef.current?.texto ?? null;
+          setDesarrollo((prev) => {
+            const cierre = cierreDelDesarrollo({
+              enunciado,
+              lineas: prev.map((l) => l.texto),
+              respuesta,
+            });
+            if (!cierre) return prev;
+            if (cierre.accion === "completar") {
+              return prev.map((l, i) =>
+                i === cierre.indice ? { ...l, id: idLinea.current++, texto: cierre.texto } : l,
+              );
+            }
+            return [...prev, { id: idLinea.current++, texto: cierre.texto, clase: "formula" }];
+          });
+        }
         // Se cierra la sesión para que quede su duración registrada.
         if (sesionId.current) {
           void fetch("/api/sesion", {
@@ -628,11 +687,19 @@ export function Aula({
         soloExplicacion?: boolean;
       } = {},
     ) => {
+      // La pregunta que el alumno tenía delante, si pide una explicación en
+      // mitad de ella: se lee ahora, antes de que la lección nueva la retire,
+      // para devolvérsela al terminar de explicar.
+      const preguntaPendiente = opciones.soloExplicacion
+        ? (pseRef.current?.preguntaPendiente?.() ?? null)
+        : null;
+
       setCargando(true);
       setError(null);
       setFeedback(null);
       setVeredicto(null);
       setPregunta(null);
+      setTerminoLaLeccion(false);
 
       esAclaracion.current = Boolean(opciones.soloExplicacion);
 
@@ -714,10 +781,32 @@ export function Aula({
         esAyuda.current = presentacion !== "reiniciar" && fasesRef.current.length > 0;
 
         if (presentacion === "sustituir") {
-          // Llega OTRO ejercicio, no otro paso del mismo: se retira también el
-          // enunciado para que la tarjeta de arriba tome el nuevo. Se conserva
-          // la fase, de modo que el alumno no retroceda a Concepto.
-          fijarLineaEjercicio(null);
+          // Llega OTRO ejercicio, no otro paso del mismo: la tarjeta de arriba
+          // toma el nuevo. Se conserva la fase, de modo que el alumno no
+          // retroceda a Concepto.
+          //
+          // Y lo toma YA, no cuando el motor llegue a escribirlo. Antes se
+          // vaciaba y se esperaba a la directiva de pizarra, que llega detrás
+          // de dos locuciones: "Vamos con otro: 2000 + 1800" y "Vamos a sumar
+          // 2000 + 1800 paso a paso". Todo ese rato el tutor hablaba de una
+          // cuenta y la tarjeta decía "Preparando el ejercicio…" —la captura
+          // del cliente—. El ejercicio viene en la respuesta desde el primer
+          // momento: se pinta con ella.
+          const primera = (Array.isArray(datos.pasos) ? datos.pasos : []).find(
+            (p: { tipo?: string; contenido?: string }) =>
+              p?.tipo === "pizarra" && String(p.contenido ?? "").trim(),
+          ) as { contenido: string; operacion?: OperacionPaso; narracion?: string } | undefined;
+          fijarLineaEjercicio(
+            primera && faseConEjercicio()
+              ? {
+                  id: idLinea.current++,
+                  texto: String(primera.contenido).trim(),
+                  clase: "formula",
+                  ...(primera.operacion ? { operacion: primera.operacion } : {}),
+                  ...(primera.narracion ? { narracion: primera.narracion } : {}),
+                }
+              : null,
+          );
           setDesarrollo([]);
         }
 
@@ -730,7 +819,14 @@ export function Aula({
         // Una aclaración explica; no pregunta. Su pregunta ocupaba la caja de
         // respuesta —"¿Entendiste la explicación?"— y le quitaba al alumno de
         // delante el ejercicio que estaba resolviendo.
-        const lsg = (opciones.soloExplicacion ? sinPreguntas(recortada) : recortada) as LSG;
+        // Y después de explicar, se le devuelve el ejercicio que estaba
+        // resolviendo: sin esto la explicación terminaba en "¡Lección
+        // completada!" con la pregunta sin contestar.
+        const lsg = (
+          opciones.soloExplicacion
+            ? conPreguntaPendiente(sinPreguntas(recortada), preguntaPendiente)
+            : recortada
+        ) as LSG;
 
         // Se anota el enunciado de cada fase antes de reproducir nada, para
         // poder mostrarlo en cuanto se entra en ella.
@@ -782,6 +878,7 @@ export function Aula({
   const empezarTema = useCallback(
     (elegido: TemaLeccion, continuar = false) => {
       setTema(elegido);
+      setTerminoLaLeccion(false);
       conversacion.current = estadoInicial();
       conversacion.current.claveTema = elegido.clave;
       narrado.current = [];
@@ -983,6 +1080,23 @@ export function Aula({
     // detectarse la regla —la fase de Reglas no cambia el ejercicio ni el
     // desarrollo—, y la cuenta no llegaba nunca a la pizarra animada.
   }, [ejercicio, desarrollo, cuentaDeLaRegla]);
+
+  /**
+   * LO QUE SE PROYECTA CUANDO NO HAY NADA QUE ANIMAR.
+   *
+   * Lo último que hay en la pizarra de la fase abierta: el paso más reciente
+   * del desarrollo, si no el enunciado, si no la regla. Con esto el panel —y su
+   * botón de Modo proyección— sigue ahí en la práctica y en el concepto, que es
+   * donde el cliente lo echó en falta.
+   */
+  const reposo = useMemo(() => {
+    const propio = faseDelContenido === faseAbierta;
+    const ultima = propio ? desarrollo[desarrollo.length - 1] : undefined;
+    if (ultima?.texto) return { texto: ultima.texto };
+    if (propio && ejercicio?.texto) return { texto: ejercicio.texto };
+    if (reglaEnCurso?.enunciado) return { texto: reglaEnCurso.nombre, latex: reglaEnCurso.enunciado };
+    return null;
+  }, [faseDelContenido, faseAbierta, desarrollo, ejercicio, reglaEnCurso]);
 
   /**
    * EL DESARROLLO NO PUEDE ADELANTAR EL RESULTADO.
@@ -1249,6 +1363,12 @@ export function Aula({
               cuando hay algo que animar. */}
           <PanelAnimado
             lineas={lineasAnimadas}
+            // Sin nada que animar, el panel se queda como barra con el botón de
+            // proyección, y proyecta esto.
+            reposo={reposo}
+            avatarDeLaLeccion={{ estado: avatarPizarra ?? estadoAvatar, hablando }}
+            // Terminada —y no vuelta a reproducir—, la pizarra queda resuelta.
+            leccionTerminada={terminoLaLeccion && !controles.playing}
             tts={vozPizarra}
             vozActiva={vozActiva}
             // Lo que el tutor está diciendo: con esto la pizarra se coloca

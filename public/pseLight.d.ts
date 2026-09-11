@@ -83,7 +83,12 @@ export interface UIPSELight {
   showFeedback(correcto: boolean, mensaje: string): void;
   setControls?(estado: EstadoControles): void;
   onProgress?(indice: number, total: number): void;
-  onLessonEnd?(resultado: { respondio: boolean; acerto: boolean }): void;
+  /**
+   * La lección terminó. `respuesta` es la respuesta esperada del último
+   * ejercicio, sólo si el alumno lo acertó: con ella la pizarra cierra el
+   * desarrollo en vez de dejarlo a medias.
+   */
+  onLessonEnd?(resultado: { respondio: boolean; acerto: boolean; respuesta?: string | null }): void;
 }
 
 export function flattenLSG(lsg: LSG): Directiva[];
@@ -107,4 +112,10 @@ export class PSELight {
   pause(): void;
   stop(): void;
   seek(indice: number): void;
+  /**
+   * La pregunta que el alumno tiene delante sin haberla contestado, o null.
+   * La interfaz la vuelve a plantear al terminar una explicación pedida en
+   * mitad de ella, en lugar de dar la lección por completada.
+   */
+  preguntaPendiente(): Directiva | null;
 }

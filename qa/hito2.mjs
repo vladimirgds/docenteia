@@ -28,6 +28,7 @@ import katex from "katex";
 
 import {
   esAnimable,
+  escenaEstatica,
   escenaDeColumna,
   escenaDeDespeje,
   escenaDeLinea,
@@ -41,6 +42,8 @@ import {
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
 import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
+import { cierreDelDesarrollo } from "../lib/leccion/cierre.ts";
+import { conPreguntaPendiente, esEnunciadoParaResolver } from "../lib/leccion/seguimiento-lsg.ts";
 import {
   apareceComoTermino,
   processLSG,
@@ -176,7 +179,7 @@ titulo("A. Cuenta en columna: columnas, llevadas y reagrupaciones");
     /2 más 1 más 1 que llevábamos son 4/i.test(escena.focos[1].narracion),
     escena.focos[1].narracion,
   );
-  check("el último foco es el resultado, en óvalo", escena.focos[2].tipo === "ovalo");
+  check("el último foco es el resultado, subrayado y confirmado", escena.focos[2].tipo === "resultado");
   check(
     "y el resultado es el correcto",
     escena.focos[2].narracion.includes("41"),
@@ -728,6 +731,145 @@ titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
       piezas.every((p) => html.includes(p)) && !/katex-error/.test(html),
     );
   }
+}
+
+titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyección siempre");
+
+{
+  const panelTsx = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
+  const aulaTsx = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const pizarraClasica = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+  const reproductor = readFileSync(new URL("../public/pseLight.js", import.meta.url), "utf8");
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  // 2. EL RESULTADO SE SUBRAYA Y SE CONFIRMA, NO SE RODEA.
+  check(
+    "el resultado ya no se rodea con un óvalo que cruce las cifras",
+    !/<ellipse/.test(panelTsx) && !/"ovalo"/.test(readFileSync(new URL("../lib/leccion/animacion.ts", import.meta.url), "utf8")),
+  );
+  check(
+    "se dibuja con doble subrayado y un visto a su derecha",
+    /pz-subrayado"/.test(panelTsx) && /pz-subrayado pz-subrayado-2"/.test(panelTsx) && /pz-trazo pz-visto"/.test(panelTsx),
+  );
+  check(
+    "proporcionado al número: en proyección las dos rayas no se funden",
+    /caja\.alto \* 0\.09/.test(panelTsx) && /Math\.min\(64, Math\.max\(12, caja\.alto \* 0\.45\)\)/.test(panelTsx),
+  );
+  check(
+    "y trazado en orden: primera raya, segunda y el visto",
+    /\.pz-subrayado-2 \{[^}]*animation-delay/.test(estilos) && /\.pz-visto \{[^}]*animation-delay/.test(estilos),
+  );
+  check(
+    "la marca mide los glifos, no la caja de la línea: abarca el denominador",
+    /pieza\.querySelectorAll\("\*"\)/.test(panelTsx) && /classList\.contains\("frac-line"\)/.test(panelTsx),
+  );
+
+  // 3. LA REGLA Y SU EJEMPLO, CENTRADOS Y DEL MISMO TAMAÑO.
+  check(
+    "el ejemplo de la regla se compone en modo display, no en línea",
+    /<Formula latex=\{regla\.ejemplo\} display \/>/.test(pizarraClasica),
+  );
+  check(
+    "centrado y al tamaño de la regla",
+    (pizarraClasica.match(/pz-regla-formula[^"]*text-center/g) ?? []).length === 2 &&
+      /\.pz-regla-formula \.katex \{[^}]*font-size: 1\.5rem/.test(estilos),
+  );
+
+  // 1. EL "MÁS DIFÍCIL" NO SE QUEDA EN "PREPARANDO EL EJERCICIO…".
+  check(
+    "al sustituir el ejercicio, la tarjeta toma el nuevo en el acto",
+    /presentacion === "sustituir"[\s\S]{0,1600}p\?\.tipo === "pizarra"[\s\S]{0,700}fijarLineaEjercicio\(/.test(aulaTsx),
+  );
+  check(
+    "y un enunciado para resolver se lleva la tarjeta, con su desarrollo",
+    /esEnunciadoParaResolver\(limpio\)[\s\S]{0,200}fijarLineaEjercicio\(linea\);\s*setDesarrollo\(\[\]\);/.test(aulaTsx),
+  );
+  check(
+    '"19 + 45 = ?" es un enunciado para resolver; "24 + 17 = 41" no',
+    esEnunciadoParaResolver("19 + 45 = ?") &&
+      esEnunciadoParaResolver("3/5 + 1/2 =?") &&
+      !esEnunciadoParaResolver("24 + 17 = 41") &&
+      !esEnunciadoParaResolver("24 + 17"),
+  );
+
+  // 4a. EL EJERCICIO NO QUEDA A MEDIAS.
+  const deLaCaptura = cierreDelDesarrollo({
+    enunciado: "3/5 + 1/2 = ?",
+    lineas: ["3/5 = (3 * 2)/(5 * 2) = 6/10", "1/2 = (1 * 5)/(2 * 5) = 5/10", "6/10 + 5/10"],
+    respuesta: "11/10",
+  });
+  check(
+    'el desarrollo cortado en "6/10 + 5/10" se completa con el 11/10',
+    deLaCaptura?.accion === "completar" && deLaCaptura.texto === "6/10 + 5/10 = 11/10",
+    JSON.stringify(deLaCaptura),
+  );
+  check(
+    "sin desarrollo, se añade el enunciado resuelto",
+    cierreDelDesarrollo({ enunciado: "2411 + 2457 = ?", lineas: [], respuesta: "4868" })?.texto === "2411 + 2457 = 4868",
+  );
+  check(
+    "lo que ya está cerrado no se toca",
+    cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10 = 11/10"], respuesta: "11/10" }) === null,
+  );
+  check(
+    "y nunca se escribe una cuenta que no sale",
+    cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10"], respuesta: "1/2" }) === null &&
+      cierreDelDesarrollo({ enunciado: "¿Cuál es la derivada de 5x²?", lineas: [], respuesta: "10x" }) === null,
+  );
+  check(
+    "el cierre se aplica al acertar, con la respuesta que da el reproductor",
+    /onLessonEnd: \(\{ acerto, respuesta \}/.test(aulaTsx) &&
+      /if \(acerto && respuesta\)/.test(aulaTsx) &&
+      /respuesta: this\._acerto \? this\._respuesta : null/.test(reproductor),
+  );
+
+  // 4a (b). LA EXPLICACIÓN NO SE COME LA PREGUNTA.
+  const devuelta = conPreguntaPendiente(
+    { directivas: [{ tipo: "hablar", texto: "Te lo explico." }] },
+    { tipo: "preguntar", texto: "¿Cuánto es 3/5 + 1/2?", respuesta: "11/10" },
+  );
+  check(
+    "tras explicar, se vuelve a plantear la pregunta pendiente con su respuesta",
+    devuelta.directivas.at(-1)?.tipo === "preguntar" && devuelta.directivas.at(-1)?.respuesta === "11/10",
+  );
+  check(
+    "el reproductor guarda la pregunta en curso y la retira al resolverla",
+    /this\._pendiente = \{/.test(reproductor) && /preguntaPendiente\(\) \{/.test(reproductor),
+  );
+  check(
+    "y el aula la lee ANTES de pedir la explicación",
+    /const preguntaPendiente = opciones\.soloExplicacion/.test(aulaTsx) &&
+      /conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)/.test(aulaTsx),
+  );
+
+  // 4b. EL MODO PROYECCIÓN NO DESAPARECE.
+  check(
+    "sin nada que animar, el panel no se retira: queda la barra con el botón",
+    /if \(sinAnimacion && !escenaDeReposo\) return null;/.test(panelTsx) && /reposo=\{reposo\}/.test(aulaTsx),
+  );
+  check(
+    "y en pantalla no repite lo que ya enseña la pizarra",
+    /\(!sinAnimacion \|\| proyeccion\) && \(/.test(panelTsx),
+  );
+  check(
+    "al terminar la lección, la pizarra animada queda resuelta",
+    /if \(!leccionTerminada \|\| escenas\.length === 0\) return;/.test(panelTsx) &&
+      /leccionTerminada=\{terminoLaLeccion && !controles\.playing\}/.test(aulaTsx),
+  );
+  check(
+    'en proyección, el botón "Salir" tiene fondo propio: no es blanco sobre blanco',
+    /\.modo-proyeccion button \{[^}]*background-color/.test(estilos),
+  );
+  check(
+    "y el avatar se ve sobre la pizarra oscura",
+    /\.modo-proyeccion \.pz-avatar \.avatar-cabeza \{[^}]*fill:/.test(estilos),
+  );
+  const estatica = escenaEstatica("3/5 + 1/2 = ?", "r");
+  check(
+    "la escena de reposo se compone como fórmula, sin marcas ni piezas ocultas",
+    Boolean(estatica.latex) && estatica.focos.length === 0 && !/pz-rev-/.test(estatica.latex ?? ""),
+    String(estatica.latex),
+  );
 }
 
 titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
@@ -1657,7 +1799,7 @@ titulo("B2. La pizarra sigue a la voz del tutor");
   // columna: las cifras sueltas de "234 + 178 = 412" no son prueba de nada.
   const cierre = situacionParaNarracion(guion, "Así, 234 + 178 = 412. Ahora te toca a ti.", 0);
   check(
-    "al cerrar el ejemplo, el óvalo va sobre el resultado",
+    "al cerrar el ejemplo, la marca de resultado va sobre el resultado",
     cierre?.foco === guion[0].focos.length - 1,
     JSON.stringify(cierre),
   );

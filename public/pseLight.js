@@ -295,6 +295,8 @@ export class PSELight {
     // para encadenar la siguiente parte de la clase (seguir, subir de nivel o reforzar).
     this._respondio = false;
     this._acerto = false;
+    this._respuesta = null;
+    this._pendiente = null;
     this.ui.clearBoard();
     this.ui.setCaption("");
     this.ui.onProgress?.(0, this.timeline.length);
@@ -382,7 +384,7 @@ export class PSELight {
         // ejercicio y el tutor se callaba (queja del cliente: "enseña un tema, enseña un ejercicio y
         // culmina la clase. La clase debe continuar"). Ahora se avisa a la interfaz de CÓMO terminó
         // —si hubo ejercicio calificable y si lo acertó— para que enlace la siguiente parte de la clase.
-        this.ui.onLessonEnd?.({ respondio: this._respondio, acerto: this._acerto });
+        this.ui.onLessonEnd?.({ respondio: this._respondio, acerto: this._acerto, respuesta: this._acerto ? this._respuesta : null });
       }
     } finally {
       this.avatar.setSpeaking(false);
@@ -474,8 +476,24 @@ export class PSELight {
     // es solo de comprensión y NUNCA se marca como incorrecta.
     const expected = (d.respuesta && d.respuesta.trim()) || extractExpectedAnswer(timeline, index);
 
+    // LA PREGUNTA QUE EL ALUMNO TIENE DELANTE. Si pide una explicación mientras la responde, la
+    // explicación sustituye a la lección y la pregunta se perdía: el tutor explicaba y a continuación
+    // decía "¡Lección completada!" sin que el alumno hubiera contestado, con el desarrollo cortado justo
+    // antes del resultado. Se guarda aquí para que la interfaz la vuelva a plantear al terminar de
+    // explicar. Se retira en cuanto la pregunta queda resuelta; si se interrumpe, sigue pendiente.
+    this._pendiente = {
+      tipo: "preguntar",
+      texto: d.texto,
+      ...(expected ? { respuesta: String(expected) } : {}),
+      esperar_respuesta: true,
+      si_correcto: d.si_correcto,
+      si_incorrecto: d.si_incorrecto,
+      ...(d.otro_ejemplo ? { otro_ejemplo: d.otro_ejemplo } : {}),
+    };
+
     const answer = await this.ui.askAnswer(d.texto, { signal });
     if (signal.aborted || answer == null) return;
+    this._pendiente = null;
 
     // Sin verdad-base → NO se juzga correcto/incorrecto. OJO: si la pregunta es COMPUTACIONAL (pide un
     // resultado concreto: "¿cuál es la derivada…?", "¿cuánto es…?") y no pudimos calcular la verdad
@@ -504,6 +522,10 @@ export class PSELight {
     // aunque el segundo se hubiera fallado. Cuenta cómo le fue en el ÚLTIMO que respondió.
     this._respondio = true;
     this._acerto = false;
+    // La respuesta ESPERADA, para que la interfaz pueda cerrar el desarrollo con ella cuando el alumno
+    // acierta: una lección que termina con el ejercicio a medias ("6/10 + 5/10", sin el 11/10) no se
+    // puede dar por completada.
+    this._respuesta = String(expected);
     if (checkAnswer(answer, expected).correct) {
       this._acerto = true;
       // El elogio VARÍA. Repetir siempre la misma frase es lo que hacía que el tutor pareciera un
@@ -551,6 +573,11 @@ export class PSELight {
     const cierre = `No te preocupes, así se aprende. ${buildHint(d.texto, boardText, 2)} Puedes volver a reproducir la lección para repasar el método y luego intentarlo de nuevo. ¡Tú puedes!`;
     this.ui.showFeedback(false, cierre);
     await this._speak(cierre, "hablando", signal);
+  }
+
+  /** La pregunta que espera respuesta del alumno, o null. La lee la interfaz antes de pedir una explicación. */
+  preguntaPendiente() {
+    return this._pendiente ? { ...this._pendiente } : null;
   }
 
   // Muestra en la pizarra un EJEMPLO ALTERNATIVO resuelto paso a paso (narrado), para la ramificación.

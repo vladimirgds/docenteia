@@ -28,12 +28,14 @@ import {
   useSincronizadorLeccion,
 } from "@/components/leccion/sincronizador-leccion";
 import {
+  escenaEstatica,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
   type Escena,
   type Foco,
 } from "@/lib/leccion/animacion";
+import type { EstadoAvatar } from "@/public/pseLight";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import { cn } from "@/lib/utils";
 import type { PasoSemantico } from "@/lib/leccion/marcado";
@@ -125,14 +127,29 @@ export function PizarraAnimada({
       let x2 = -Infinity;
       let y2 = -Infinity;
       for (const pieza of piezas) {
-        const r = pieza.getBoundingClientRect();
-        // KaTeX deja spans de anchura cero (los `\mathstrut` y compañía): medir
-        // uno de esos estiraría la caja hasta el margen izquierdo.
-        if (r.width === 0 && r.height === 0) continue;
-        x1 = Math.min(x1, r.left - base.left);
-        y1 = Math.min(y1, r.top - base.top);
-        x2 = Math.max(x2, r.right - base.left);
-        y2 = Math.max(y2, r.bottom - base.top);
+        // SE MIDEN LOS GLIFOS, NO LA CAJA DEL SPAN.
+        //
+        // En una fracción, KaTeX sube el numerador y baja el denominador con
+        // desplazamientos dentro de la línea, y la caja del span que los
+        // envuelve no los contiene: medía la altura de la línea. La doble raya
+        // del resultado caía entonces encima del denominador —"6/7" con el 7
+        // tachado—. Midiendo cada glifo, y la raya de la fracción, la marca
+        // abarca la fracción entera.
+        const hojas = [pieza, ...pieza.querySelectorAll("*")].filter(
+          (el) =>
+            (el.childElementCount === 0 && (el.textContent ?? "").trim() !== "") ||
+            el.classList.contains("frac-line"),
+        );
+        for (const el of hojas.length > 0 ? hojas : [pieza]) {
+          const r = el.getBoundingClientRect();
+          // KaTeX deja spans de anchura cero (los `\mathstrut` y compañía):
+          // medir uno de esos estiraría la caja hasta el margen izquierdo.
+          if (r.width === 0 && r.height === 0) continue;
+          x1 = Math.min(x1, r.left - base.left);
+          y1 = Math.min(y1, r.top - base.top);
+          x2 = Math.max(x2, r.right - base.left);
+          y2 = Math.max(y2, r.bottom - base.top);
+        }
       }
       if (!Number.isFinite(x1) || !Number.isFinite(y1)) continue;
 
@@ -263,10 +280,7 @@ export function PizarraAnimada({
 }
 
 /**
- * Un resaltado: caja, óvalo o tachado.
- *
- * Los que ya han pasado se quedan tenues en lugar de desaparecer: al llegar a
- * la última columna, el alumno ve el camino recorrido por la cuenta.
+ * Un resaltado: caja, tachado o la confirmación del resultado.
  */
 function Resaltado({
   foco,
@@ -277,52 +291,69 @@ function Resaltado({
   caja: Caja;
   conEtiqueta?: boolean;
 }) {
+  // EL RESULTADO NO SE RODEA: SE SUBRAYA Y SE CONFIRMA.
+  //
+  // Era un óvalo, y el cliente lo fotografió sobre el 3800: el contorno pasaba
+  // por encima de las cifras y las cruzaba. Una marca que tapa el número que
+  // quiere destacar no destaca nada. Ahora nada toca las cifras: dos rayas
+  // DEBAJO del número y un visto a su DERECHA, con aire de por medio. Es la
+  // marca que se hace a mano bajo un resultado correcto —el cliente la dibujó
+  // así—, y el número, ya en verde, se lee entero.
+  if (foco.tipo === "resultado") {
+    // Todo proporcional al tamaño del número: en proyección la fórmula se
+    // multiplica y el trazo engorda, y con huecos fijos de 5 px las dos rayas
+    // se fundían en una sola barra.
+    const izquierda = caja.x - 3;
+    const derecha = caja.x + caja.ancho + 3;
+    const primera = caja.y + caja.alto + Math.max(5, caja.alto * 0.09);
+    const segunda = primera + Math.max(5, caja.alto * 0.1);
+    // El visto, proporcionado al número y separado de él por un hueco limpio.
+    const tam = Math.min(64, Math.max(12, caja.alto * 0.45));
+    const x0 = derecha + Math.max(10, caja.alto * 0.12);
+    const y0 = caja.y + caja.alto / 2;
+    return (
+      <g className="pz-resaltado" data-tipo={foco.tipo}>
+        <line x1={izquierda} y1={primera} x2={derecha} y2={primera} className="pz-trazo pz-subrayado" pathLength={1} />
+        <line x1={izquierda} y1={segunda} x2={derecha} y2={segunda} className="pz-trazo pz-subrayado pz-subrayado-2" pathLength={1} />
+        <path
+          d={`M ${x0} ${y0} l ${tam * 0.35} ${tam * 0.4} l ${tam * 0.65} ${-tam * 0.85}`}
+          className="pz-trazo pz-visto"
+          fill="none"
+          pathLength={1}
+        />
+        {foco.etiqueta && conEtiqueta ? (
+          <text x={caja.x + caja.ancho / 2} y={caja.y - 6} textAnchor="middle" className="pz-etiqueta">
+            {foco.etiqueta}
+          </text>
+        ) : null}
+      </g>
+    );
+  }
+
   return (
     <g className="pz-resaltado" data-tipo={foco.tipo}>
       {/* El fondo va DEBAJO del trazo y encima de la fórmula: es lo que hace que
           la columna operada se ilumine, y no sólo se enmarque. Como la capa no
           recibe eventos, la fórmula se sigue pudiendo seleccionar. */}
-      {foco.tipo === "ovalo" ? (
-        <ellipse
-          cx={caja.x + caja.ancho / 2}
-          cy={caja.y + caja.alto / 2}
-          rx={caja.ancho / 2 + 2}
-          ry={caja.alto / 2 + 2}
-          className="pz-fondo"
-        />
-      ) : (
-        <rect
-          x={caja.x}
-          y={caja.y}
-          width={caja.ancho}
-          height={caja.alto}
-          rx={6}
-          className="pz-fondo"
-        />
-      )}
+      <rect
+        x={caja.x}
+        y={caja.y}
+        width={caja.ancho}
+        height={caja.alto}
+        rx={6}
+        className="pz-fondo"
+      />
 
-      {foco.tipo === "ovalo" ? (
-        <ellipse
-          cx={caja.x + caja.ancho / 2}
-          cy={caja.y + caja.alto / 2}
-          rx={caja.ancho / 2 + 2}
-          ry={caja.alto / 2 + 2}
-          className="pz-trazo"
-          fill="none"
-          pathLength={1}
-        />
-      ) : (
-        <rect
-          x={caja.x}
-          y={caja.y}
-          width={caja.ancho}
-          height={caja.alto}
-          rx={6}
-          className="pz-trazo"
-          fill="none"
-          pathLength={1}
-        />
-      )}
+      <rect
+        x={caja.x}
+        y={caja.y}
+        width={caja.ancho}
+        height={caja.alto}
+        rx={6}
+        className="pz-trazo"
+        fill="none"
+        pathLength={1}
+      />
 
       {foco.tipo === "tachado" ? (
         <line
@@ -376,6 +407,9 @@ export function PanelAnimado({
   leccionEnMarcha = false,
   leccionPausada = false,
   mandosLeccion,
+  reposo = null,
+  leccionTerminada = false,
+  avatarDeLaLeccion,
   className,
 }: {
   /**
@@ -421,6 +455,30 @@ export function PanelAnimado({
   mandosLeccion?: { pausar: () => void; reanudar: () => void };
   /** El aula usa esto para poner al avatar a explicar, pensar o celebrar. */
   alCambiarAvatar?: (estado: EstadoPedagogico) => void;
+  /**
+   * LO QUE SE PROYECTA CUANDO NO HAY NADA QUE ANIMAR.
+   *
+   * El botón de Modo proyección vivía sólo aquí, y este panel desaparecía
+   * cuando la fase no tenía un paso animable: en la práctica —con el enunciado
+   * "3/5 + 1/2 = ?" y nada más— o en el concepto. El cliente lo fotografió al
+   * terminar una lección: el botón no estaba, y la proyección en el aula es un
+   * entregable del hito.
+   *
+   * Con esto el panel no desaparece nunca durante una clase. Si no hay nada que
+   * animar se queda en una barra con el botón —sin repetir debajo lo que ya
+   * enseña la pizarra— y, al proyectar, pone en grande lo último que hay en la
+   * pizarra: el paso, el enunciado o la regla.
+   */
+  reposo?: { texto: string; latex?: string | null } | null;
+  /**
+   * La lección ha terminado: la pizarra se queda RESUELTA, en el último paso
+   * de su última línea, con todo destapado. Sin esto, al acabar volvía a su
+   * primer paso y el resultado quedaba oculto justo cuando el subtítulo decía
+   * "¡Lección completada!".
+   */
+  leccionTerminada?: boolean;
+  /** El tutor de la lección, para que en proyección el avatar sea el que habla. */
+  avatarDeLaLeccion?: { estado: EstadoAvatar | EstadoPedagogico; hablando: boolean };
   /**
    * Se avisa antes de ponerse a hablar.
    *
@@ -495,6 +553,16 @@ export function PanelAnimado({
     mandos.situar(destino.escena, destino.foco);
   }, [narracion, escenas, estado.escena, estado.foco, mandos]);
 
+  // AL TERMINAR LA LECCIÓN, LA PIZARRA QUEDA RESUELTA: último paso de la última
+  // línea, con el resultado subrayado y confirmado. Se vuelve a situar si el
+  // guion cambia estando terminada —el cierre del ejercicio añade su línea
+  // justo en ese momento— para que lo último que se ve sea eso.
+  useEffect(() => {
+    if (!leccionTerminada || escenas.length === 0) return;
+    const ultima = escenas.length - 1;
+    mandos.situar(ultima, Math.max(-1, escenas[ultima].focos.length - 1));
+  }, [leccionTerminada, escenas, mandos]);
+
   // Lo que la lección necesita saber: si la animación ya lo ha destapado todo.
   // Mientras no lo haya hecho, la pizarra de arriba no puede adelantar el
   // resultado.
@@ -527,7 +595,15 @@ export function PanelAnimado({
     }
   }, []);
 
-  if (escenas.length === 0) return null;
+  // Sin nada que animar, la pizarra de reposo: lo último escrito, compuesto
+  // sin marcas. Se calcula antes de decidir si el panel se pinta, porque de
+  // ella depende.
+  const escenaDeReposo = useMemo(
+    () => (reposo?.texto ? escenaEstatica(reposo.texto, "reposo", reposo.latex ?? null) : null),
+    [reposo?.texto, reposo?.latex],
+  );
+  const sinAnimacion = escenas.length === 0;
+  if (sinAnimacion && !escenaDeReposo) return null;
 
   const enMarcha = estado.estado === "reproduciendo";
 
@@ -536,30 +612,49 @@ export function PanelAnimado({
     alTomarLaVoz?.();
     accion();
   };
-  const escenaActual = escenas[estado.escena] ?? null;
+  const escenaActual = sinAnimacion ? escenaDeReposo : (escenas[estado.escena] ?? null);
+
+  // En proyección, el avatar es el del TUTOR mientras habla la lección; el del
+  // repaso sólo cuando es el repaso el que está hablando.
+  const avatarProyectado = enMarcha
+    ? { estado: estado.avatar, hablando: estado.modo === "voz" }
+    : (avatarDeLaLeccion ?? { estado: estado.avatar, hablando: false });
 
   return (
     <div
       ref={marco}
       className={cn(
         "rounded-lg border bg-card p-4",
+        sinAnimacion && !proyeccion && "py-2.5",
         proyeccion && "modo-proyeccion flex h-full flex-col overflow-y-auto",
         className,
       )}
+      data-panel={sinAnimacion ? "reposo" : "animado"}
     >
-      <div className="pz-cabecera mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div
+        className={cn(
+          "pz-cabecera flex flex-wrap items-center justify-between gap-2",
+          (!sinAnimacion || proyeccion) && "mb-2",
+        )}
+      >
         <div className="flex items-baseline gap-2">
-          <h3 className="text-sm font-semibold">Paso a paso animado</h3>
+          <h3 className="text-sm font-semibold">
+            {sinAnimacion ? "Pizarra de clase" : "Paso a paso animado"}
+          </h3>
           {/*
             El paso que se cuenta es el de la ANIMACIÓN —la entrada y luego cada
             resaltado—, no la escena. Contando escenas, una cuenta de tres
             columnas decía "paso 1 de 4" mientras por dentro daba cuatro pasos,
             y desde fuera parecía que no avanzaba.
           */}
-          <span className="text-xs text-muted-foreground tabular-nums">
-            Paso {estado.foco + 2} de {estado.segmentos}
-            {estado.escenas > 1 ? ` · línea ${estado.escena + 1}/${estado.escenas}` : ""}
-          </span>
+          {sinAnimacion ? (
+            <span className="text-xs text-muted-foreground">Proyéctala en el aula</span>
+          ) : (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Paso {estado.foco + 2} de {estado.segmentos}
+              {estado.escenas > 1 ? ` · línea ${estado.escena + 1}/${estado.escenas}` : ""}
+            </span>
+          )}
         </div>
         <Button
           size="sm"
@@ -578,15 +673,25 @@ export function PanelAnimado({
         de la pantalla. Fuera de proyección no se duplica —el avatar ya está en
         su tarjeta— y la pizarra ocupa todo el ancho.
       */}
-      <div className="pz-escenario">
-        {proyeccion && (
-          <div className="pz-avatar">
-            <Avatar2D estado={estado.avatar} hablando={enMarcha && estado.modo === "voz"} />
-          </div>
-        )}
-        <PizarraAnimada escena={escenaActual} foco={estado.foco} proyeccion={proyeccion} />
-      </div>
+      {/* Sin nada que animar, el escenario sólo sale al proyectar: en pantalla
+          la pizarra ya enseña lo mismo, y repetirlo aquí debajo duplicaría el
+          contenido. */}
+      {(!sinAnimacion || proyeccion) && (
+        <div className="pz-escenario">
+          {proyeccion && (
+            <div className="pz-avatar">
+              <Avatar2D estado={avatarProyectado.estado} hablando={avatarProyectado.hablando} />
+            </div>
+          )}
+          <PizarraAnimada
+            escena={escenaActual}
+            foco={sinAnimacion ? -1 : estado.foco}
+            proyeccion={proyeccion}
+          />
+        </div>
+      )}
 
+      {!sinAnimacion && (
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {/*
           El botón actúa sobre QUIEN ESTÉ HABLANDO. Con el tutor en marcha,
@@ -649,10 +754,11 @@ export function PanelAnimado({
           </span>
         )}
       </div>
+      )}
 
       {/* Selector de escena: en clase, el profesor vuelve a un paso concreto sin
           tener que reproducir la lección entera. */}
-      {escenas.length > 1 && (
+      {!sinAnimacion && escenas.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {escenas.map((escena, i) => (
             <button
