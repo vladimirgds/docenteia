@@ -13,8 +13,52 @@ import { solveLinearSteps, computeDerivative, computeFactorization, factorizacio
 //   hablar    { tipo, texto }                          el avatar habla (español)
 //   esperar   { tipo, segundos }                       pausa
 //   pizarra   { tipo, accion:"escribir", contenido }   escribe en la pizarra
+//             + operacion { tipo, terminosFoco, etiqueta? }   qué gesto se hace y sobre qué términos
+//             + narracion                                     lo que dice el tutor mientras se marca
 //   puntero   { tipo, accion:"resaltar", objetivo }    resalta algo ya escrito
 //   preguntar { tipo, texto, esperar_respuesta, si_correcto, si_incorrecto }
+
+// ── EL PASO ETIQUETADO ──────────────────────────────────────────────────────────────────────────
+//
+// El cliente lo fijó como contrato: "el paso matemático entrega la expresión, el tipo de foco
+// (columna, factor, cancelación) y el texto de locución". Aquí es donde el motor lo entrega.
+//
+// La pizarra ya sabía deducir el gesto leyendo la línea, pero eso es adivinar, y cada forma nueva
+// de escribir un paso obligaba a enseñarle a leerla. Con la etiqueta, el motor —que es quien SABE
+// qué operación acaba de hacer— lo dice, y la pizarra lo dibuja sin saber de qué tema se trata:
+// un ejercicio nuevo del catálogo se anima solo.
+//
+// Reglas del contrato:
+//   · `tipo` es un GESTO, no un tema: columna, factor, cancelacion, amplificacion,
+//     suma-fracciones, distributiva.
+//   · `terminosFoco` son términos ESCRITOS en el paso, tal cual. Si uno no está, el PRE Light
+//     descarta la etiqueta y la pizarra deduce el paso como antes: nunca un recuadro al aire.
+//   · Los enunciados ("19 + 45 = ?") y los resultados finales no se etiquetan: no se opera en ellos.
+const foco = (tipo, terminos, etiqueta) => ({
+  tipo,
+  terminosFoco: [...new Set(terminos.map((t) => String(t)))],
+  ...(etiqueta ? { etiqueta } : {}),
+});
+function escribePaso(contenido, operacion, narracion) {
+  const d = { tipo: "pizarra", accion: "escribir", contenido };
+  if (operacion) {
+    d.operacion = operacion;
+    if (narracion) d.narracion = narracion;
+  }
+  return d;
+}
+// Una fracción llevada a otro denominador: "1/2 = 3/6", amplificada por 3. Sólo se etiqueta si de
+// verdad se multiplica: "1/6 = 1/6" —la que ya tenía el denominador común— no tiene gesto que enseñar.
+function amplifica(n, d, nuevoN, nuevoD) {
+  const k = nuevoD / d;
+  const contenido = `${n}/${d} = ${nuevoN}/${nuevoD}`;
+  if (!Number.isInteger(k) || k < 2) return escribePaso(contenido, null);
+  return escribePaso(
+    contenido,
+    foco("amplificacion", [`${n}/${d}`, `${nuevoN}/${nuevoD}`], `× ${k}`),
+    `Multiplicamos ${n}/${d} arriba y abajo por ${k}: queda ${nuevoN}/${nuevoD}.`,
+  );
+}
 
 // Esquema de respuesta para Gemini (structured output). Campos por-directiva
 // opcionales salvo `tipo`, porque cada tipo usa un subconjunto distinto.
@@ -565,12 +609,17 @@ export function fraccionResueltaLSG(opts) {
       { tipo: "pizarra", accion: "escribir", contenido: A.texto },
       { tipo: "esperar", segundos: 1 },
       { tipo: "hablar", texto: `Con el mismo denominador, solo se suman los números de arriba (los numeradores): ${A.n1} + ${A.n2} = ${A.suma}. El denominador ${A.d} se queda igual.` },
-      { tipo: "pizarra", accion: "escribir", contenido: `${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}` },
+      escribePaso(
+        `${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}`,
+        foco("suma-fracciones", [A.n1, A.n2]),
+        `Con el mismo denominador, solo se suman los números de arriba (los numeradores): ${A.n1} + ${A.n2} = ${A.suma}. El denominador ${A.d} se queda igual.`,
+      ),
       { tipo: "esperar", segundos: 1 },
     );
     if (A.simp) {
-      dir.push({ tipo: "hablar", texto: `Y se puede simplificar: ${A.suma} y ${A.d} se dividen entre ${A.g}, así que ${A.suma}/${A.d} = ${A.simp}.` });
-      dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${A.suma}/${A.d} = ${A.simp}` });
+      const dice = `Y se puede simplificar: ${A.suma} y ${A.d} se dividen entre ${A.g}, así que ${A.suma}/${A.d} = ${A.simp}.`;
+      dir.push({ tipo: "hablar", texto: dice });
+      dir.push(escribePaso(`${A.suma}/${A.d} = ${A.simp}`, foco("cancelacion", [`${A.suma}/${A.d}`], `÷ ${A.g}`), dice));
     }
   } else {
     dir.push(
@@ -578,15 +627,20 @@ export function fraccionResueltaLSG(opts) {
       { tipo: "pizarra", accion: "escribir", contenido: A.texto },
       { tipo: "esperar", segundos: 1 },
       { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}: es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
-      { tipo: "pizarra", accion: "escribir", contenido: `${A.n1}/${A.d1} = ${A.a}/${A.L}` },
-      { tipo: "pizarra", accion: "escribir", contenido: `${A.n2}/${A.d2} = ${A.b}/${A.L}` },
+      amplifica(A.n1, A.d1, A.a, A.L),
+      amplifica(A.n2, A.d2, A.b, A.L),
       { tipo: "esperar", segundos: 1 },
       { tipo: "hablar", texto: `Ahora que las dos tienen el mismo denominador, sumamos los numeradores: ${A.a} + ${A.b} = ${A.suma}.` },
-      { tipo: "pizarra", accion: "escribir", contenido: `${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}` },
+      escribePaso(
+        `${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}`,
+        foco("suma-fracciones", [A.a, A.b]),
+        `Ahora que las dos tienen el mismo denominador, sumamos los numeradores: ${A.a} + ${A.b} = ${A.suma}.`,
+      ),
     );
     if (A.simp) {
-      dir.push({ tipo: "hablar", texto: `Y se simplifica: ${A.suma} y ${A.L} se dividen entre ${A.g}, así que ${A.suma}/${A.L} = ${A.simp}.` });
-      dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${A.suma}/${A.L} = ${A.simp}` });
+      const dice = `Y se simplifica: ${A.suma} y ${A.L} se dividen entre ${A.g}, así que ${A.suma}/${A.L} = ${A.simp}.`;
+      dir.push({ tipo: "hablar", texto: dice });
+      dir.push(escribePaso(`${A.suma}/${A.L} = ${A.simp}`, foco("cancelacion", [`${A.suma}/${A.L}`], `÷ ${A.g}`), dice));
     }
   }
   dir.push({ tipo: "hablar", texto: `¡Y listo! ${A.texto} = ${A.final}. Ahora te toca a ti con otra suma parecida.` });
@@ -1046,19 +1100,28 @@ function pasosMult(a, b) {
   const M = (x, y) => (BigInt(x) * BigInt(y)).toString();
   const big = Math.max(a, b), small = Math.min(a, b), u = big % 10, t = big - u, steps = [];
   const prod = M(a, b);
-  if (big < 10) steps.push({ explica: `Multiplicar ${a} × ${b} es sumar el ${small} un total de ${big} veces. El resultado es ${prod}.`, escribe: `${a} × ${b} = ${prod}` });
-  else if (u === 0) steps.push({ explica: `${a} × ${b}: multiplicamos ${big / 10} × ${small} = ${M(big / 10, small)} y añadimos un cero. Resultado ${prod}.`, escribe: `${a} × ${b} = ${prod}` });
+  // Cada paso lleva su FOCO: el gesto y los términos sobre los que se hace (ver `escribePaso`).
+  if (big < 10) steps.push({ explica: `Multiplicar ${a} × ${b} es sumar el ${small} un total de ${big} veces. El resultado es ${prod}.`, escribe: `${a} × ${b} = ${prod}`, foco: foco("factor", [a, b]) });
+  else if (u === 0) steps.push({ explica: `${a} × ${b}: multiplicamos ${big / 10} × ${small} = ${M(big / 10, small)} y añadimos un cero. Resultado ${prod}.`, escribe: `${a} × ${b} = ${prod}`, foco: foco("factor", [a, b]) });
   else {
-    steps.push({ explica: `Descomponemos ${big} en ${t} + ${u} y multiplicamos cada parte por ${small}.`, escribe: `${a} × ${b} = (${t} + ${u}) × ${small}` });
-    steps.push({ explica: `${t} × ${small} = ${M(t, small)} y ${u} × ${small} = ${M(u, small)}. Sumamos: ${M(t, small)} + ${M(u, small)} = ${prod}.`, escribe: `${M(t, small)} + ${M(u, small)} = ${prod}` });
+    // La descomposición ES la propiedad distributiva: 12 × 4 = (10 + 2) × 4. Se recuadran las dos
+    // partes en que se rompe el número, que es lo que el alumno tiene que ver repartirse.
+    steps.push({ explica: `Descomponemos ${big} en ${t} + ${u} y multiplicamos cada parte por ${small}.`, escribe: `${a} × ${b} = (${t} + ${u}) × ${small}`, foco: foco("distributiva", [t, u], `${big} = ${t} + ${u}`) });
+    steps.push({ explica: `${t} × ${small} = ${M(t, small)} y ${u} × ${small} = ${M(u, small)}. Sumamos: ${M(t, small)} + ${M(u, small)} = ${prod}.`, escribe: `${M(t, small)} + ${M(u, small)} = ${prod}`, foco: foco("columna", [M(t, small), M(u, small)]) });
   }
   return { texto: `${a} × ${b}`, answer: prod, steps };
 }
 function pasosDiv(a, b) {
   if (a % b === 0) {
     const q = a / b;
+    // La división y su comprobación, cada una en su línea y en notación limpia. Escritas juntas —
+    // "84 ÷ 4 = 21 (porque 4 × 21 = 84)"— la línea era una frase: no se podía componer como fórmula
+    // ni marcar nada en ella, y la lección de dividir era la única sin un solo paso animado. Los dos
+    // recuadros van sobre lo mismo, el divisor y el cociente: son los números que, multiplicados,
+    // devuelven el dividendo, y eso es lo que el alumno tiene que ver.
     return { texto: `${a} ÷ ${b}`, answer: q, exacta: true, steps: [
-      { explica: `Dividir ${a} ÷ ${b} es repartir ${a} en ${b} partes iguales. Buscamos el número que por ${b} da ${a}: como ${b} × ${q} = ${a}, cada parte es ${q}.`, escribe: `${a} ÷ ${b} = ${q}   (porque ${b} × ${q} = ${a})` },
+      { explica: `Dividir ${a} ÷ ${b} es repartir ${a} en ${b} partes iguales. Buscamos el número que por ${b} da ${a}: es ${q}.`, escribe: `${a} ÷ ${b} = ${q}`, foco: foco("factor", [b, q]) },
+      { explica: `Lo comprobamos multiplicando: ${b} × ${q} = ${a}. Así que cada parte es ${q}.`, escribe: `${b} × ${q} = ${a}`, foco: foco("factor", [b, q], "comprobación") },
     ] };
   }
   // NO exacta → división larga hasta UN decimal (aproximado, como se ve en la escuela). Se calcula la parte
@@ -1071,9 +1134,9 @@ function pasosDiv(a, b) {
   const dec = Math.floor(resto10 / b);
   const aprox = entero + dec / 10;
   return { texto: `${a} ÷ ${b}`, answer: aprox, exacta: false, aproximado: true, steps: [
-    { explica: `¿Cuántas veces cabe ${b} en ${a}? Cabe ${entero} veces, porque ${b} × ${entero} = ${prod} (y ${b} × ${entero + 1} ya se pasa de ${a}).`, escribe: `${b} × ${entero} = ${prod}` },
-    { explica: `Restamos: ${a} − ${prod} = ${resto}. Como ${resto} es menor que ${b}, la división no es exacta: para sacar un decimal, bajamos un cero y dividimos ${resto10} entre ${b}.`, escribe: `${a} − ${prod} = ${resto}` },
-    { explica: `${resto10} ÷ ${b} cabe ${dec} veces (${b} × ${dec} = ${b * dec}). Ese es el primer decimal.`, escribe: `${resto10} ÷ ${b} ≈ ${dec}` },
+    { explica: `¿Cuántas veces cabe ${b} en ${a}? Cabe ${entero} veces, porque ${b} × ${entero} = ${prod} (y ${b} × ${entero + 1} ya se pasa de ${a}).`, escribe: `${b} × ${entero} = ${prod}`, foco: foco("factor", [b, entero]) },
+    { explica: `Restamos: ${a} − ${prod} = ${resto}. Como ${resto} es menor que ${b}, la división no es exacta: para sacar un decimal, bajamos un cero y dividimos ${resto10} entre ${b}.`, escribe: `${a} − ${prod} = ${resto}`, foco: foco("columna", [a, prod]) },
+    { explica: `${resto10} ÷ ${b} cabe ${dec} veces (${b} × ${dec} = ${b * dec}). Ese es el primer decimal.`, escribe: `${resto10} ÷ ${b} ≈ ${dec}`, foco: foco("factor", [b, dec]) },
     { explica: `Así, con un decimal, ${a} ÷ ${b} ≈ ${entero}.${dec}.`, escribe: `${a} ÷ ${b} ≈ ${entero}.${dec}` },
   ] };
 }
@@ -1236,12 +1299,19 @@ function aritmeticaLSG(opts, cfg) {
     // suma llevando y en pantalla aparecía "Jerarquía de operaciones".
     if (cfg.regla) dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.regla, _mod: "regla" });
   }
+  // En suma y resta, el enunciado ES la cuenta en columna: toda la animación ocurre sobre él, con
+  // un recuadro por columna. En multiplicar y dividir, lo que se anima son los pasos.
+  const enColumna = op === "suma" || op === "resta";
+  const abreEjemplo = `Vamos a ${cfg.verbo} ${E.texto} paso a paso.`;
   dir.push(
-    { tipo: "hablar", texto: `Vamos a ${cfg.verbo} ${E.texto} paso a paso.`, _mod: opts.concepto ? "ejemplo_guiado" : undefined },
-    { tipo: "pizarra", accion: "escribir", contenido: E.texto },
+    { tipo: "hablar", texto: abreEjemplo, _mod: opts.concepto ? "ejemplo_guiado" : undefined },
+    escribePaso(E.texto, enColumna ? foco("columna", parseAB(E.texto)) : null, abreEjemplo),
     { tipo: "esperar", segundos: 1 },
   );
-  for (const s of E.steps) { dir.push({ tipo: "hablar", texto: s.explica }); dir.push({ tipo: "pizarra", accion: "escribir", contenido: s.escribe }); }
+  for (const s of E.steps) {
+    dir.push({ tipo: "hablar", texto: s.explica });
+    dir.push(escribePaso(s.escribe, s.foco ?? null, s.explica));
+  }
   dir.push({ tipo: "hablar", texto: `Así, ${E.texto} ${eq} ${E.answer}. Ahora te toca a ti.` });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${P.texto} = ?` });
   dir.push({ tipo: "preguntar", texto: pregArit(P), respuesta: String(P.answer), esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
@@ -1313,15 +1383,19 @@ export function linealResueltaLSG(opts = {}) {
     dir.push({ _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Propiedad uniforme de la suma: lo mismo a los dos lados" });
     dir.push({ _mod: "regla", tipo: "hablar", texto: "La regla para hallar la x es despejarla: los números que la acompañan pasan al otro lado con la operación inversa (lo que suma, resta; lo que resta, suma; lo que multiplica, divide), hasta dejar la x sola. Veámoslo con un ejemplo." });
   }
+  // Cada línea se etiqueta con el gesto que el paso SIGUIENTE hace sobre ella: sobre "2x + 5 = 15"
+  // se cancela el 5, sobre "2x = 10" se divide entre 2. La última —"x = 5"— es el resultado y no se
+  // opera en ella, así que va sin etiqueta.
+  const gestoSobre = (k) => sol.steps[k]?.accion ?? null;
   dir.push(
     { tipo: "hablar", texto: `Vamos a resolver ${sol.original} paso a paso. La meta es dejar la ${sol.varName} sola en un lado del igual.`, _mod: opts.concepto ? "ejemplo_guiado" : undefined },
-    { tipo: "pizarra", accion: "escribir", contenido: sol.original },
+    escribePaso(sol.original, gestoSobre(0), sol.steps[0]?.explica),
     { tipo: "esperar", segundos: 1 },
   );
-  for (const s of sol.steps) {
+  sol.steps.forEach((s, k) => {
     dir.push({ tipo: "hablar", texto: s.explica });
-    dir.push({ tipo: "pizarra", accion: "escribir", contenido: s.escribe });
-  }
+    dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+  });
   dir.push({ tipo: "hablar", texto: `Comprobado: ${sol.varName} = ${sol.answer}. Ahora te toca a ti con otra ecuación parecida.` });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: solP.original });
   dir.push({ tipo: "preguntar", texto: `¿Cuánto vale ${solP.varName} en ${solP.original}? Escribe solo el número.`, respuesta: solP.answer, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
@@ -1339,6 +1413,27 @@ const DERIVADAS = {
   dificil: ["3x⁴ - 2x²", "2x³ + 5x", "4x³ - 3x² + 2x", "5x⁴ + 2x³", "x⁴ - 6x² + 9x", "3x⁵ - 4x²"],
   experto: ["2x⁵ - 3x⁴ + x²", "6x⁴ - 5x³ + 2x", "x⁵ - 4x³ + 7x²", "4x⁶ - 2x⁴ + 3x", "5x⁵ + 3x³ - 8x", "7x⁴ - 6x² + 5x"],
 };
+// El foco de la regla de la potencia sobre un monomio a·xⁿ: el coeficiente (si se escribe), el
+// exponente y su producto. Sólo términos que aparecen escritos: el 1 de "x²" no está, y en "2x" el
+// exponente tampoco.
+// El foco de una diferencia de cuadrados: el número que se resta y su raíz, que es la que aparece en
+// los dos factores ("x² - 9 = (x - 3)(x + 3)": el 9 y el 3). Sólo en la forma pura; con un factor
+// común delante ("2(x - 2)(x + 2)") hay otro gesto antes, y va sin etiqueta.
+function focoDiferenciaDeCuadrados(expresion, factorizada) {
+  const f = String(factorizada ?? "").match(/^\((.+?) - (\d+)\)\((.+?) \+ (\d+)\)$/);
+  const c = String(expresion ?? "").match(/-\s*(\d+)\s*$/);
+  if (!f || !c || f[1] !== f[3] || f[2] !== f[4]) return null;
+  if (Number(f[2]) ** 2 !== Number(c[1])) return null;
+  return foco("factor", [c[1], f[2]], `${c[1]} = ${f[2]}²`);
+}
+function focoDePotencia(pm) {
+  if (!pm) return null;
+  const a = Math.abs(pm.a);
+  if (pm.n > 1) {
+    return foco("factor", [...(a !== 1 ? [a] : []), pm.n, a * pm.n], `${pm.a} × ${pm.n} = ${pm.a * pm.n}`);
+  }
+  return a !== 1 ? foco("factor", [a]) : null;
+}
 function partesMonomio(m) {
   const s = canonExpr(m).replace(/\*/g, "");
   const mm = s.match(/^([+-]?\d*)x(?:\^(\d+))?$/);
@@ -1390,7 +1485,10 @@ export function derivadaResueltaLSG(opts = {}) {
   const desglose = pm ? null : desglosePolinomio(ejemplo);
   if (desglose) dir.push({ tipo: "pizarra", accion: "escribir", contenido: `Término a término:  ${desglose.join("   ·   ")}` });
   dir.push(
-    { tipo: "pizarra", accion: "escribir", contenido: `derivada de ${ejemplo} = ${derE}` },
+    // La regla de la potencia, a la vista: se recuadran el coeficiente, el exponente que baja y el
+    // coeficiente nuevo que sale de multiplicarlos. En un polinomio no hay un único exponente que
+    // bajar, así que va sin etiqueta y la pizarra hace lo que ya hacía.
+    escribePaso(`derivada de ${ejemplo} = ${derE}`, focoDePotencia(pm), explica),
     { tipo: "hablar", texto: `Así, la derivada de ${ejemplo} es ${derE}. Ahora te toca a ti.` },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cuál es la derivada de ${practica}?`, respuesta: derP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
@@ -1783,7 +1881,7 @@ export function factorizacionResueltaLSG(opts = {}) {
     { tipo: "pizarra", accion: "escribir", contenido: ejemplo },
     { tipo: "esperar", segundos: 1 },
     { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo) },
-    { tipo: "pizarra", accion: "escribir", contenido: `${ejemplo} = ${facE}` },
+    escribePaso(`${ejemplo} = ${facE}`, focoDiferenciaDeCuadrados(ejemplo, facE), explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo)),
     { tipo: "hablar", texto: `Así, ${ejemplo} se factoriza como ${facE}. Ahora te toca a ti con otra parecida.` },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cómo se factoriza ${practica}? ${comoEscribirla(practica)}`, respuesta: facP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },

@@ -41,18 +41,31 @@ import {
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
 import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
-import { repararEquivalencias } from "../src/preLight.js";
+import {
+  apareceComoTermino,
+  processLSG,
+  repararEquivalencias,
+  TIPOS_OPERACION as TIPOS_OPERACION_SERVIDOR,
+} from "../src/preLight.js";
 import {
   derivadaResueltaLSG,
+  divisionResueltaLSG,
   factorizacionResueltaLSG,
   fraccionResueltaLSG,
+  linealResueltaLSG,
+  multiplicacionResueltaLSG,
+  restaResueltaLSG,
+  sumaResueltaLSG,
 } from "../src/lsgPrompt.js";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
 import {
+  etiquetaValida,
   leerAmplificacion,
   leerSumaDeFracciones,
   marcarTerminos,
   miembros,
+  posicionesDeTermino,
+  TIPOS_OPERACION,
 } from "../lib/leccion/marcado.ts";
 import { fraccionEnTexto, geometriaDeFraccion } from "../lib/leccion/diagramas.ts";
 import {
@@ -502,29 +515,30 @@ titulo("A00. Marcado semántico genérico");
     marcas(escena.latex).some((m) => m.contenido.includes("="));
   check("ninguna marca abarca el signo igual", !conIgual(cancelacion));
 
-  const otros = [
-    {
-      latex: "2(x + 4) = 3x - 1",
-      operacion: { tipo: "distributiva", terminosFoco: ["2", "(x + 4)"] },
-    },
-    {
-      latex: "\frac{1 \times 3}{2 \times 3} = \frac{3}{6}",
-      operacion: { tipo: "amplificacion", terminosFoco: ["3"], etiqueta: "×3" },
-    },
-    {
-      latex: "24 + 17",
-      operacion: { tipo: "columna", terminosFoco: ["4", "7"], etiqueta: "llevo 1" },
-    },
+  // CADA GESTO, POR SU COMPOSITOR; Y SI NINGUNO LEE EL PASO, EL MARCADOR GENÉRICO.
+  //
+  // Antes toda etiqueta pasaba por el marcador genérico, que recuadra términos
+  // sueltos. Ahora el tipo elige el compositor de ESE gesto —la columna con sus
+  // llevadas, la amplificación con su producto a la vista—, y el genérico queda
+  // para el paso que ningún compositor sabe leer. Las dos cosas se comprueban,
+  // y en ninguna una marca cruza el igual.
+  //
+  // (Esta lista tenía "\frac{1 \times 3}…" con UNA barra dentro de las comillas:
+  // en JavaScript es un salto de página y un tabulador, y la prueba corría
+  // sobre una cadena rota sin que nada lo delatara.)
+  const porGesto = [
+    { latex: "2(x + 4) = 3x - 1", operacion: { tipo: "distributiva", terminosFoco: ["2"] }, clase: "distributiva" },
+    { latex: "1/2 = 3/6", operacion: { tipo: "amplificacion", terminosFoco: ["1/2", "3/6"], etiqueta: "× 3" }, clase: "amplificacion" },
+    { latex: "24 + 17", operacion: { tipo: "columna", terminosFoco: ["24", "17"] }, clase: "columna" },
+    { latex: "12 × 4 = (10 + 2) × 4", operacion: { tipo: "distributiva", terminosFoco: ["10", "2"] }, clase: "semantica" },
   ];
-  let bien = 0;
-  for (const paso of otros) {
-    const escena = escenaDeLinea(paso, "e");
-    if (escena.clase === "semantica" && escena.focos[0].piezas.length > 0 && !conIgual(escena)) bien++;
-  }
+  const desvios = porGesto
+    .map((paso) => ({ paso, escena: escenaDeLinea(paso, "e") }))
+    .filter(({ paso, escena }) => escena.origen !== "etiqueta" || escena.clase !== paso.clase || conIgual(escena));
   check(
-    "las cuatro operaciones del contrato se marcan igual de genéricamente",
-    bien === otros.length,
-    `${bien}/${otros.length}`,
+    "cada gesto etiquetado se dibuja con su compositor, o con el genérico si ninguno lo lee",
+    desvios.length === 0,
+    desvios.map(({ paso, escena }) => `${paso.latex} → ${escena.origen}/${escena.clase}`).join(" · "),
   );
 
   // Un término que no está escrito no se marca: dibujar un recuadro sobre la
@@ -543,10 +557,15 @@ titulo("A00. Marcado semántico genérico");
     );
   }
 
-  // El marcado nunca toca el nombre de una macro: la "x" de \times no es la
+  // El marcado nunca toca el nombre de una macro: la "x" de \exp no es la
   // incógnita.
+  //
+  // (Esta prueba usaba "2 \times x + 1" con UNA barra dentro de las comillas:
+  // en JavaScript eso es un tabulador seguido de "imes", así que no había
+  // ninguna macro en la cadena y la prueba pasaba sin probar nada. Además,
+  // "times" no lleva x. Ahora la macro está de verdad y lleva la letra.)
   const conMacro = marcarTerminos(
-    "2 \times x + 1",
+    "2 \\exp x + 1",
     ["x"],
     () => "pz-marcado pz-p0",
   );
@@ -711,6 +730,136 @@ titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
   }
 }
 
+titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
+
+{
+  // EL CONTRATO DEL CLIENTE, DE PUNTA A PUNTA.
+  //
+  // "El paso matemático entrega: expresión, tipo de foco (columna, factor,
+  // cancelación) y texto de locución. La subrutina aplica el recuadro, color o
+  // tachado sobre el token correspondiente sin importar el tema ni los
+  // números." Hasta aquí el contrato existía y nadie lo cumplía: los motores
+  // escribían texto y la pizarra lo adivinaba. Se comprueba con la salida REAL
+  // de cada motor pasada por el PRE Light, que es por donde llega al alumno.
+  const MOTORES = [
+    ["suma", () => sumaResueltaLSG({ concepto: true }), 1],
+    ["resta", () => restaResueltaLSG({ concepto: true }), 1],
+    ["multiplicación", () => multiplicacionResueltaLSG({ concepto: true }), 2],
+    ["división", () => divisionResueltaLSG({ concepto: true }), 2],
+    ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 1],
+    ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 3],
+    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 2],
+    ["derivadas", () => derivadaResueltaLSG({ concepto: true }), 1],
+    ["factorización", () => factorizacionResueltaLSG({ concepto: true }), 1],
+  ];
+
+  for (const [nombre, generar, esperados] of MOTORES) {
+    const crudo = generar();
+    const enviados = (crudo.modulos ?? [])
+      .flatMap((m) => m.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra" && d.operacion);
+    const pasos = processLSG(crudo, "aprender", nombre).pasos.filter((p) => p.tipo === "pizarra");
+    const etiquetados = pasos.filter((p) => p.operacion);
+
+    check(
+      `${nombre}: el motor etiqueta sus pasos operativos`,
+      enviados.length === esperados,
+      `${enviados.length} etiquetados, se esperaban ${esperados}`,
+    );
+    check(
+      `${nombre}: ninguna etiqueta se pierde en la validación del servidor`,
+      etiquetados.length === enviados.length,
+      `${etiquetados.length} de ${enviados.length}`,
+    );
+
+    const mal = etiquetados
+      .map((p) => ({
+        p,
+        e: escenaDeLinea({ latex: p.contenido, operacion: p.operacion, narracion: p.narracion }, "e"),
+      }))
+      .filter(({ e }) => e.origen !== "etiqueta" || e.focos.length === 0);
+    check(
+      `${nombre}: y cada paso etiquetado se dibuja POR SU ETIQUETA`,
+      mal.length === 0,
+      mal.map(({ p, e }) => `${p.contenido} → ${e.origen}/${e.clase}`).join(" · "),
+    );
+    check(
+      `${nombre}: con la locución del paso`,
+      etiquetados.every((p) => typeof p.narracion === "string" && p.narracion.length > 0),
+    );
+  }
+
+  // Los tres pasos que NINGUNA lectura sabía animar, y que ahora se animan
+  // porque el motor dice qué hacer con ellos.
+  for (const [contenido, operacion] of [
+    ["12 × 4 = (10 + 2) × 4", { tipo: "distributiva", terminosFoco: ["10", "2"] }],
+    ["derivada de x² = 2x", { tipo: "factor", terminosFoco: ["2"] }],
+    ["84 ÷ 4 = 21", { tipo: "factor", terminosFoco: ["4", "21"] }],
+  ]) {
+    check(
+      `"${contenido}" no se animaba sin etiqueta`,
+      escenaDeLinea(contenido, "e").focos.length === 0,
+    );
+    const conEtiqueta = escenaDeLinea({ latex: contenido, operacion }, "e");
+    const html = katex.renderToString(conEtiqueta.latex ?? "", {
+      displayMode: true,
+      throwOnError: false,
+      strict: false,
+      trust: (ctx) => ctx.command === "\\htmlClass",
+    });
+    check(
+      `y con ella sí, con fórmula compuesta y sus marcas`,
+      conEtiqueta.focos.length > 0 &&
+        conEtiqueta.focos.flatMap((f) => f.piezas ?? []).every((p) => html.includes(p)) &&
+        !/katex-error/.test(html),
+    );
+  }
+
+  // LO QUE NO PUEDE PASAR: que una etiqueta mala dibuje algo.
+  check(
+    "una etiqueta que señala un término que no está se descarta en el servidor",
+    processLSG(
+      {
+        escena: "x",
+        intencion: "explicar",
+        directivas: [
+          { tipo: "hablar", texto: "Restamos." },
+          {
+            tipo: "pizarra",
+            accion: "escribir",
+            contenido: "2x + 15 = 25",
+            operacion: { tipo: "cancelacion", terminosFoco: ["5"] },
+          },
+        ],
+      },
+      "explicar",
+      "",
+    ).pasos.find((p) => p.tipo === "pizarra").operacion === undefined,
+  );
+  check(
+    "y si llegara, la pizarra la ignora y deduce el paso",
+    escenaDeLinea(
+      { latex: "1/2 = 3/6", operacion: { tipo: "cancelacion", terminosFoco: ["7"] } },
+      "e",
+    ).origen === "deduccion",
+  );
+  check(
+    'un término es un término: el "1" no está en "11/10", ni el "5" en "15"',
+    posicionesDeTermino("11/10", "1").length === 0 && !apareceComoTermino("2x + 15 = 25", "5"),
+  );
+  check(
+    "y el exponente escrito como superíndice sí cuenta como escrito",
+    apareceComoTermino("derivada de 3x² = 6x", "2") &&
+      etiquetaValida("derivada de 3x² = 6x", { tipo: "factor", terminosFoco: ["3", "2", "6"] }),
+  );
+
+  // El servidor y la interfaz reconocen los MISMOS gestos.
+  check(
+    "el PRE Light y la pizarra aceptan la misma lista de gestos",
+    JSON.stringify([...TIPOS_OPERACION_SERVIDOR].sort()) === JSON.stringify([...TIPOS_OPERACION].sort()),
+  );
+}
+
 titulo("A00a1d. Cada bloque, en el módulo que le toca");
 
 {
@@ -784,12 +933,14 @@ titulo("A00a1c. Una sola subrutina compone las dos pizarras");
       /\?\? latexDeLaSubrutina\(linea\)/.test(pizarraTsx),
   );
   check(
-    "y le pasa la instrucción de foco del paso cuando viene dada",
-    /linea\.operacion \? \{ latex: linea\.texto, operacion: linea\.operacion \}/.test(pizarraTsx),
+    "y le pasa la instrucción de foco —y la locución— del paso cuando vienen dadas",
+    /escenaDeLinea\(pasoDeLinea\(linea\), "pizarra"\)/.test(pizarraTsx) &&
+      /linea\.operacion \? \{ operacion: linea\.operacion \}/.test(pizarraTsx) &&
+      /linea\.narracion \? \{ narracion: linea\.narracion \}/.test(pizarraTsx),
   );
   check(
-    "sólo cae al conversor genérico si la subrutina no reconoce nada",
-    /latexDeLaSubrutina\(linea\)\s*\?\? \(pareceMatematica/.test(pizarraTsx),
+    "sólo cae a la notación formal o al conversor genérico si la subrutina no reconoce nada",
+    /\?\? latexDeLaSubrutina\(linea\)\s*\?\? notacionFormal\(texto\)\s*\?\? \(pareceMatematica/.test(pizarraTsx),
   );
 
   // Y el resultado: fracciones de verdad, con el factor marcado, para las tres
@@ -945,7 +1096,7 @@ titulo("A00a3. Lo marcado se ve como una etiqueta, no como una raya");
   );
   check(
     "lo que se opera va en el color del tema",
-    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-numerador,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
+    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-numerador,\s*\.pz-operado,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
   );
   check(
     "y el denominador en el suyo, porque abajo NO se opera",

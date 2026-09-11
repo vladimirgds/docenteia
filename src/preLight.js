@@ -707,12 +707,25 @@ export function solveLinearSteps(text) {
       : `${xc(coef)}${v} ${konst > 0 ? "+ " + fmt(konst) : "- " + fmt(-konst)} = ${fmt(c)}`;
     steps.push({ explica: `Juntamos los términos que tienen ${v}: en total son ${xc(coef)}${v}.`, escribe: combined });
   }
+  // `accion` es el GESTO que este paso hace sobre la línea ANTERIOR —cancelar la constante, dividir
+  // entre el coeficiente— y los términos sobre los que lo hace, tal como están escritos allí. Con
+  // eso la lección etiqueta cada línea con lo que se va a hacer en ella (ver `escribePaso` en
+  // lsgPrompt.js) y la pizarra no tiene que adivinarlo leyendo la ecuación.
   if (konst !== 0) {
     const op = konst > 0 ? `restamos ${fmt(konst)}` : `sumamos ${fmt(-konst)}`;
-    steps.push({ explica: `Para despejar, ${op} en ambos lados (operación inversa).`, escribe: `${xc(coef)}${v} = ${fmt(c - konst)}` });
+    steps.push({
+      explica: `Para despejar, ${op} en ambos lados (operación inversa).`,
+      escribe: `${xc(coef)}${v} = ${fmt(c - konst)}`,
+      accion: { tipo: "cancelacion", terminosFoco: [fmt(Math.abs(konst))] },
+    });
   }
   if (coef !== 1) {
-    steps.push({ explica: `Dividimos ambos lados entre ${fmt(coef)} para dejar ${v} sola.`, escribe: `${v} = ${answerStr}` });
+    steps.push({
+      explica: `Dividimos ambos lados entre ${fmt(coef)} para dejar ${v} sola.`,
+      escribe: `${v} = ${answerStr}`,
+      // Con coeficiente -1 no hay cifra escrita que recuadrar ("-x = 3"): sin términos, sin etiqueta.
+      ...(Math.abs(coef) !== 1 ? { accion: { tipo: "factor", terminosFoco: [fmt(Math.abs(coef))] } } : {}),
+    });
   }
   if (steps.length === 0 || !steps[steps.length - 1].escribe.startsWith(`${v} =`)) {
     steps.push({ explica: `Entonces, ${v} vale ${answerStr}.`, escribe: `${v} = ${answerStr}` });
@@ -1374,6 +1387,41 @@ function normalizeDirectivas(arr, counter, warnings, pasos, context) {
 }
 
 // Sanea una directiva individual; devuelve null si es irrecuperable.
+// LA INSTRUCCIÓN DE FOCO DE UN PASO: los gestos que la pizarra sabe dibujar.
+//
+// Es la misma lista que `TIPOS_OPERACION` en lib/leccion/marcado.ts; se repite
+// aquí porque este módulo es JavaScript de servidor y no importa la interfaz.
+// qa/hito2.mjs comprueba que las dos digan lo mismo.
+export const TIPOS_OPERACION = ["columna", "factor", "cancelacion", "amplificacion", "suma-fracciones", "distributiva"];
+
+// ¿Está `termino` escrito en `texto` como término, y no como trozo de otro?
+// Misma regla que el marcador de la pizarra: el "5" no está en "15", ni el "1" en
+// "11/10", ni la "x" en "dx".
+export function apareceComoTermino(texto, termino) {
+  // Los superíndices cuentan como exponentes escritos: en "3x²" el 2 está, aunque no haya un "2".
+  const SUPER = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+  const comparable = (x) => normDashes(String(x ?? ""))
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => `^${[...m].map((c) => SUPER.indexOf(c)).join("")}`);
+  const s = comparable(texto);
+  const t = comparable(termino).trim();
+  if (!t) return false;
+  for (let desde = 0; desde <= s.length - t.length; ) {
+    const donde = s.indexOf(t, desde);
+    if (donde < 0) return false;
+    desde = donde + 1;
+    const antes = s[donde - 1] ?? "";
+    const antes2 = s[donde - 2] ?? "";
+    const despues = s[donde + t.length] ?? "";
+    const despues2 = s[donde + t.length + 1] ?? "";
+    if (/^\d/.test(t) && (/\d/.test(antes) || (/[.,]/.test(antes) && /\d/.test(antes2)))) continue;
+    if (/\d$/.test(t) && (/\d/.test(despues) || (/[.,]/.test(despues) && /\d/.test(despues2)))) continue;
+    if (/^[a-zA-Z]/.test(t) && /[a-zA-Z\\]/.test(antes)) continue;
+    if (/[a-zA-Z]$/.test(t) && /[a-zA-Z]/.test(despues)) continue;
+    return true;
+  }
+  return false;
+}
+
 function sanitizeDirectiva(raw, warnings, context) {
   if (!raw || typeof raw !== "object" || !TIPOS_VALIDOS.has(raw.tipo)) {
     warnings.push(`Directiva descartada en ${context}: tipo inválido o ausente.`);
@@ -1430,17 +1478,24 @@ function sanitizeDirectiva(raw, warnings, context) {
       // llegar a la interfaz.
       const op = raw.operacion;
       if (op && typeof op === "object") {
-        const TIPOS = ["amplificacion", "distributiva", "columna", "cancelacion"];
         const terminos = Array.isArray(op.terminosFoco)
           ? op.terminosFoco.map((t) => str(t)).filter(Boolean).slice(0, 8)
           : [];
-        if (TIPOS.includes(str(op.tipo)) && terminos.length > 0) {
+        // Cada término tiene que estar ESCRITO en el paso, y como término: el
+        // "5" de una etiqueta no vale porque haya un "15" en la línea. Una
+        // etiqueta que señala algo que no está haría dibujar un recuadro al
+        // aire; se descarta aquí y la pizarra deduce el paso por su cuenta.
+        const escritos = terminos.every((t) => apareceComoTermino(d.contenido, t));
+        if (TIPOS_OPERACION.includes(str(op.tipo)) && terminos.length > 0 && escritos) {
           d.operacion = { tipo: str(op.tipo), terminosFoco: terminos };
           if (str(op.etiqueta)) d.operacion.etiqueta = str(op.etiqueta).slice(0, 24);
         } else {
           warnings.push(`"operacion" no válida descartada en ${context}.`);
         }
       }
+      // Y la locución del paso: lo que el tutor dice mientras se marca. Con ella
+      // la pizarra reconoce la frase exacta en vez de aproximarla.
+      if (str(raw.narracion)) d.narracion = sanitizeMath(str(raw.narracion)).slice(0, 400);
       break;
     case "puntero":
       d.accion = str(raw.accion) || "resaltar";

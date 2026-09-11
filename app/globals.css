@@ -291,6 +291,7 @@
 .pz-factor,
 .pz-reparte,
 .pz-numerador,
+.pz-operado,
 .pz-coef-despeje {
   color: hsl(221 83% 45%);
   font-weight: 600;
@@ -299,6 +300,7 @@
 .dark .pz-factor,
 .dark .pz-reparte,
 .dark .pz-numerador,
+.dark .pz-operado,
 .dark .pz-coef-despeje {
   color: hsl(213 94% 72%);
 }

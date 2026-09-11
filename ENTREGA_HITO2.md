@@ -1391,3 +1391,112 @@ que no queda en pantalla ni una fórmula con sintaxis de consola, y que **se pul
 «Explicar regla»** y la notación sigue compuesta.
 
 `npm test` completo: **0 fallos**.
+
+---
+
+## 26. El motor entrega el paso etiquetado: el contrato, cumplido
+
+En la entrega anterior quedó dicho con precisión lo que faltaba del punto 4 del
+cliente: el **contrato** de metadatos viajaba de punta a punta, pero **nadie lo
+cumplía**. Los motores escribían texto y la pizarra lo adivinaba. Esta entrega lo
+cierra.
+
+### Lo que pedía el cliente
+
+> El paso matemático entrega: expresión, tipo de foco (columna, factor,
+> cancelación) y texto de locución. La subrutina aplica el recuadro, color o
+> tachado automáticamente sobre el token correspondiente sin importar el tema ni
+> los números.
+
+### Lo que entrega ahora el motor
+
+Cada paso operativo de la pizarra sale del motor con su instrucción de foco:
+
+```js
+{ tipo: "pizarra", contenido: "2/6 + 3/6 = (2 + 3)/6 = 5/6",
+  operacion: { tipo: "suma-fracciones", terminosFoco: ["2", "3"] },
+  narracion: "Con el mismo denominador, solo se suman los numeradores…" }
+```
+
+- `tipo` es un **gesto**, no un tema: `columna`, `factor`, `cancelacion` —los tres
+  que nombró el cliente— y tres gestos compuestos con dibujo propio:
+  `amplificacion`, `suma-fracciones` y `distributiva`. Un catálogo de miles de
+  ejercicios cabe en esos seis, porque lo que cambia de un ejercicio a otro son
+  los números, no el gesto.
+- `terminosFoco` son términos **escritos** en el paso, tal cual.
+- `narracion` es lo que dice el tutor mientras se marca.
+
+Lo emiten los nueve motores deterministas: suma, resta, multiplicación, división,
+fracciones con igual y con distinto denominador, ecuaciones lineales, derivadas y
+factorización. **14 pasos operativos, todos etiquetados, ninguno perdido en la
+validación del servidor.** Los enunciados, las preguntas y los resultados finales
+van sin etiqueta a propósito: en ellos no se opera.
+
+### Cómo lo usa la pizarra
+
+La subrutina `escenaDeLinea` es la única puerta, para las dos pizarras:
+
+1. **Si el paso trae etiqueta válida, manda ella.** Su tipo elige el compositor de
+   ese gesto —la columna con sus llevadas, la amplificación con el producto a la
+   vista—; si ningún compositor sabe leer el paso, el **marcador genérico** pone
+   el recuadro, el color o el tachado sobre los términos que diga. Una etiqueta
+   válida nunca se sustituye por una suposición.
+2. **Sólo sin etiqueta se deduce**, como hasta ahora.
+
+Cada escena lleva anotado si salió de la etiqueta o de la deducción, y la pizarra
+animada lo expone. Así se puede **afirmar desde fuera** —y se comprueba en
+Chrome— que el paso se pinta con lo que dijo el motor.
+
+### Lo que no se animaba y ahora sí
+
+Tres pasos que ninguna lectura sabía reconocer se animan ahora porque el motor
+dice qué hacer con ellos, sin haber escrito un lector para ninguno:
+
+- `12 × 4 = (10 + 2) × 4` — se recuadran el 10 y el 2 en que se rompe el número.
+- `derivada de x² = 2x` — el exponente que baja y el coeficiente en que se
+  convierte: la regla de la potencia, dibujada.
+- `x² - 9 = (x - 3)(x + 3)` — el 9 y los dos 3, con el rótulo «9 = 3²».
+
+Y la división, que era la única lección **sin un solo paso animado**: escribía
+`84 ÷ 4 = 21 (porque 4 × 21 = 84)`, que es una frase y no se puede componer como
+fórmula. Ahora son dos líneas limpias —la división y su comprobación— con el
+divisor y el cociente recuadrados en las dos.
+
+### Las etiquetas malas no dibujan nada
+
+- Un término que no está escrito en el paso **invalida la etiqueta**: el servidor
+  la descarta y la pizarra deduce el paso como antes. Nunca un recuadro al aire.
+- Un término es un término: el «5» no está en «15», ni el «1» en «11/10», ni la
+  «x» en «dx». Y un superíndice cuenta como escrito: en «3x²» el 2 está.
+- El servidor y la interfaz reconocen la misma lista de gestos, y una prueba lo
+  vigila.
+
+### Dos pruebas que no probaban nada
+
+Al revisar la batería apareció algo que conviene decir: dos cadenas de LaTeX de
+`qa/hito2.mjs` estaban escritas con **una** barra dentro de las comillas. En
+JavaScript `"\frac"` es un salto de página seguido de «rac», y `"\times"` un
+tabulador seguido de «imes». Una de esas pruebas —«no se marca la x de una
+macro»— corría sobre una cadena **sin ninguna macro**, así que pasaba sin probar
+nada; además `\times` ni siquiera lleva x. Las dos están corregidas, la de la
+macro usa una que sí contiene la letra, y un rastreo de todo el QA y de las
+fuentes de la pizarra confirma que no queda ninguna más.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **406 comprobaciones**: el contrato motor por motor pasado
+por el PRE Light real, los tres pasos que sólo se animan con etiqueta, y el
+rechazo de etiquetas malas. `qa/navegador.mjs` sube a **27** y comprueba en una
+lección de fracciones de verdad que la pizarra dibuja **por etiqueta**
+(`suma-fracciones`), no por deducción. `npm test` completo, con las baterías que
+hablan con Gemini en vivo: **0 fallos**.
+
+### Lo que queda para después, dicho claro
+
+El catálogo de ejercicios del panel docente guarda sus pasos resueltos, pero hoy
+**ninguna lección los lee**: las lecciones salen de los motores. Cuando se conecte
+el catálogo a las lecciones, sus pasos podrán llevar la misma etiqueta y la
+pizarra no necesitará ningún cambio: es el camino que ya recorren los pasos de los
+motores. Y el generador de Gemini puede enviar la etiqueta —el servidor la valida
+igual—, pero no se le ha pedido todavía: cambiar lo que se le pide a un modelo en
+vivo merece su propia prueba, no un añadido de pasada.

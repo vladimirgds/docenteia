@@ -706,7 +706,15 @@ while (Date.now() - desdeFr < 40_000) {
       const fase = [...document.querySelectorAll("h2")]
         .map((h) => h.textContent?.trim())
         .find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "";
-      return { fase, texto: document.body.innerText ?? "" };
+      // Quién decidió lo que marca la pizarra animada en este momento: la
+      // etiqueta que mandó el motor, o una deducción a partir del texto.
+      const panel = document.querySelector(".pz-animada");
+      return {
+        fase,
+        texto: document.body.innerText ?? "",
+        origen: panel?.getAttribute("data-origen") ?? null,
+        gesto: panel?.getAttribute("data-gesto") ?? null,
+      };
     }),
   );
   await paginaFr.waitForTimeout(400);
@@ -723,6 +731,7 @@ check(
   `${pizzaFueraDeSitio.length} muestras`,
 );
 
+
 let fraccion = null;
 for (let k = 0; k < 100 && !fraccion; k++) {
   fraccion = await paginaFr.evaluate(() => {
@@ -735,6 +744,9 @@ for (let k = 0; k < 100 && !fraccion; k++) {
     if (marcas.length === 0) return null;
     return {
       latex: panel.querySelector("annotation")?.textContent ?? "",
+      // Quién decidió lo que se marca: la etiqueta del motor o una deducción.
+      origen: panel.getAttribute("data-origen"),
+      gesto: panel.getAttribute("data-gesto"),
       marcas: marcas.length,
       // ¿Están coloreadas? Es lo que el cliente pidió: que se lean como una
       // etiqueta y no como texto negro con una raya encima.
@@ -758,6 +770,15 @@ if (!fraccion) {
   console.log(`  · piezas por destapar: ${fraccion.ocultas} de ${fraccion.total}`);
 
   check("el paso de fracciones llega a la pizarra animada con sus marcas", fraccion.marcas >= 1);
+  // EL CONTRATO DEL CLIENTE, VISTO DESDE EL NAVEGADOR: el motor manda el gesto
+  // y los términos con el paso, y la pizarra dibuja lo que dice la etiqueta en
+  // lugar de adivinarlo leyendo el texto.
+  console.log(`  · dibujado por: ${fraccion.origen} (${fraccion.gesto})`);
+  check(
+    "y lo dibuja por la etiqueta que manda el motor, no por deducción",
+    fraccion.origen === "etiqueta",
+    `${fraccion.origen}/${fraccion.gesto}`,
+  );
   check(
     "y el término marcado NO va en negro",
     fraccion.colores.every((c) => c !== "rgb(0, 0, 0)"),

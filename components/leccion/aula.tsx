@@ -29,6 +29,7 @@ import {
 } from "@/lib/leccion/voz";
 import {
   Pizarra,
+  pasoDeLinea,
   tituloDeFase,
   type FaseAbierta,
   type LineaPizarra,
@@ -342,7 +343,12 @@ export function Aula({
    * tarjeta de arriba ni al revés.
    */
   const anadirLinea = useCallback(
-    (texto: string, clase: "formula" | "explicacion", operacion?: OperacionPaso | null) => {
+    (
+      texto: string,
+      clase: "formula" | "explicacion",
+      operacion?: OperacionPaso | null,
+      narracion?: string | null,
+    ) => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
       const linea: LineaPizarra = {
@@ -351,6 +357,7 @@ export function Aula({
         clase,
         aclaracion: esAclaracion.current,
         ...(operacion ? { operacion } : {}),
+        ...(narracion ? { narracion } : {}),
       };
       asegurarFase();
 
@@ -508,7 +515,7 @@ export function Aula({
       // fórmulas y el ejercicio. Un párrafo explicativo va al subtítulo, aunque
       // llegue por una directiva de pizarra: desde que las aclaraciones las
       // redacta el modelo en vivo, eso puede pasar.
-      writeBoard: (texto, operacion) => {
+      writeBoard: (texto, operacion, narracion) => {
         const contenido = String(texto ?? "").trim();
         if (!contenido) return;
 
@@ -523,8 +530,11 @@ export function Aula({
           ? [contenido]
           : contenido.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
+        // La etiqueta y la locución son del PASO; si la directiva trae varias
+        // líneas, cada una la usa sólo si sus términos están en ella —la
+        // subrutina lo comprueba—, así que no se cuela en la línea de al lado.
         for (const linea of lineas) {
-          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula", operacion);
+          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula", operacion, narracion);
           else fijarSubtitulo(linea);
         }
       },
@@ -963,12 +973,10 @@ export function Aula({
     // Empujarla igualmente la quitaría de arriba sin ponerla en ninguna parte.
     if (cuentaDeLaRegla) pasos.push({ latex: cuentaDeLaRegla });
 
-    if (ejercicio?.texto) {
-      pasos.push({ latex: ejercicio.texto, ...(ejercicio.operacion ? { operacion: ejercicio.operacion } : {}) });
-    }
+    if (ejercicio?.texto) pasos.push(pasoDeLinea(ejercicio));
     for (const linea of desarrollo) {
       if (linea.aclaracion) continue;
-      pasos.push({ latex: linea.texto, ...(linea.operacion ? { operacion: linea.operacion } : {}) });
+      pasos.push(pasoDeLinea(linea));
     }
     return pasos;
     // `cuentaDeLaRegla` entra en la lista: sin ella el guion no se rehacía al

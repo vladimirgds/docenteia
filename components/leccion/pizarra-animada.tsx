@@ -181,6 +181,11 @@ export function PizarraAnimada({
         proyeccion && "pz-proyeccion",
         className,
       )}
+      // Quién decidió lo que se marca: la etiqueta del paso o la deducción. No
+      // cambia nada en pantalla; permite comprobar desde fuera que un paso
+      // etiquetado por el motor se pinta con su etiqueta.
+      data-origen={escena.origen}
+      data-gesto={escena.clase}
     >
       <div ref={contenedor} id={idPizarra} className="relative inline-block min-w-full">
         {/*

@@ -8,7 +8,7 @@ import { Check } from "lucide-react";
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import { fraccionEnTexto } from "@/lib/leccion/diagramas";
-import type { OperacionPaso } from "@/lib/leccion/marcado";
+import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
@@ -49,6 +49,8 @@ export interface LineaPizarra {
    * marca exactamente eso sin saber de qué tema se trata.
    */
   operacion?: OperacionPaso;
+  /** Lo que el tutor dice mientras se marca este paso, si el generador lo envía. */
+  narracion?: string;
   /**
    * La línea pertenece a una ACLARACIÓN pedida por el alumno, no al hilo de la
    * lección. Se agrupa aparte y se sustituye en la siguiente aclaración, para
@@ -697,11 +699,24 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
  * esconden algo dentro de `.pz-animada`: aquí se ve la línea entera.
  */
 function latexDeLaSubrutina(linea: LineaPizarra): string | null {
-  const escena = escenaDeLinea(
-    linea.operacion ? { latex: linea.texto, operacion: linea.operacion } : linea.texto,
-    "pizarra",
-  );
+  const escena = escenaDeLinea(pasoDeLinea(linea), "pizarra");
   return escena.focos.length > 0 ? escena.latex : null;
+}
+
+/**
+ * Una línea de la pizarra, como PASO: su texto, su instrucción de foco y su
+ * locución si el motor las mandó.
+ *
+ * En un solo sitio a propósito. La pizarra clásica y la animada tienen que
+ * entregarle a la subrutina exactamente lo mismo, o volverían a componer la
+ * misma línea de dos maneras.
+ */
+export function pasoDeLinea(linea: Pick<LineaPizarra, "texto" | "operacion" | "narracion">): PasoSemantico {
+  return {
+    latex: linea.texto,
+    ...(linea.operacion ? { operacion: linea.operacion } : {}),
+    ...(linea.narracion ? { narracion: linea.narracion } : {}),
+  };
 }
 
 function LineaRenderizada({
@@ -760,7 +775,6 @@ function LineaRenderizada({
       ?? (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
       // El coeficiente y el exponente marcados, para que se vea lo que se oye.
       ?? (destacarTerminos ? lineaResaltada(texto) : null)
-      ?? notacionFormal(texto)
       // LA MISMA SUBRUTINA QUE ANIMA COMPONE TAMBIÉN LO QUIETO.
       //
       // Aquí se caía a texto plano: el paso "3/5 = (3 * 2)/(5 * 2) = 6/10"
@@ -775,7 +789,16 @@ function LineaRenderizada({
       // si no— y devuelve el LaTeX ya marcado. La misma para las dos pizarras,
       // para el desarrollo y para lo que responda "Explicar regla", sin una
       // sola rama por tipo de ejercicio.
+      //
+      // Va ANTES que la notación formal. Detrás, un paso etiquetado como
+      // "derivada de x² = 2x" se componía aquí sin marcas —la notación formal
+      // lo reconocía primero— mientras abajo salía con el exponente y el
+      // coeficiente recuadrados: la misma línea, dos dibujos. La subrutina ya
+      // usa la notación formal por dentro, así que la fórmula es la misma; lo
+      // que añade son las marcas. Y una línea sin etiqueta que la subrutina no
+      // reconoce sigue su camino de siempre.
       ?? latexDeLaSubrutina(linea)
+      ?? notacionFormal(texto)
       ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
     if (!latex) return null;
 

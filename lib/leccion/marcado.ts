@@ -22,16 +22,49 @@
 
 import type { Escena, Foco, TipoFoco } from "./animacion.ts";
 
-/** Las operaciones que la pizarra sabe señalar. */
-export type TipoOperacion = "amplificacion" | "distributiva" | "columna" | "cancelacion";
+/**
+ * Las operaciones que la pizarra sabe señalar.
+ *
+ * Son TIPOS DE GESTO, no tipos de ejercicio: un catálogo de miles de ejercicios
+ * cabe en estos pocos, porque lo que cambia de un ejercicio a otro son los
+ * números y el tema, no el gesto con el que se enseña. Las tres primeras son
+ * las que nombró el cliente —columna, factor, cancelación—; las otras tres son
+ * gestos compuestos que tienen su propio dibujo.
+ */
+export type TipoOperacion =
+  | "columna"
+  | "factor"
+  | "cancelacion"
+  | "amplificacion"
+  | "suma-fracciones"
+  | "distributiva";
+
+/**
+ * La lista, para quien necesite validar sin conocer el tipo.
+ *
+ * `src/preLight.js` mantiene su propia copia —es JavaScript de servidor y no
+ * importa módulos de la interfaz—; `qa/hito2.mjs` comprueba que las dos digan
+ * lo mismo.
+ */
+export const TIPOS_OPERACION: readonly TipoOperacion[] = [
+  "columna",
+  "factor",
+  "cancelacion",
+  "amplificacion",
+  "suma-fracciones",
+  "distributiva",
+];
 
 /** La instrucción de foco que acompaña a un paso. */
 export interface OperacionPaso {
   tipo: TipoOperacion;
   /**
-   * Los términos sobre los que actúa la operación, tal como aparecen escritos:
-   * `["3"]` para el factor de una amplificación, `["2x"]` para lo que se
-   * cancela. Cada uno recibe SU marca y SU recuadro.
+   * Los términos sobre los que actúa la operación, TAL COMO APARECEN ESCRITOS
+   * en el paso: `["2", "3"]` para los numeradores que se suman, `["5"]` para lo
+   * que se cancela. Cada uno recibe SU marca y SU recuadro.
+   *
+   * Un término que no esté en el paso invalida la instrucción entera: la
+   * pizarra no dibuja un recuadro alrededor de algo que no está escrito.
    */
   terminosFoco: string[];
   /** Rótulo corto que acompaña al recuadro: "llevo 1", "×3". */
@@ -49,19 +82,95 @@ export interface PasoSemantico {
 
 /** Cómo se dibuja cada operación. */
 const TRAZO: Record<TipoOperacion, TipoFoco> = {
-  amplificacion: "caja",
-  distributiva: "caja",
   columna: "caja",
+  factor: "caja",
   cancelacion: "tachado",
+  amplificacion: "caja",
+  "suma-fracciones": "caja",
+  distributiva: "caja",
 };
 
 /** Lo que el tutor dice si el paso no trae narración propia. */
 const NARRACION: Record<TipoOperacion, (terminos: string[]) => string> = {
-  amplificacion: (t) => `Multiplicamos arriba y abajo por ${t[0] ?? "el mismo número"}.`,
-  distributiva: (t) => `Repartimos ${t[0] ?? "el factor"} entre los dos sumandos del paréntesis.`,
-  columna: (t) => `Operamos ${t[0] ?? "esta columna"}.`,
+  columna: (t) => `Operamos ${t.join(" y ") || "esta columna"}.`,
+  factor: (t) => `Fíjate en ${t.join(" y ")}.`,
   cancelacion: (t) => `Se cancela ${t.join(" con ")}.`,
+  amplificacion: (t) => `Multiplicamos arriba y abajo por el mismo número: ${t.join(" es ")}.`,
+  "suma-fracciones": (t) => `Operamos los numeradores: ${t.join(" y ")}.`,
+  distributiva: (t) => `Repartimos entre ${t.join(" y ")}.`,
 };
+
+// ── ¿Está el término en el paso? ─────────────────────────────────────────────
+
+/**
+ * ¿Aparece `termino` en `texto` COMO TÉRMINO, y no como trozo de otro?
+ *
+ * Un "1" no está en "11/10": las dos cifras de "11" son un número entero, y
+ * recuadrar la primera diría que se opera con un uno que no existe. Así que un
+ * término que empieza o acaba en cifra no puede tener otra cifra pegada por ese
+ * lado —ni una coma o un punto decimal que la continúe—. Es la misma regla que
+ * aplica el marcador, y la usa también la validación del paso: si la etiqueta
+ * nombra un término que no está, la etiqueta no vale.
+ */
+export function posicionesDeTermino(texto: string, termino: string): number[] {
+  const t = String(termino ?? "").trim();
+  const s = String(texto ?? "");
+  if (!t) return [];
+
+  const posiciones: number[] = [];
+  let desde = 0;
+  while (desde <= s.length - t.length) {
+    const donde = s.indexOf(t, desde);
+    if (donde < 0) break;
+    desde = donde + 1;
+
+    const antes = s[donde - 1] ?? "";
+    const antesDeAntes = s[donde - 2] ?? "";
+    const despues = s[donde + t.length] ?? "";
+    const despuesDeDespues = s[donde + t.length + 1] ?? "";
+
+    if (/^\d/.test(t)) {
+      if (/\d/.test(antes)) continue;
+      if (/[.,]/.test(antes) && /\d/.test(antesDeAntes)) continue;
+    }
+    if (/\d$/.test(t)) {
+      if (/\d/.test(despues)) continue;
+      if (/[.,]/.test(despues) && /\d/.test(despuesDeDespues)) continue;
+    }
+    // Con las letras, lo mismo: la "x" de "dx" o de "max" no es la incógnita, y
+    // un término que empieza por letra no puede caer dentro del nombre de una
+    // macro —la "x" de `\times`—.
+    if (/^[a-zA-Z]/.test(t)) {
+      if (/[a-zA-Z]/.test(antes)) continue;
+      if (dentroDeMacro(s, donde)) continue;
+    }
+    if (/[a-zA-Z]$/.test(t) && /[a-zA-Z]/.test(despues)) continue;
+
+    posiciones.push(donde);
+  }
+  return posiciones;
+}
+
+/**
+ * El texto tal como se compara: guiones unificados y superíndices escritos como
+ * exponentes. En "3x²" el exponente 2 ESTÁ escrito —es el que baja al derivar—
+ * aunque no haya un carácter "2" en la cadena.
+ */
+function comparable(texto: string): string {
+  const SUPER = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+  return String(texto ?? "")
+    .replace(/[−–—]/g, "-")
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => `^${[...m].map((c) => SUPER.indexOf(c)).join("")}`);
+}
+
+/** La etiqueta de un paso vale si TODOS sus términos están escritos en él. */
+export function etiquetaValida(texto: string, operacion: OperacionPaso | undefined | null): boolean {
+  if (!operacion || !TIPOS_OPERACION.includes(operacion.tipo)) return false;
+  const terminos = (operacion.terminosFoco ?? []).map((t) => String(t ?? "").trim()).filter(Boolean);
+  if (terminos.length === 0) return false;
+  const plano = comparable(texto);
+  return terminos.every((t) => posicionesDeTermino(plano, comparable(t)).length > 0);
+}
 
 // ── Partir por el igual ──────────────────────────────────────────────────────
 
@@ -122,23 +231,14 @@ export function marcarTerminos(
   terminos.forEach((crudo) => {
     const termino = String(crudo ?? "").trim();
     if (!termino) return;
-    let aparicion = 0;
-    let desde = 0;
-    while (desde <= miembro.length - termino.length) {
-      const donde = miembro.indexOf(termino, desde);
-      if (donde < 0) break;
-      // Un término que empieza por letra no puede caer dentro del nombre de una
-      // macro: la "x" de `\times` no es la incógnita.
-      if (!(/^[a-zA-Z]/.test(termino) && dentroDeMacro(miembro, donde))) {
-        tramos.push({
-          desde: donde,
-          hasta: donde + termino.length,
-          clase: claseDe(termino, aparicion),
-        });
-        aparicion++;
-      }
-      desde = donde + 1;
-    }
+    // Las apariciones COMO TÉRMINO: ni el "1" de "11", ni la "x" de `\times`.
+    posicionesDeTermino(miembro, termino).forEach((donde, aparicion) => {
+      tramos.push({
+        desde: donde,
+        hasta: donde + termino.length,
+        clase: claseDe(termino, aparicion),
+      });
+    });
   });
 
   // De izquierda a derecha, y ante un solapamiento gana el tramo más largo: si
@@ -169,13 +269,40 @@ export function marcarTerminos(
  * recuadro— y se busca dentro de cada miembro por separado, de modo que el
  * marcado no puede cruzar el igual por construcción, no por cuidado.
  */
-export function escenaDePasoSemantico(paso: PasoSemantico, id: string): Escena | null {
+export function escenaDePasoSemantico(
+  paso: PasoSemantico,
+  id: string,
+  /**
+   * Cómo pasar a LaTeX lo que escribe el motor, si quien llama lo sabe.
+   *
+   * El paso llega como lo escribe el motor —"2/6 + 3/6 = 5/6", "12 × 4"—, y
+   * marcar sobre ese texto y pasárselo a KaTeX dejaría barras y aspas sueltas
+   * en pantalla: la notación degradada que el cliente ya señaló una vez. Así
+   * que se compone el paso Y cada término con la misma función, y se marca
+   * sobre el resultado: "1/2" se busca como `\frac{1}{2}`.
+   *
+   * Si el paso no se puede componer —es prosa—, no se marca nada: poner un
+   * recuadro en mitad de una frase compuesta como fórmula es peor que no
+   * ponerlo.
+   */
+  componer?: (texto: string) => string | null,
+): Escena | null {
   const operacion = paso.operacion;
-  const base = String(paso.latex ?? "").trim();
-  if (!operacion || !base) return null;
+  const texto = String(paso.latex ?? "").trim();
+  if (!operacion || !texto) return null;
 
-  const terminos = (operacion.terminosFoco ?? []).map((t) => String(t ?? "").trim()).filter(Boolean);
+  const base = componer ? componer(texto) : texto;
+  if (!base) return null;
+
+  // Los términos tal como se DICEN —para la locución— y tal como se ESCRIBEN
+  // en el LaTeX —para buscarlos—. Decir "\frac{1}{2}" en voz alta no ayuda.
+  const dichos = (operacion.terminosFoco ?? []).map((t) => String(t ?? "").trim()).filter(Boolean);
+  const terminos = dichos.map((t) => (componer ? (componer(t) ?? t) : t));
   if (terminos.length === 0) return null;
+
+  // Rojo lo que se va; azul lo que se opera. El color sale del GESTO, no del
+  // tema: una cancelación se ve igual en una ecuación que en una fracción.
+  const color = operacion.tipo === "cancelacion" ? "pz-marcado" : "pz-operado";
 
   // El marcado va por miembros: lo que se cancela a la izquierda es una marca,
   // y lo que se cancela a la derecha es otra. Partido por el igual, ninguna
@@ -189,7 +316,7 @@ export function escenaDePasoSemantico(paso: PasoSemantico, id: string): Escena |
       terminos,
       (termino, aparicion) => {
         const clase = `pz-foco-${terminos.indexOf(termino)}-${iParte}-${aparicion}`;
-        return `pz-marcado ${clase}`;
+        return `${color} ${clase}`;
       },
     );
     piezas.push(...resultado.piezas);
@@ -200,18 +327,23 @@ export function escenaDePasoSemantico(paso: PasoSemantico, id: string): Escena |
   if (piezas.length === 0) return null;
 
   const foco: Foco = {
-    clase: "pz-marcado",
+    clase: color,
     piezas,
     tipo: TRAZO[operacion.tipo] ?? "caja",
-    narracion: paso.narracion?.trim() || NARRACION[operacion.tipo](terminos),
+    // Lo que dice el motor, que es lo que va a decir el tutor: así la voz y el
+    // recuadro se encuentran.
+    narracion: paso.narracion?.trim() || NARRACION[operacion.tipo](dichos),
     ...(operacion.etiqueta ? { etiqueta: operacion.etiqueta } : {}),
   };
 
   return {
     id,
-    texto: base,
+    texto,
     latex: marcadas.join(" = "),
-    narracion: paso.narracion?.trim() || NARRACION[operacion.tipo](terminos),
+    // La entrada es neutra A PROPÓSITO. Si dijera lo mismo que el foco, la
+    // frase del tutor empataría con las dos y la pizarra podría quedarse en la
+    // entrada —sin recuadro— justo mientras se explica lo recuadrado.
+    narracion: "Fíjate en este paso.",
     clase: "semantica",
     focos: [foco],
   };

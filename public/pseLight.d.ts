@@ -70,9 +70,10 @@ export interface UIPSELight {
   setModule(etiqueta: string): void;
   /**
    * Escribe en la pizarra. `operacion` es la instrucción de foco del paso
-   * —qué se opera y sobre qué términos— cuando el generador la envía.
+   * —qué se opera y sobre qué términos— y `narracion` lo que el tutor dice
+   * mientras se marca, cuando el generador los envía.
    */
-  writeBoard(texto: string, operacion?: OperacionPaso | null): unknown;
+  writeBoard(texto: string, operacion?: OperacionPaso | null, narracion?: string | null): unknown;
   writeBoardExplain?(texto: string): unknown;
   highlightBoard(objetivo: string | null): void;
   clearBoard(): void;

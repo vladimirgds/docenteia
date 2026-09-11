@@ -4,12 +4,14 @@ import {
   operacionDeLinea,
   type OperacionEnColumna,
 } from "./columna.ts";
-import { planoALatex } from "../matematicas/index.ts";
+import { notacionFormal, pareceMatematica, planoALatex } from "../matematicas/index.ts";
 import {
   escenaDePasoSemantico,
+  etiquetaValida,
   leerAmplificacion,
   leerSumaDeFracciones,
   type PasoSemantico,
+  type TipoOperacion,
 } from "./marcado.ts";
 
 /**
@@ -93,6 +95,15 @@ export interface Escena {
     | "distributiva"
     | "semantica"
     | "texto";
+  /**
+   * Quién decidió qué se marca: la instrucción de foco que traía el paso, o la
+   * deducción a partir de su contenido porque no traía ninguna.
+   *
+   * No cambia el dibujo. Sirve para poder AFIRMAR, y comprobar en un navegador,
+   * que un paso etiquetado por el motor se pinta con su etiqueta y no con una
+   * suposición.
+   */
+  origen?: "etiqueta" | "deduccion";
 }
 
 /** Nombre de cada posición decimal, de derecha a izquierda. */
@@ -912,22 +923,64 @@ export function escenaDeTexto(texto: string, id: string): Escena {
 // ── Puerta de entrada ────────────────────────────────────────────────────────
 
 /**
- * La escena de una línea, probando cada guion por orden de especificidad.
+ * QUÉ COMPOSITOR DIBUJA CADA GESTO.
  *
- * El orden importa: "24 + 17" es a la vez una cuenta en columna y, si se mira
- * de lejos, una expresión; se anima como cuenta, que es lo que se está
- * enseñando.
+ * Es la tabla que convierte el `tipo` de la instrucción de foco en un dibujo.
+ * Hay una entrada por GESTO —no por tema ni por ejercicio—, y cada compositor
+ * lee los números del propio paso: la etiqueta dice qué se hace, el paso dice
+ * con qué. Un ejercicio nuevo del catálogo usa esta tabla sin tocarla.
+ *
+ * `factor` no tiene dibujo compuesto propio salvo en un despeje —dividir entre
+ * el coeficiente—; en cualquier otro paso lo dibuja el marcador genérico, que
+ * pone su recuadro sobre los términos que diga la etiqueta.
+ */
+const COMPOSITOR: Record<TipoOperacion, (texto: string, id: string) => Escena | null> = {
+  columna: (t, id) => escenaDeColumna(t, id),
+  factor: (t, id) => escenaDeDespeje(t, id),
+  cancelacion: (t, id) => escenaDeDespeje(t, id) ?? escenaDeSimplificacion(t, id),
+  amplificacion: (t, id) => escenaDeAmplificacion(t, id),
+  "suma-fracciones": (t, id) => escenaDeSumaDeFracciones(t, id),
+  distributiva: (t, id) => escenaDeDistributiva(t, id),
+};
+
+/**
+ * El paso en LaTeX, para el marcador genérico. `null` si es prosa: una frase
+ * compuesta como fórmula sale en cursiva y pegada, y ahí no se marca nada.
+ */
+function componerPaso(texto: string): string | null {
+  const limpio = String(texto ?? "").trim();
+  if (!limpio) return null;
+  return notacionFormal(limpio) ?? (pareceMatematica(limpio) ? planoALatex(limpio) : null);
+}
+
+/**
+ * LA SUBRUTINA: la escena de un paso, etiquetado o no.
+ *
+ * Es la única puerta. La usan la pizarra animada y la clásica, el desarrollo y
+ * lo que responda "Explicar regla", y por eso las dos pizarras no pueden
+ * componer la misma línea de dos maneras distintas.
+ *
+ *   1. Si el paso trae INSTRUCCIÓN DE FOCO y es válida —todos sus términos
+ *      están escritos en él—, manda ella: su tipo elige el compositor, y si ese
+ *      compositor no sabe leer el paso, el marcador genérico pone el recuadro,
+ *      el color o el tachado sobre los términos que diga. Una etiqueta válida
+ *      NUNCA se sustituye por una suposición.
+ *   2. Sólo si el paso no trae etiqueta —o la trae mal— se deduce del
+ *      contenido. Cada lectura es estricta: la que no reconoce lo suyo devuelve
+ *      null y deja pasar a la siguiente. El orden importa: "24 + 17" es a la vez
+ *      una cuenta en columna y una expresión, y se anima como cuenta.
  */
 export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena {
   const texto = typeof paso === "string" ? paso : String(paso.latex ?? "");
 
-  return (
-    // 1. Si el paso viene ETIQUETADO, manda su etiqueta. Es el camino que hace
-    //    que un ejercicio nuevo del catálogo se anime sin tocar el frontend.
-    (typeof paso === "string" ? null : escenaDePasoSemantico(paso, id)) ??
-    // 2. Y si no —hoy la lección llega en texto plano—, se deduce del contenido.
-    //    Cada lectura es estricta: la que no reconoce lo suyo devuelve null y
-    //    deja pasar a la siguiente.
+  if (typeof paso !== "string" && paso.operacion && etiquetaValida(texto, paso.operacion)) {
+    const porEtiqueta =
+      COMPOSITOR[paso.operacion.tipo]?.(texto, id) ??
+      escenaDePasoSemantico(paso, id, componerPaso);
+    if (porEtiqueta) return { ...porEtiqueta, origen: "etiqueta" };
+  }
+
+  const deducida =
     escenaDeColumna(texto, id) ??
     escenaDeDespeje(texto, id) ??
     escenaDeDistributiva(texto, id) ??
@@ -935,8 +988,8 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
     escenaDeSumaDeFracciones(texto, id) ??
     escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
-    escenaDeTexto(texto, id)
-  );
+    escenaDeTexto(texto, id);
+  return { ...deducida, origen: "deduccion" };
 }
 
 /**
