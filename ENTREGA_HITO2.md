@@ -1701,3 +1701,124 @@ uso—, y una repetición de la batería completa de Chrome en ese momento no ll
 a terminar por esa razón, no por el código: la misma batería había terminado
 limpia, completa y dos veces seguidas —58 de 58— minutos antes, con capturas de
 pantalla propias que confirman cada uno de los cuatro puntos.
+
+## 29. Cuatro observaciones más sobre lo ya desplegado: dos correcciones y dos huecos que faltaban por llenar
+
+El cliente revisó el resultado de `9b06d70` ya en producción y devolvió cuatro
+puntos nuevos, dos de ellos correcciones sobre lo que se acababa de entregar y
+dos huecos que el punto 28 no cubría todavía. Los cuatro, reproducidos y
+verificados antes de darlos por cerrados.
+
+### 1. Tipografía: el cliente corrigió el reparto de roles
+
+El punto 28 le había puesto letra manuscrita («Segoe Print») al **habla** del
+tutor —el subtítulo, el pie de la pizarra animada— siguiendo al pie de la letra
+la redacción original del cliente. Su revisión lo corrige explícitamente:
+
+> «Subtítulos del Avatar (Barra inferior): Debe mantenerse con tipografía
+> estándar limpia del sistema (Inter / Sans-serif normal)... Actualmente le
+> pusiste la cursiva manuscrita a todo el texto inferior.»
+> «Pizarra y notas de clase: Es aquí donde debe aplicarse la fuente estilo
+> pizarra escolar (Chalkboard SE / Segoe Print).»
+
+Es decir: no son tres roles con tres fuentes —habla, pizarra, fórmulas—, son
+**dos**. El habla del tutor se lee con la tipografía estándar de la interfaz,
+sin cursiva. Y «Chalkboard SE» y «Segoe Print», que el punto 28 había repartido
+una para el habla y otra para lo escrito, son en realidad **dos alternativas
+del mismo estilo de pizarra**.
+
+Se quitó la clase `.pz-manuscrita` por completo —no queda ni un rastro, lo
+comprueba `qa/hito2.mjs`— y el subtítulo, el pie de la pizarra animada y una
+nota de prosa que no se dejó componer como fórmula vuelven a heredar la
+tipografía limpia de siempre. `.pz-tiza` —la etiqueta de la llevada, los
+rótulos del diagrama, una nota escrita en la pizarra— ahora lleva `"Chalkboard
+SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif` como una
+sola lista de alternativas. Comprobado en Chrome de verdad: el subtítulo mide
+`ui-sans-serif, system-ui, sans-serif...`, la etiqueta mide `"Chalkboard SE",
+"Segoe Print"...`, y la fórmula sigue midiendo la suya propia de KaTeX —las tres
+distintas entre sí, ninguna pisando a otra—.
+
+### 2. «llevo 1» volvió a tapar una cifra, esta vez con llevadas encadenadas
+
+El punto 28 corrigió el caso simple —una sola llevada—, pero el cliente lo
+volvió a fotografiar con una suma de varias cifras, donde una columna **recibe**
+una llevada y a la vez **genera** la suya propia hacia la siguiente (por
+ejemplo, en `234 + 876`: unidades lleva a decenas, y decenas, con esa llevada ya
+sumada, genera otra hacia centenas). La caja que mide esa columna sólo incluía
+las cifras del sumando, no la llevada que entra por arriba, así que el tope de
+la caja —de donde cuelga el rótulo— quedaba por debajo de esa llevada, y «llevo
+1» aterrizaba encima de ella en vez de sobre su propia cifra.
+
+El arreglo no necesitó geometría nueva: la marca de la llevada ahora lleva
+también la clase de SU PROPIA columna (`pz-llevada-N pz-col-N`, no sólo
+`pz-llevada-N`), así que entra en la medición existente de esa caja, y el mismo
+`dy="-0.65em"` del punto 28 la despeja correctamente porque ahora mide contra el
+tope real, más alto. `qa/hito2.mjs` fija `"234 + 876"` como caso de regresión:
+tres llevadas encadenadas, las tres con su doble clase.
+
+### 3. En Conceptos, la proyección no enseñaba nada; en la práctica difícil, escondía de dónde salía el común denominador
+
+Dos huecos en la misma fase, los dos con la palabra «proyección» de por medio:
+
+**3a. El diagrama no se proyectaba.** El botón de Modo proyección seguía en pie
+durante la fase de Concepto —eso lo arregló una ronda anterior—, pero sin nada
+animado que mostrar, el panel proyectado se limitaba a componer el último texto
+escrito con KaTeX, a tamaño de fórmula: una frase diminuta en medio de la
+pantalla negra. El gráfico circular que la pizarra clásica sí dibuja arriba
+nunca llegaba al panel proyectado. Ahora, cuando la fase de Concepto tiene un
+diagrama para el tema en curso, se dibuja ahí en grande —hasta 44rem de
+ancho— en lugar del texto suelto, con el mismo cálculo (`conceptoDeFraccion`,
+en `lib/leccion/diagramas.ts`) que usa la pizarra clásica, para que las dos no
+puedan discrepar sobre si ya se dijo «numerador» o «denominador».
+
+Verificado en Chrome de verdad esto costó un vaivén: la primera versión centraba
+el diagrama con `align-items: center` en un contenedor flex en columna, y ese
+`align-items` —el eje CRUZADO de una columna, el horizontal— hacía que el `div`
+de `DiagramaConcepto` dejara de estirarse al ancho disponible y se encogiera a
+su contenido; el SVG, con `width: 100%` resuelto contra ese ancho ya encogido,
+terminaba en el tamaño de reserva de un SVG sin tamaño (300×150 px), más
+pequeño que antes de tocar nada. Se vio exactamente así en una medición con
+Playwright —`300px` de ancho real— antes de corregirlo quitando ese
+`align-items` (el valor por defecto, `stretch`, es el que hacía falta) y
+volviendo a medir: **646px**, la práctica totalidad del contenedor.
+
+**3b. La práctica difícil decía el común denominador sin escribir de dónde
+salía.** En «1/2 + 1/3», la locución decía «el mínimo común denominador es 6» y
+la pizarra pasaba directo a las fracciones ya convertidas, sin el paso
+intermedio. El cliente lo señaló con su propio ejemplo —«2×3=6 o múltiplos
+comunes»—, y hacen falta las dos formas: multiplicar los denominadores sólo da
+el mínimo común múltiplo cuando son coprimos (`gcd = 1`); la mayoría de los
+pares de "difícil"/"experto" del generador NO lo son, y aplicar ese atajo ahí
+habría escrito un común denominador que no es el mínimo. Ahora, antes de
+convertir las fracciones, se escribe y se narra el paso que corresponda:
+`MCM(2, 3): 2 × 3 = 6` cuando son coprimos, o `Múltiplos de 4: 4, 8, 12.
+Múltiplos de 6: 6, 12. El menor en común: 12.` cuando no. Comprobado con las
+cuatro combinaciones del generador (dos coprimas, dos no) y con las 200
+sesiones × 8 turnos del barrido completo, incluida `Resuelve 1/2 + 1/3`
+explícitamente: 0 violaciones.
+
+### 4. La tarjeta de la regla, sin fórmula, seguía ocupando el alto pensado para una con fórmula
+
+El punto 25 ya había reducido el alto de la pizarra en Concepto y Reglas para
+no dejar «medio lienzo en blanco». Pero dentro de ESE alto reducido queda un
+caso más pequeño todavía: cuando la cuenta de la regla se anima en el panel de
+abajo, la tarjeta de arriba se queda sólo con el nombre y un aviso de una
+línea —«La cuenta se monta paso a paso aquí debajo»—, sin notación ni ejemplo.
+El cliente la volvió a fotografiar, esta vez como «tarjeta residual... ocupando
+espacio innecesario». Se añadió un tercer nivel de alto, más pequeño
+(`h-[8rem] sm:h-[9rem]`), que se activa exactamente en ese caso —Reglas, con la
+cuenta animándose abajo— y en ningún otro, así que ninguna otra fase cambia de
+tamaño.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **479 comprobaciones**. `qa/navegador.mjs` —**59**,
+ejecutado limpio de principio a fin en esta sesión, sin cortes— vuelve a medir
+en Chrome de verdad las fuentes computadas de los tres roles, que el hueco de
+«llevo 1» sigue existiendo, y el resto de las comprobaciones ya existentes del
+punto 28. Las 13 baterías sin navegador se ejecutaron una a una con el
+servidor local levantado —incluidas las que dependen de él (QA, sesiones,
+aceptación, lección multimodal, barrido, PASO 1, preflight)—: **0 fallos**, con
+el barrido completo (200 sesiones, 1.800 turnos) pasando por la rama de
+fracciones difíciles que ejercita el punto 3b. `tsc --noEmit` y `npm run build`
+limpios en cada paso.

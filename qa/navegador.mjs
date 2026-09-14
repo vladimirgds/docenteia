@@ -1200,24 +1200,39 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
   }
 
   // LA IDENTIDAD TIPOGRÁFICA, en la MISMA sesión: la escena ya tiene una
-  // fórmula de KaTeX y un subtítulo manuscrito en pantalla, así que no hace
-  // falta abrir un navegador nuevo sólo para medir la fuente. Menos sesiones
-  // en fila es menos ocasión de que Chrome se caiga a media batería larga.
+  // fórmula de KaTeX y un subtítulo en pantalla, así que no hace falta abrir
+  // un navegador nuevo sólo para medir la fuente. Menos sesiones en fila es
+  // menos ocasión de que Chrome se caiga a media batería larga.
+  //
+  // El cliente CORRIGIÓ el pedido de la ronda anterior: el habla del tutor
+  // —el subtítulo— NO lleva letra manuscrita; sólo lo ESCRITO en la pizarra
+  // (la etiqueta de la llevada) la lleva. Se comprueba justo eso: las dos
+  // fuentes tienen que ser DISTINTAS, y ninguna es la de KaTeX.
   const fuentes = await pagina.evaluate(() => {
-    const el = (sel) => document.querySelector(sel);
+    const subtitulo = document.querySelector('p[class*="bg-muted/60"]');
+    const etiqueta = document.querySelector(".pz-etiqueta");
     const katexEl = document.querySelector(".katex");
     return {
-      manuscrita: el(".pz-manuscrita") ? getComputedStyle(el(".pz-manuscrita")).fontFamily : null,
+      subtitulo: subtitulo ? getComputedStyle(subtitulo).fontFamily : null,
+      etiqueta: etiqueta ? getComputedStyle(etiqueta).fontFamily : null,
       formula: katexEl ? getComputedStyle(katexEl).fontFamily : null,
     };
   });
   console.log(`  · fuentes computadas: ${JSON.stringify(fuentes)}`);
   check(
-    "el subtítulo del tutor pide la fuente manuscrita, con Segoe Print primero",
-    Boolean(fuentes.manuscrita) && /Segoe Print/.test(fuentes.manuscrita),
+    "el subtítulo del tutor YA NO pide letra de pizarra: es habla, no escritura",
+    Boolean(fuentes.subtitulo) && !/Segoe Print|Comic Sans|Chalkboard/.test(fuentes.subtitulo),
   );
   check(
-    "la fórmula NO hereda esa fuente: KaTeX sigue componiendo con la suya",
+    "la etiqueta ESCRITA sobre la pizarra sí la pide",
+    Boolean(fuentes.etiqueta) && /Chalkboard SE|Segoe Print/.test(fuentes.etiqueta),
+  );
+  check(
+    "y las dos fuentes son distintas entre sí",
+    Boolean(fuentes.subtitulo) && Boolean(fuentes.etiqueta) && fuentes.subtitulo !== fuentes.etiqueta,
+  );
+  check(
+    "la fórmula NO hereda ninguna de las dos: KaTeX sigue componiendo con la suya",
     Boolean(fuentes.formula) && !/Segoe Print|Comic Sans|Chalkboard/.test(fuentes.formula),
   );
 

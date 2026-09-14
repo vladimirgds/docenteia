@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
+import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import { TextoMatematico } from "@/components/math";
 import { Button } from "@/components/ui/button";
 import {
@@ -556,8 +557,27 @@ export function PanelAnimado({
    * animar se queda en una barra con el botón —sin repetir debajo lo que ya
    * enseña la pizarra— y, al proyectar, pone en grande lo último que hay en la
    * pizarra: el paso, el enunciado o la regla.
+   *
+   * EN CONCEPTO, EL DIAGRAMA TAMBIÉN SE PROYECTA.
+   *
+   * El cliente lo fotografió: en Fracciones, al proyectar, sólo se veía una
+   * frase diminuta ("Denominador: en cuántas partes…") en medio de la pantalla
+   * negra —era este mismo texto, compuesto por KaTeX a su tamaño de fórmula—,
+   * y el gráfico circular que sí se ve en la pizarra de arriba no aparecía por
+   * ningún lado. Con `diagrama`, si la fase de Concepto tiene uno para este
+   * tema, se dibuja en grande en su lugar.
    */
-  reposo?: { texto: string; latex?: string | null } | null;
+  reposo?: {
+    texto: string;
+    latex?: string | null;
+    diagrama?: {
+      tema: string;
+      numerador?: number;
+      denominador?: number;
+      vistoNumerador: boolean;
+      vistoDenominador: boolean;
+    } | null;
+  } | null;
   /**
    * La lección ha terminado: la pizarra se queda RESUELTA, en el último paso
    * de su última línea, con todo destapado. Sin esto, al acabar volvía a su
@@ -771,11 +791,32 @@ export function PanelAnimado({
               <Avatar2D estado={avatarProyectado.estado} hablando={avatarProyectado.hablando} />
             </div>
           )}
-          <PizarraAnimada
-            escena={escenaActual}
-            foco={sinAnimacion ? -1 : estado.foco}
-            proyeccion={proyeccion}
-          />
+          {sinAnimacion && reposo?.diagrama ? (
+            // EL DIAGRAMA DE CONCEPTO, EN GRANDE, EN LUGAR DE LA FRASE SUELTA.
+            //
+            // `DiagramaConcepto` ya sabe devolver null si el tema no tiene uno
+            // —así que esto no hace falta comprobarlo aquí—, y es EL MISMO
+            // componente que pinta la pizarra clásica arriba: mismo dibujo,
+            // mismos rótulos progresivos, ninguna redacción segunda.
+            <div className="pz-diagrama-proyectado mx-auto w-full max-w-2xl text-center">
+              <DiagramaConcepto
+                tema={reposo.diagrama.tema}
+                numerador={reposo.diagrama.numerador}
+                denominador={reposo.diagrama.denominador}
+                vistoNumerador={reposo.diagrama.vistoNumerador}
+                vistoDenominador={reposo.diagrama.vistoDenominador}
+              />
+              <p className="pz-pie mt-4 min-h-[1.5rem] text-sm text-muted-foreground">
+                {reposo.texto}
+              </p>
+            </div>
+          ) : (
+            <PizarraAnimada
+              escena={escenaActual}
+              foco={sinAnimacion ? -1 : estado.foco}
+              proyeccion={proyeccion}
+            />
+          )}
         </div>
       )}
 

@@ -751,6 +751,7 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
   const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const aulaTsx = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
   const lsgPrompt = readFileSync(new URL("../src/lsgPrompt.js", import.meta.url), "utf8");
+  const diagramasTs = readFileSync(new URL("../lib/leccion/diagramas.ts", import.meta.url), "utf8");
 
   // 1a. LA PIZZA ES UN CÍRCULO, NO UNA BARRA.
   //
@@ -782,9 +783,14 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
     /vistoNumerador = true,\s*vistoDenominador = true,/.test(diagramaTsx),
   );
   check(
-    "Pizarra deduce lo dicho de lo que ya se ha escrito en la fase, por cómo EMPIEZA la línea",
-    /RE_NUMERADOR_ESCRITO = \/\^numerador\\s\*:\/i/.test(pizarraTsx) &&
-      /RE_DENOMINADOR_ESCRITO = \/\^denominador\\s\*:\/i/.test(pizarraTsx),
+    // Vive en lib/leccion/diagramas.ts —conceptoDeFraccion— y no en la pizarra:
+    // la animada necesita el MISMO cálculo cuando se proyecta sin nada que
+    // animar (ver la sección de proyección más abajo), y con la lógica
+    // duplicada una podía quedarse viendo el denominador y la otra no.
+    "se deduce lo dicho de lo que ya se ha escrito en la fase, por cómo EMPIEZA la línea, en un solo sitio",
+    /RE_NUMERADOR_ESCRITO = \/\^numerador\\s\*:\/i/.test(diagramasTs) &&
+      /RE_DENOMINADOR_ESCRITO = \/\^denominador\\s\*:\/i/.test(diagramasTs) &&
+      /export function conceptoDeFraccion/.test(diagramasTs),
   );
   check(
     "y se lo pasa al diagrama",
@@ -864,37 +870,106 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
     /className="pz-trazo"[\s\S]{0,80}markerEnd/.test(panelTsx),
   );
 
-  // 4. LA IDENTIDAD TIPOGRÁFICA: tres roles, tres fuentes.
+  // 4. LA IDENTIDAD TIPOGRÁFICA: dos roles, y el cliente CORRIGIÓ el primer
+  // intento. La primera ronda le puso letra manuscrita al habla del tutor; la
+  // segunda ronda dijo que no —"Subtítulos del Avatar: tipografía estándar
+  // limpia del sistema"— y agrupó "Chalkboard SE" y "Segoe Print" como
+  // alternativas de UN solo estilo, el de la pizarra. Aquí se comprueba la
+  // versión corregida, y que no quede rastro de la que se deshizo.
   check(
-    "hay una fuente para lo que el tutor DICE, con el nombre que pidió el cliente",
-    /\.pz-manuscrita \{\s*font-family: "Segoe Print", "Bradley Hand", "Snell Roundhand", cursive;/.test(estilos),
+    "el habla ya NO tiene una fuente manuscrita propia: no existe esa clase",
+    !/\.pz-manuscrita\b/.test(estilos) && !/pz-manuscrita/.test(aulaTsx) && !/pz-manuscrita/.test(pizarraTsx),
   );
   check(
-    "y otra para lo que se ESCRIBE en la pizarra que no es una fórmula",
-    /\.pz-tiza \{\s*font-family: "Chalkboard SE", "Comic Sans MS", "Comic Sans", sans-serif;/.test(estilos),
+    "el subtítulo del tutor hereda la tipografía estándar de la interfaz",
+    /\{subtitulo && faseDelSubtitulo === faseAbierta && \([\s\S]{0,500}<p className="rounded-md bg-muted\/60/.test(aulaTsx),
   );
   check(
-    "el subtítulo del tutor va en la manuscrita",
-    /pz-manuscrita rounded-md bg-muted\/60/.test(aulaTsx),
+    "el pie de la pizarra animada —lo que dice el foco encendido— también, sin font-family propio",
+    /\.pz-pie \{\s*line-height: 1\.5;\s*\}/.test(estilos),
   );
   check(
-    "el pie de la pizarra animada —lo que dice el foco encendido— también",
-    /\.pz-pie \{\s*font-family: "Segoe Print"/.test(estilos),
+    "la fuente de pizarra agrupa Chalkboard SE y Segoe Print como alternativas de UN mismo estilo",
+    /\.pz-tiza \{\s*font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;/.test(estilos),
   );
   check(
-    "la etiqueta de la llevada y los rótulos del diagrama van en tiza",
-    /\.pz-etiqueta \{[\s\S]{0,140}font-family: "Chalkboard SE"/.test(estilos) &&
-      /\.pz-diagrama text \{\s*font-family: "Chalkboard SE"/.test(estilos),
+    "la etiqueta de la llevada y los rótulos del diagrama van en esa misma fuente de pizarra",
+    /\.pz-etiqueta \{[\s\S]{0,180}font-family: "Chalkboard SE", "Segoe Print"/.test(estilos) &&
+      /\.pz-diagrama text \{\s*font-family: "Chalkboard SE", "Segoe Print"/.test(estilos),
   );
   check(
-    "una nota escrita en la pizarra que no se dejó componer como fórmula también va en tiza",
-    /"pz-manuscrita text-base text-muted-foreground"\s*:\s*"pz-tiza text-base font-medium"/.test(pizarraTsx),
+    "una nota escrita en la pizarra que no se dejó componer como fórmula va en tiza; el habla, en la estándar",
+    /linea\.clase === "explicacion"\s*\?\s*"text-sm text-muted-foreground"\s*:\s*"pz-tiza text-base font-medium"/.test(
+      pizarraTsx,
+    ),
   );
   // Las fórmulas no se tocan: KaTeX sigue siendo quien las compone, sin una
   // fuente distinta impuesta encima.
   check(
     "las fórmulas siguen sin una fuente propia forzada: las compone KaTeX tal cual",
     !/\.katex\s*\{[^}]*font-family/.test(estilos),
+  );
+
+  // 5. "LLEVO 1" YA NO SE TAPA CON UNA LLEVADA ENCADENADA.
+  //
+  // El cliente lo volvió a reportar tras el fix de la ronda anterior, esta vez
+  // con una suma de varias cifras: una columna puede RECIBIR una llevada y a
+  // la vez GENERAR la suya propia (p.ej. "234 + 876", donde decenas recibe la
+  // llevada de unidades y genera otra hacia centenas). La caja de esa columna
+  // sólo incluía las cifras del sumando/sumandos, no la llevada que entra por
+  // arriba, así que el tope de la caja —de donde cuelga el rótulo— quedaba
+  // por debajo de esa llevada y el rótulo aterrizaba encima de ella. El fix:
+  // la marca de la llevada lleva TAMBIÉN la clase de su propia columna
+  // (`pz-col-${j}`, no sólo `pz-llevada-${j}`), así que entra en la medición
+  // de esa caja y el `dy="-0.65em"` ya existente la despeja de verdad.
+  const encadenada = escenaDeColumna("234 + 876", "e");
+  const marcasLlevada = [...encadenada.latex.matchAll(/\\htmlClass\{([^}]*)\}\{\\scriptstyle 1\}/g)].map(
+    (m) => m[1].trim(),
+  );
+  check(
+    '"234 + 876" encadena tres llevadas seguidas: es el caso que chocaba',
+    encadenada.focos.filter((f) => f.etiqueta === "llevo 1").length === 3,
+    JSON.stringify(encadenada.focos.map((f) => f.etiqueta)),
+  );
+  check(
+    "cada marca de llevada lleva también la clase de SU columna, no sólo pz-llevada-N",
+    marcasLlevada.length === 3 &&
+      marcasLlevada.every((c) => {
+        const n = /pz-llevada-(\d+)/.exec(c)?.[1];
+        return n !== undefined && c.includes(`pz-col-${n}`);
+      }),
+    JSON.stringify(marcasLlevada),
+  );
+
+  // 6. EL DIAGRAMA DE CONCEPTO TAMBIÉN SE PROYECTA, NO SÓLO EL TEXTO.
+  //
+  // "Al activar el Modo Proyección, el gráfico circular interactivo debe
+  // permanecer visible y escalado en grande. Actualmente sólo muestra una
+  // frase diminuta en medio de la pantalla negra." La pizarra animada, sin
+  // nada que animar, sólo componía el último texto escrito —con KaTeX, a
+  // tamaño de fórmula—; el dibujo que sí ve la pizarra clásica arriba no
+  // llegaba nunca a la proyectada.
+  check(
+    "la pizarra animada importa el mismo DiagramaConcepto que la clásica",
+    /import \{ DiagramaConcepto \} from "@\/components\/leccion\/diagrama-concepto"/.test(panelTsx),
+  );
+  check(
+    "el reposo puede traer un diagrama, además del texto",
+    /diagrama\?:\s*\{/.test(panelTsx) && /vistoNumerador: boolean/.test(panelTsx),
+  );
+  check(
+    "y si lo trae, se dibuja en vez de la frase suelta",
+    /sinAnimacion && reposo\?\.diagrama \? \(/.test(panelTsx) &&
+      /<DiagramaConcepto[\s\S]{0,200}tema=\{reposo\.diagrama\.tema\}/.test(panelTsx),
+  );
+  check(
+    "el aula calcula ese diagrama con el MISMO cómputo que usa la pizarra clásica —conceptoDeFraccion—, no uno propio",
+    /conceptoDeFraccion\(\{/.test(aulaTsx) &&
+      /esFaseDeConcepto\(faseAbierta\) && tieneDiagrama\(tema\.tema\)/.test(aulaTsx),
+  );
+  check(
+    "y en proyección se escala por encima del ancho pequeño de la tarjeta lateral",
+    /\.modo-proyeccion \.pz-diagrama-proyectado \.pz-diagrama \{/.test(estilos),
   );
 }
 
@@ -2633,7 +2708,19 @@ titulo("D. Máquina de estados del avatar");
   check(
     "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
     /const compacta =\s*actual != null && !esFaseDeEjemplo/.test(pizarraTsx) &&
-      pizarraTsx.includes('compacta ? "h-[19rem] sm:h-[23rem]"'),
+      pizarraTsx.includes('"h-[19rem] sm:h-[23rem]"') &&
+      pizarraTsx.includes('"h-[24rem] sm:h-[30rem]"'),
+  );
+  check(
+    // El cliente volvió a fotografiar la MISMA clase de problema, un nivel
+    // más abajo: dentro de esas 19rem/23rem, la tarjeta que se queda sólo con
+    // el nombre de la regla —sin fórmula, la cuenta se anima abajo— seguía
+    // dejando un bloque vacío debajo. "Tarjeta residual... ocupando espacio
+    // innecesario", la llamó.
+    "y cuando la tarjeta de la regla se queda sin fórmula —la cuenta se anima abajo— ni ESE alto le sobra",
+    /const masCompacta = compacta && actual != null && esFaseDeReglas\(actual\.id\) && reglaAnimada/.test(
+      pizarraTsx,
+    ) && pizarraTsx.includes('"h-[8rem] sm:h-[9rem]"'),
   );
   check(
     "ni repite el rótulo de la regla que ya está en la tarjeta",

@@ -1,3 +1,5 @@
+import { esFaseDeConcepto } from "./fases.ts";
+
 /**
  * Temas que tienen diagrama en la fase de Concepto.
  *
@@ -207,6 +209,65 @@ export function fraccionEnTexto(texto: string): { numerador: number; denominador
     }
   }
   return null;
+}
+
+const RE_NUMERADOR_ESCRITO = /^numerador\s*:/i;
+const RE_DENOMINADOR_ESCRITO = /^denominador\s*:/i;
+
+export interface ConceptoFraccion {
+  fraccion: { numerador: number; denominador: number } | null;
+  vistoNumerador: boolean;
+  vistoDenominador: boolean;
+}
+
+/**
+ * TODO LO QUE HACE FALTA PARA DIBUJAR EL CONCEPTO DE UNA FRACCIÓN, EN UN SOLO
+ * SITIO.
+ *
+ * Vive aquí y no en el componente porque dos pizarras lo necesitan: la
+ * clásica, que ya lo tenía, y la animada, a la que el cliente le pidió el
+ * mismo diagrama cuando se proyecta sin nada que animar ("el gráfico circular
+ * interactivo debe permanecer visible y escalado en grande"). Con la lógica
+ * duplicada en las dos, una las podía desincronizar —la de arriba viendo ya el
+ * denominador y la proyectada, todavía no—, que es justo el tipo de
+ * discrepancia que este archivo existe para evitar en otros diagramas.
+ *
+ * La fracción se lee del PASO en curso y, si no hay, del enunciado: en la fase
+ * de Concepto lo que se escribe es el ejemplo que se está contando.
+ *
+ * Y la pregunta de si YA se ha dicho "numerador" / "denominador": una de las
+ * dos redacciones de esta fase introduce los términos EN DOS PASOS —primero
+ * "Numerador: …", luego "Denominador: …"—, y aquí se mira si esas líneas ya se
+ * han escrito en `desarrollo`. Se detectan por cómo EMPIEZAN —y no por si
+ * contienen la palabra en cualquier parte— para no confundirlas con la frase
+ * que las precede en pantalla ("Fracción: numerador / denominador"), que
+ * nombra las dos palabras a la vez y adelantaría la revelación entera. La otra
+ * redacción ("cuántas partes tomo") no usa esas palabras nunca, y con ella no
+ * hay nada que progresar: los dos términos se dan por vistos desde el
+ * principio.
+ */
+export function conceptoDeFraccion(params: {
+  faseId: string | null | undefined;
+  tema: string | undefined;
+  pasoSuelto?: { texto: string } | null;
+  ejercicio?: { texto: string } | null;
+  desarrollo: readonly { texto: string }[];
+}): ConceptoFraccion {
+  const { faseId, tema, pasoSuelto, ejercicio, desarrollo } = params;
+  const fraccion =
+    fraccionEnTexto(pasoSuelto?.texto ?? "") ?? fraccionEnTexto(ejercicio?.texto ?? "");
+
+  if (!faseId || !esFaseDeConcepto(faseId) || tema !== "FRACCIONES") {
+    return { fraccion, vistoNumerador: true, vistoDenominador: true };
+  }
+  const numeradorEscrito = desarrollo.some((l) => RE_NUMERADOR_ESCRITO.test(l.texto));
+  const denominadorEscrito = desarrollo.some((l) => RE_DENOMINADOR_ESCRITO.test(l.texto));
+  const enIntroduccion = numeradorEscrito || denominadorEscrito;
+  return {
+    fraccion,
+    vistoNumerador: !enIntroduccion || numeradorEscrito,
+    vistoDenominador: !enIntroduccion || denominadorEscrito,
+  };
 }
 
 export const GEOMETRIA_LINEALES: GeometriaDiagrama = {

@@ -185,8 +185,21 @@ export function escenaDeColumna(texto: string, id: string): Escena | null {
     filas.push(
       [
         "",
+        // La llevada lleva TAMBIÉN la clase de SU columna (`pz-col-${j}`), la
+        // misma que las cifras que tiene debajo. No dibuja una caja propia —el
+        // foco de la columna no tiene una pieza separada para ella—, pero SÍ
+        // entra en la medición de esa caja, y eso es lo que corrige un
+        // solapamiento real: cuando una columna recibe una llevada Y ADEMÁS
+        // genera la suya propia (una cadena de llevadas seguidas, "234 + 876"),
+        // el rótulo "llevo 1" de esa columna se apoya en el TOPE de su caja
+        // —`caja.y`— para no tapar las cifras; sin la llevada dentro de esa
+        // caja, el tope quedaba por DEBAJO de ella, y el rótulo aterrizaba
+        // encima del "1" pequeño de la columna vecina en vez de sobre su
+        // propia cifra. Con la llevada dentro, la caja crece hacia arriba para
+        // incluirla, y el mismo `dy` relativo que ya despeja las cifras
+        // despeja también a ella.
         ...marcas.map((m, j) =>
-          m ? conRevelado(`pz-llevada-${j}`, pasoDeMarca(j), `\\scriptstyle ${m}`) : "",
+          m ? conRevelado(`pz-llevada-${j} pz-col-${j}`, pasoDeMarca(j), `\\scriptstyle ${m}`) : "",
         ),
       ].join(" & "),
     );

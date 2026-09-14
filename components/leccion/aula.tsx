@@ -47,7 +47,8 @@ import {
   type EstadoConversacion,
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
-import { esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
+import { esFaseDeConcepto, esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
+import { conceptoDeFraccion, tieneDiagrama } from "@/lib/leccion/diagramas";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
@@ -1088,15 +1089,45 @@ export function Aula({
    * del desarrollo, si no el enunciado, si no la regla. Con esto el panel —y su
    * botón de Modo proyección— sigue ahí en la práctica y en el concepto, que es
    * donde el cliente lo echó en falta.
+   *
+   * EN CONCEPTO, ADEMÁS DEL TEXTO VA EL DIAGRAMA.
+   *
+   * El cliente lo fotografió: al proyectar Concepto se veía sólo una frase
+   * diminuta ("Denominador: en cuántas partes…") y el gráfico circular que la
+   * pizarra clásica sí dibuja arriba no aparecía. `conceptoDeFraccion` es el
+   * MISMO cálculo que usa esa pizarra clásica —vive en `lib/leccion/diagramas`
+   * para que las dos no puedan discrepar—, así que lo que se proyecta es
+   * exactamente lo que ya se ve, sólo que más grande.
    */
   const reposo = useMemo(() => {
     const propio = faseDelContenido === faseAbierta;
     const ultima = propio ? desarrollo[desarrollo.length - 1] : undefined;
-    if (ultima?.texto) return { texto: ultima.texto };
-    if (propio && ejercicio?.texto) return { texto: ejercicio.texto };
+
+    const diagrama =
+      propio && tema && esFaseDeConcepto(faseAbierta) && tieneDiagrama(tema.tema)
+        ? (() => {
+            const datos = conceptoDeFraccion({
+              faseId: faseAbierta,
+              tema: tema.tema,
+              pasoSuelto: ultima ?? null,
+              ejercicio,
+              desarrollo,
+            });
+            return {
+              tema: tema.tema,
+              numerador: datos.fraccion?.numerador,
+              denominador: datos.fraccion?.denominador,
+              vistoNumerador: datos.vistoNumerador,
+              vistoDenominador: datos.vistoDenominador,
+            };
+          })()
+        : null;
+
+    if (ultima?.texto) return { texto: ultima.texto, diagrama };
+    if (propio && ejercicio?.texto) return { texto: ejercicio.texto, diagrama };
     if (reglaEnCurso?.enunciado) return { texto: reglaEnCurso.nombre, latex: reglaEnCurso.enunciado };
     return null;
-  }, [faseDelContenido, faseAbierta, desarrollo, ejercicio, reglaEnCurso]);
+  }, [faseDelContenido, faseAbierta, desarrollo, ejercicio, reglaEnCurso, tema]);
 
   /**
    * EL DESARROLLO NO PUEDE ADELANTAR EL RESULTADO.
@@ -1402,13 +1433,12 @@ export function Aula({
               nueva: contaría una cosa mientras la pizarra enseña otra.
           */}
           {subtitulo && faseDelSubtitulo === faseAbierta && (
-            // pz-manuscrita: es lo que el tutor DICE, y el cliente pidió una
-            // letra de mano distinta de la de la pizarra —"Segoe Print" para
-            // el habla, "Chalkboard SE / Comic Sans MS" para lo escrito—. El
-            // tamaño y el interlineado suben un poco: una fuente de mano
-            // necesita más aire que una de palo seco para leerse igual de
-            // fácil (mismo ajuste que el pie de la pizarra animada).
-            <p className="pz-manuscrita rounded-md bg-muted/60 px-4 py-3 text-base leading-relaxed">
+            // SIN fuente propia: el cliente corrigió el pedido anterior. La
+            // manuscrita era para lo que se ESCRIBE en la pizarra, no para lo
+            // que el avatar DICE; el subtítulo es habla, y el habla se lee
+            // mejor en la tipografía limpia de siempre (la que ya trae la
+            // interfaz), no en cursiva.
+            <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
               <TextoMatematico texto={subtitulo} />
             </p>
           )}

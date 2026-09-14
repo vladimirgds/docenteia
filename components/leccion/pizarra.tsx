@@ -7,7 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { fraccionEnTexto } from "@/lib/leccion/diagramas";
+import { conceptoDeFraccion } from "@/lib/leccion/diagramas";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
 import {
   columnaDeCuentaDibujada,
@@ -106,16 +106,6 @@ export interface FaseAbierta {
 
 /** Desarrollo vacío, estable: evita rehacer el array en cada composición. */
 const SIN_DESARROLLO: LineaPizarra[] = [];
-
-/**
- * Las dos líneas con las que la fase de Concepto introduce el vocabulario de
- * una fracción, una detrás de otra. Detectarlas por cómo EMPIEZAN —y no por
- * si contienen la palabra en cualquier parte— evita un falso positivo con la
- * frase que las precede en pantalla ("Fracción: numerador / denominador"),
- * que nombra las dos palabras a la vez y adelantaría la revelación entera.
- */
-const RE_NUMERADOR_ESCRITO = /^numerador\s*:/i;
-const RE_DENOMINADOR_ESCRITO = /^denominador\s*:/i;
 
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
 export interface ReglaPizarra {
@@ -347,48 +337,40 @@ export function Pizarra({
    * Con el alto del ejemplo paso a paso, lo que se ve es medio lienzo vacío.
    */
   /**
-   * La fracción que el tutor está explicando, leída de lo que hay en pantalla.
+   * La fracción en curso, y si ya se han dicho "numerador" / "denominador".
    *
-   * Se mira primero el paso en curso y luego el enunciado: en la fase de
-   * Concepto lo que se escribe es justamente el ejemplo que se está contando.
+   * Vive en `lib/leccion/diagramas.ts` —ver `conceptoDeFraccion`— porque la
+   * pizarra animada necesita EXACTAMENTE este mismo cálculo cuando se proyecta
+   * sin nada que animar: con la lógica duplicada aquí y allí, una podía
+   * quedarse viendo el denominador mientras la otra todavía no.
    */
-  const fraccionEnCurso = useMemo(
-    () => fraccionEnTexto(pasoSuelto?.texto ?? "") ?? fraccionEnTexto(ejercicio?.texto ?? ""),
-    [pasoSuelto, ejercicio],
+  const { fraccion: fraccionEnCurso, vistoNumerador, vistoDenominador } = useMemo(
+    () =>
+      conceptoDeFraccion({
+        faseId: actual?.id,
+        tema,
+        pasoSuelto,
+        ejercicio,
+        desarrollo,
+      }),
+    [actual, tema, pasoSuelto, ejercicio, desarrollo],
   );
-
-  /**
-   * ¿YA SE HA DICHO "numerador" / "denominador"?
-   *
-   * El cliente lo pidió así: el rótulo del diagrama —y la etiqueta de la
-   * pizarra— no pueden estar puestos desde el primer fotograma, tienen que
-   * aparecer cuando la locución menciona cada palabra. Una de las dos
-   * redacciones de esta fase introduce los términos EN DOS PASOS —primero
-   * "Numerador: …", luego "Denominador: …"—, y aquí se mira si esas líneas ya
-   * se han escrito en `desarrollo`, que acumula todo lo dicho en la fase.
-   *
-   * La OTRA redacción ("cuántas partes tomo") no usa esas dos palabras nunca,
-   * y con ella no hay nada que progresar: los dos términos se dan por vistos
-   * desde el principio, que es como se comportaba el diagrama antes de este
-   * pedido. Por eso la introducción progresiva sólo se activa en cuanto
-   * aparece la PRIMERA de las dos líneas —"enIntroduccion"—; hasta entonces,
-   * o si nunca aparece ninguna, los dos términos están vistos.
-   */
-  const { vistoNumerador, vistoDenominador } = useMemo(() => {
-    if (!actual || !esFaseDeConcepto(actual.id) || tema !== "FRACCIONES") {
-      return { vistoNumerador: true, vistoDenominador: true };
-    }
-    const numeradorEscrito = desarrollo.some((l) => RE_NUMERADOR_ESCRITO.test(l.texto));
-    const denominadorEscrito = desarrollo.some((l) => RE_DENOMINADOR_ESCRITO.test(l.texto));
-    const enIntroduccion = numeradorEscrito || denominadorEscrito;
-    return {
-      vistoNumerador: !enIntroduccion || numeradorEscrito,
-      vistoDenominador: !enIntroduccion || denominadorEscrito,
-    };
-  }, [actual, tema, desarrollo]);
 
   const compacta =
     actual != null && !esFaseDeEjemplo(actual.id) && !esFaseDePractica(actual.id);
+
+  /**
+   * ¿LA TARJETA DE LA REGLA SE QUEDA SÓLO CON EL NOMBRE?
+   *
+   * Cuando la cuenta se anima abajo, `TarjetaRegla` se compone `sinFormula`:
+   * el nombre y un aviso de una línea, sin notación ni ejemplo. El cliente la
+   * fotografió DENTRO del alto pensado para una tarjeta CON fórmula
+   * (19rem/23rem, el que ya se redujo una vez por el mismo motivo) y la vio
+   * como "una tarjeta residual... ocupando espacio innecesario". No sobra la
+   * tarjeta —sigue anclando el nombre de la regla mientras se explica—, sobra
+   * el alto que arrastra de un contenido que aquí no tiene.
+   */
+  const masCompacta = compacta && actual != null && esFaseDeReglas(actual.id) && reglaAnimada;
 
   /**
    * ¿La línea suelta no dice más que el nombre de la regla que ya está arriba?
@@ -421,13 +403,21 @@ export function Pizarra({
 
           Fija DENTRO DE CADA FASE, eso sí. Concepto y Reglas enseñan una
           tarjeta y poco más, y con la altura del ejemplo resuelto quedaba medio
-          lienzo en blanco —el cliente lo reportó como "recuadro vacío"—. El
-          alto cambia sólo al cambiar de fase, que es cuando la vista entera se
+          lienzo en blanco —el cliente lo reportó como "recuadro vacío"—. Y
+          cuando esa tarjeta se queda sólo con el nombre de la regla —la cuenta
+          se anima abajo, ver `masCompacta`— ni siquiera ese alto reducido le
+          hace falta: el cliente volvió a fotografiarlo, esta vez como "tarjeta
+          residual... ocupando espacio innecesario". El alto cambia sólo al
+          cambiar de fase o de esa condición, que es cuando la vista entera se
           sustituye de todas formas. */}
       <div
         className={cn(
           "relative overflow-hidden rounded-lg border bg-card shadow-inner",
-          compacta ? "h-[19rem] sm:h-[23rem]" : "h-[24rem] sm:h-[30rem]",
+          masCompacta
+            ? "h-[8rem] sm:h-[9rem]"
+            : compacta
+              ? "h-[19rem] sm:h-[23rem]"
+              : "h-[24rem] sm:h-[30rem]",
         )}
         aria-live="polite"
         aria-label="Pizarra"
@@ -911,13 +901,14 @@ function LineaRenderizada({
     );
   }
 
-  // DOS TIPOS DE PROSA, DOS FUENTES.
+  // DOS TIPOS DE PROSA, UNA SOLA LLEVA FUENTE PROPIA.
   //
   // Una línea "explicacion" es lo que el tutor DICE (viene de una directiva
-  // `hablar`): va en la manuscrita, igual que el subtítulo y el pie de la
-  // pizarra animada. Una línea "formula" que no se ha dejado componer como
-  // fórmula sigue siendo algo ESCRITO en la pizarra —una nota, un rótulo que
-  // el motor no supo convertir a LaTeX—, así que va en la fuente de tiza.
+  // `hablar`): es habla, y el cliente corrigió el pedido anterior —el habla va
+  // en la tipografía estándar del sistema, no en cursiva—. Una línea "formula"
+  // que no se ha dejado componer como fórmula sigue siendo algo ESCRITO en la
+  // pizarra —una nota, un rótulo que el motor no supo convertir a LaTeX—, y
+  // ahí sí va la fuente de tiza: es la pizarra, no el habla.
   return (
     <div>
       {etiqueta}
@@ -925,7 +916,7 @@ function LineaRenderizada({
         className={cn(
           "rounded-md px-3 py-1.5 leading-relaxed transition-colors",
           linea.clase === "explicacion"
-            ? "pz-manuscrita text-base text-muted-foreground"
+            ? "text-sm text-muted-foreground"
             : "pz-tiza text-base font-medium",
           resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
         )}

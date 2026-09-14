@@ -547,6 +547,30 @@ export function fraccionResueltaLSG(opts) {
     const a = n1 * (L / d1), b = n2 * (L / d2), s = a + b, g = gcd(s, L);
     return { texto: textoFrac(e), n1, d1, n2, d2, L, a, b, suma: s, g, final: fmt(s / g, L / g), simp: g > 1 ? fmt(s / g, L / g) : null };
   };
+  // EL PASO INTERMEDIO DEL MCM, ESCRITO, NO SÓLO DICHO.
+  //
+  // El cliente lo señaló mirando la proyección: "no puede decir que el común
+  // denominador es 6 sin escribirlo", y dio su propio ejemplo —"2×3=6"— como
+  // una de las dos formas válidas, "o múltiplos comunes" como la otra. Hacen
+  // falta las DOS: multiplicar los denominadores sólo da el MÍNIMO común
+  // múltiplo cuando son coprimos (`gcd === 1`) —la mayoría de los pares de
+  // "difícil"/"experto" no lo son, y "4×6=24" enseñaría un común denominador
+  // que no es el mínimo (12)—, así que si no son coprimos se listan los
+  // múltiplos de cada uno hasta el primero que compartan.
+  const pasoMCM = (d1, d2, L) => {
+    if (gcd(d1, d2) === 1) {
+      return {
+        contenido: `MCM(${d1}, ${d2}): ${d1} × ${d2} = ${L}`,
+        dice: `Como ${d1} y ${d2} no comparten ningún factor, el mínimo común múltiplo sale de multiplicarlos directamente: ${d1} × ${d2} = ${L}.`,
+      };
+    }
+    const multiplos = (d) => { const xs = []; for (let k = d; k <= L; k += d) xs.push(k); return xs; };
+    const [m1, m2] = [multiplos(d1), multiplos(d2)];
+    return {
+      contenido: `Múltiplos de ${d1}: ${m1.join(", ")}. Múltiplos de ${d2}: ${m2.join(", ")}. El menor en común: ${L}.`,
+      dice: `Escribimos los múltiplos de ${d1} y de ${d2} hasta encontrar uno que esté en las dos listas: el menor que comparten es ${L}, y ese es el mínimo común denominador.`,
+    };
+  };
   const lista = FRACCIONES[nivel];
   // INSTANCIA concreta: si el alumno escribió una suma ("5/8 + 2/8" → [5,2,8], o "1/2 + 1/3" → [1,2,1,3]),
   // se resuelve ESA como ejemplo (paridad con los otros 3 temas, que sí resuelven lo que el alumno escribe);
@@ -622,11 +646,16 @@ export function fraccionResueltaLSG(opts) {
       dir.push(escribePaso(`${A.suma}/${A.d} = ${A.simp}`, foco("cancelacion", [`${A.suma}/${A.d}`], `÷ ${A.g}`), dice));
     }
   } else {
+    const mcm = pasoMCM(A.d1, A.d2, A.L);
     dir.push(
       { tipo: "hablar", texto: `Vamos a resolver ${A.texto}. Aquí los denominadores son DISTINTOS (${A.d1} y ${A.d2}), así que no podemos sumar todavía: primero hay que igualarlos.`, _mod: o.concepto ? "ejemplo_guiado" : undefined },
       { tipo: "pizarra", accion: "escribir", contenido: A.texto },
       { tipo: "esperar", segundos: 1 },
-      { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}: es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
+      { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}.` },
+      escribePaso(mcm.contenido, null, mcm.dice),
+      { tipo: "hablar", texto: mcm.dice },
+      { tipo: "esperar", segundos: 1 },
+      { tipo: "hablar", texto: `Es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
       amplifica(A.n1, A.d1, A.a, A.L),
       amplifica(A.n2, A.d2, A.b, A.L),
       { tipo: "esperar", segundos: 1 },
