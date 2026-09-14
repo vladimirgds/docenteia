@@ -36,11 +36,13 @@ import {
   escenaDeSimplificacion,
   escenaDeTexto,
   escenaDeAmplificacion,
+  escenaDeCierre,
   escenaDeDistributiva,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
+import { PSELight } from "../public/pseLight.js";
 import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { cierreDelDesarrollo } from "../lib/leccion/cierre.ts";
 import {
@@ -71,7 +73,7 @@ import {
   sumaResueltaLSG,
 } from "../src/lsgPrompt.js";
 import { manejarConsulta } from "../src/queryCore.js";
-import { partirNota } from "../lib/leccion/notas.ts";
+import { expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
 import {
   etiquetaValida,
@@ -150,6 +152,36 @@ function marcada(latex, clase) {
 /** Lo que envuelve esa clase, para comprobar qué cifra lleva dentro. */
 function contenidoDe(latex, clase) {
   return marcas(latex).find((m) => m.clases.includes(clase))?.contenido ?? null;
+}
+
+/**
+ * SIMULACIÓN DE "LA PIZARRA SIGUE A LA VOZ", con las funciones de verdad.
+ *
+ * Recorre una lección ya procesada directiva a directiva, con las líneas que la
+ * pizarra tendría escritas en cada momento, y coloca el panel donde lo
+ * colocaría `situacionParaNarracion` al oír cada frase. Devuelve, por cada
+ * frase y cada pausa, qué escena y qué foco se estaban viendo.
+ */
+function simularLeccion(lsg) {
+  const eventos = [];
+  for (const m of lsg.modulos ?? [{ id: "leccion", directivas: lsg.directivas }]) {
+    const lineas = [];
+    let escenas = [];
+    let pos = { escena: 0, foco: -1 };
+    let dicho = "";
+    for (const d of m.directivas) {
+      if (d.tipo === "pizarra") {
+        lineas.push(d.operacion ? { latex: d.contenido, operacion: d.operacion, narracion: d.narracion } : d.contenido);
+        escenas = guionDeLeccion(lineas);
+      } else if (d.tipo === "hablar") dicho = d.texto;
+      if (dicho && escenas.length) {
+        const destino = situacionParaNarracion(escenas, dicho, pos.escena, pos.foco);
+        if (destino) pos = destino;
+      }
+      eventos.push({ fase: m.id, d, escenas, escena: pos.escena, foco: pos.foco });
+    }
+  }
+  return eventos;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -748,36 +780,377 @@ titulo("A00a1. La lección de fracciones, tal como la escribe el generador");
   }
 }
 
+titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, ejercicio fijo, visto final");
+
+{
+  const pizarraTsx = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+  const panelTsx = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
+  const notaTsx = readFileSync(new URL("../components/leccion/nota-pizarra.tsx", import.meta.url), "utf8");
+  const aulaTsx = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const reproductor = readFileSync(new URL("../public/pseLight.js", import.meta.url), "utf8");
+  const leccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
+  const clasesDe = (latex) => [...String(latex ?? "").matchAll(/\\htmlClass\{([^}]*)\}/g)].flatMap(([, c]) => c.trim().split(/\s+/));
+
+  // ── 1. LA FRACCIÓN, EN NOTACIÓN FORMAL: NUMERADOR ARRIBA, DENOMINADOR ABAJO ──
+  //
+  // "Evita usar la barra inclinada / en explicaciones de conceptos básicos; el
+  // estudiante necesita ver la estructura de numerador arriba y denominador
+  // abajo."
+  {
+    const latex = expresionFormalDeFraccion(1, 4);
+    check(
+      "la definición es UNA expresión: Numerador sobre Denominador = 1 sobre 4",
+      latex === "\\dfrac{\\text{Numerador}}{\\text{Denominador}} = \\dfrac{1}{4}",
+      latex,
+    );
+    const html = katex.renderToString(latex, { displayMode: true, throwOnError: true });
+    const visible = html.replace(/<span class="katex-mathml">[\s\S]*?<\/math><\/span>/, "");
+    check(
+      "compuesta por KaTeX con DOS rayas de fracción horizontales y ninguna barra inclinada",
+      (visible.match(/class="mfrac"/g) ?? []).length === 2 &&
+        (visible.match(/class="frac-line"/g) ?? []).length === 2 &&
+        !/>\s*\/\s*</.test(visible) && /Numerador/.test(visible) && /Denominador/.test(visible),
+    );
+    check("con la fracción del dibujo: 3 de 8 se escribe 3 sobre 8", expresionFormalDeFraccion(3, 8).endsWith("\\dfrac{3}{8}"));
+    check(
+      "la pizarra la compone con ese componente —y en ningún sitio queda «Numerador / Denominador:»—",
+      /<FraccionFormal/.test(pizarraTsx) && !/Numerador \/ Denominador/.test(pizarraTsx) &&
+        /export function FraccionFormal/.test(notaTsx) && /expresionFormalDeFraccion\(numerador, denominador\)/.test(notaTsx) &&
+        /displayMode: true/.test(notaTsx.slice(notaTsx.indexOf("export function FraccionFormal"))),
+    );
+    check(
+      "y la proyección de Concepto la pone bajo el gráfico circular, cuando ya se han dicho las dos palabras",
+      /reposo\.diagrama\.vistoNumerador &&\s*reposo\.diagrama\.vistoDenominador && \(\s*<FraccionFormal/.test(panelTsx),
+    );
+  }
+
+  // ── 2. NINGÚN EJERCICIO QUEDA INCONCLUSO: EL RESULTADO FINAL, ENMARCADO ────
+  //
+  // "En la suma de fracciones heterogéneas, el desarrollo se detiene en la suma
+  // de numeradores equivalentes (6/10 + 5/10) y no entrega la respuesta final
+  // consolidada (11/10). Ningún ejercicio puede quedar inconcluso; el último
+  // paso debe mostrar siempre el resultado final enmarcado con su feedback de
+  // conclusión."
+  {
+    const l = leccion(fraccionResueltaLSG({ nivel: "dificil", instancia: [3, 5, 1, 2] }));
+    const dirs = l.modulos ? l.modulos.flatMap((m) => m.directivas) : l.directivas;
+    const iPractica = dirs.findIndex((d) => d.tipo === "pizarra" && /= \?$/.test(d.contenido));
+    const escritas = dirs.slice(0, iPractica).filter((d) => d.tipo === "pizarra");
+    const ultima = escritas.at(-1);
+    check(
+      "3/5 + 1/2: el último paso del desarrollo es la respuesta final consolidada, 11/10",
+      ultima?.contenido === "3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10",
+      ultima?.contenido,
+    );
+    check(
+      "etiquetada como CIERRE (tipo resultado) y narrada con su conclusión",
+      ultima?.operacion?.tipo === "resultado" && ultima.operacion.terminosFoco[0] === "11/10" &&
+        ultima.narracion === "¡Y listo! Resultado final: 11/10." &&
+        dirs.slice(0, iPractica).some((d) => d.tipo === "hablar" && d.texto === "¡Y listo! Resultado final: 11/10."),
+      JSON.stringify(ultima),
+    );
+    const escena = escenaDeLinea({ latex: ultima.contenido, operacion: ultima.operacion, narracion: ultima.narracion }, "c");
+    check(
+      "su escena ENMARCA la respuesta —y sólo la respuesta—: \\boxed dentro de la marca pz-final",
+      escena.clase === "cierre" && escena.origen === "etiqueta" &&
+        /\\htmlClass\{pz-final\}\{\\boxed\{\\frac\{11\}\{10\}\}\}$/.test(escena.latex) &&
+        escena.focos.length === 1 && escena.focos[0].final === true && escena.focos[0].tipo === "resultado",
+      escena.latex,
+    );
+    const html = katex.renderToString(escena.latex, { displayMode: true, throwOnError: true, trust: (c) => c.command === "\\htmlClass" });
+    check("y KaTeX la compone con su marco", /class="enclosing pz-final"/.test(html) && /class="stretchy fbox"/.test(html));
+  }
+  {
+    // Todos los motores y todos los niveles de fracciones: al sonar la frase de
+    // cierre, la pizarra animada está en una respuesta final (marco + visto).
+    const casos = [
+      ["suma", sumaResueltaLSG({ concepto: true })],
+      ["resta", restaResueltaLSG({ concepto: true })],
+      ["multiplicación", multiplicacionResueltaLSG({ concepto: true })],
+      ["división", divisionResueltaLSG({ concepto: true })],
+      ["fracciones (normal)", fraccionResueltaLSG({ concepto: true, nivel: "normal" })],
+      ["fracciones (difícil)", fraccionResueltaLSG({ concepto: true, nivel: "dificil" })],
+      ["fracciones (experto)", fraccionResueltaLSG({ concepto: true, nivel: "experto" })],
+      ["fracciones 2/6 + 2/6 (se simplifica)", fraccionResueltaLSG({ nivel: "normal", instancia: [2, 2, 6] })],
+      ["ecuaciones", linealResueltaLSG({ concepto: true })],
+      ["ecuación con paréntesis 2(x + 3) = 16", linealResueltaLSG({ nivel: "normal", instancia: "2(x + 3) = 16" })],
+      ["derivadas", derivadaResueltaLSG({ concepto: true })],
+      ["derivada de un polinomio", derivadaResueltaLSG({ nivel: "dificil" })],
+      ["factorización", factorizacionResueltaLSG({ concepto: true })],
+    ];
+    const sinCierre = [];
+    for (const [nombre, crudo] of casos) {
+      const ev = simularLeccion(leccion(crudo));
+      const iPregunta = ev.findIndex((e) => e.d.tipo === "preguntar");
+      const antes = ev.slice(0, iPregunta < 0 ? ev.length : iPregunta);
+      const frase = [...antes].reverse().find((e) => e.d.tipo === "hablar" && /resultado final/i.test(e.d.texto));
+      const foco = frase?.escenas[frase.escena]?.focos[frase.foco];
+      if (!frase || !foco?.final) sinCierre.push(`${nombre}: ${frase ? `${frase.escenas[frase.escena]?.texto} foco ${frase.foco}` : "sin frase de cierre"}`);
+    }
+    check(
+      "en TODOS los motores, al decir «Resultado final» la pizarra animada está en la respuesta final enmarcada",
+      sinCierre.length === 0,
+      sinCierre.join(" | "),
+    );
+  }
+  {
+    // «No entendí este paso» en la práctica: el desglose llega también al final.
+    for (const [ej, final, tema] of [
+      ["3/5 + 1/2 = ?", "3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10", ""],
+      ["2(x + 3) = 16", "x = 5", ""],
+      ["234 + 178 = ?", "234 + 178 = 412", ""],
+      ["3x⁴ - 2x²", "derivada de 3x⁴ - 2x² = 12x³ - 4x", "derivadas"],
+    ]) {
+      const d = leccion(desgloseDelEjercicioLSG({ ejercicio: ej, conResultado: false, tema }));
+      const pizarras = d.directivas.filter((x) => x.tipo === "pizarra");
+      const ultima = pizarras.at(-1);
+      check(
+        `«No entendí» en la práctica "${ej}": termina en su resultado final enmarcado`,
+        ultima?.contenido === final && ultima.operacion?.tipo === "resultado",
+        ultima?.contenido,
+      );
+    }
+  }
+  {
+    // Tras el desglose de la práctica se le devuelve la pregunta. Su cierre
+    // —etiquetado— queda justo delante de ella y NO puede pasar por enunciado:
+    // se llevaría la tarjeta y vaciaría el desarrollo recién explicado (lo cazó
+    // la batería de Chrome).
+    const desglose = leccion(desgloseDelEjercicioLSG({ ejercicio: "1/7 + 5/7 = ?", conResultado: false }));
+    const reanudada = reanudarTrasAclaracion(desglose, {
+      faseActual: "practica",
+      pregunta: { tipo: "preguntar", texto: "¿Cuánto es 1/7 + 5/7?", respuesta: "6/7" },
+    });
+    const piden = enunciadosParaResolver(reanudada);
+    check(
+      "tras «No entendí» en la práctica, ninguna línea del desglose —tampoco su cierre— pasa por enunciado de la pregunta devuelta",
+      piden.size === 0,
+      JSON.stringify([...piden]),
+    );
+    check(
+      "y un enunciado sin etiqueta delante de su pregunta sigue contando como tal",
+      enunciadosParaResolver({ directivas: [{ tipo: "pizarra", contenido: "1/7 + 5/7 = ?" }, { tipo: "preguntar", texto: "¿?" }] }).has("1/7 + 5/7 = ?"),
+    );
+  }
+  {
+    // EL CIERRE DE LA PRÁCTICA, en cuanto queda resuelta: la línea comprobada.
+    const casos = [
+      [{ enunciado: "3/5 + 1/2 = ?", respuesta: "11/10" }, "3/5 + 1/2 = 6/10 + 5/10 = 11/10"],
+      [{ enunciado: "2/6 + 3/6 = ?", respuesta: "5/6" }, "2/6 + 3/6 = 5/6"],
+      [{ enunciado: "2/6 + 2/6 = ?", respuesta: "2/3" }, "2/6 + 2/6 = 4/6 = 2/3"],
+      [{ enunciado: "Ejercicio 1:  1/4 + 1/6", respuesta: "5/12" }, "1/4 + 1/6 = 3/12 + 2/12 = 5/12"],
+      [{ enunciado: "3x + 2 = 11", respuesta: "3" }, "x = 3"],
+      [{ enunciado: "2(x + 4) = 3x - 1", respuesta: "9" }, "x = 9"],
+      [{ enunciado: "5x²", respuesta: "10x", pregunta: "¿Cuál es la derivada de 5x²?" }, "derivada de 5x² = 10x"],
+      [{ enunciado: "x² - 9", respuesta: "(x - 3)(x + 3)", pregunta: "¿Cómo se factoriza x² - 9? Escríbelo como producto." }, "x² - 9 = (x - 3)(x + 3)"],
+      [{ enunciado: "12 × 4 = ?", respuesta: "48" }, "12 × 4 = 48"],
+      [{ enunciado: "84 ÷ 4 = ?", respuesta: "21" }, "84 ÷ 4 = 21"],
+      [{ enunciado: "2411 + 2457 = ?", respuesta: "4868" }, "2411 + 2457 = 4868"],
+    ];
+    const mal = [];
+    for (const [entrada, esperado] of casos) {
+      const c = cierreDelDesarrollo({ lineas: [], ...entrada });
+      const e = c ? escenaDeLinea({ latex: c.texto, operacion: c.operacion, narracion: c.narracion }, "c") : null;
+      if (c?.texto !== esperado || c.operacion.tipo !== "resultado" || !e?.focos.at(-1)?.final) mal.push(`${entrada.enunciado} → ${c?.texto}`);
+    }
+    check(
+      "la práctica resuelta se cierra con su línea comprobada —fracciones consolidadas, x = …, derivada, factorización, cuentas— y enmarcada",
+      mal.length === 0,
+      mal.join(" | "),
+    );
+    const cortada = cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10 = ?"], respuesta: "11/10" });
+    check(
+      "una línea que se quedó en «6/10 + 5/10 = ?» se completa con el 11/10",
+      cortada?.accion === "completar" && cortada.texto === "6/10 + 5/10 = 11/10",
+      JSON.stringify(cortada),
+    );
+    // El feedback de conclusión lleva a la pizarra al marco: acertando y fallando.
+    const c = cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: [], respuesta: "11/10" });
+    const guion = guionDeLeccion([{ latex: c.texto, operacion: c.operacion, narracion: c.narracion }]);
+    const alAcertar = situacionParaNarracion(guion, "¡Muy bien! 🎉 Respuesta correcta. Resultado final: 11/10.", 0, -1);
+    const alFallar = situacionParaNarracion(guion, "No te preocupes, así se aprende. Mira la pizarra: el resultado final es 11/10. Repasa cómo se llega hasta él y lo intentamos con otro. ¡Tú puedes!", 0, -1);
+    check(
+      "el feedback que nombra el resultado final coloca la pizarra en el marco, acierte o no",
+      alAcertar?.foco === 0 && alFallar?.foco === 0 && guion[0].focos[0].final === true,
+      `${JSON.stringify(alAcertar)} ${JSON.stringify(alFallar)}`,
+    );
+  }
+  {
+    // EL REPRODUCTOR DE VERDAD: cierra el ejercicio al resolverlo, antes del
+    // feedback, también cuando se agotan los intentos.
+    const probar = async (respuestas) => {
+      const registro = [];
+      const cola = [...respuestas];
+      const ui = {
+        setModule() {}, highlightBoard() {}, clearBoard() {}, setCaption() {}, onStep() {}, onProgress() {},
+        setControls() {}, writeBoard() {}, writeBoardExplain() {},
+        askAnswer: async () => cola.shift() ?? "0",
+        showFeedback: (ok, msg) => registro.push({ tipo: "feedback", ok, msg }),
+        onExerciseResolved: (r) => registro.push({ tipo: "cierre", ...r }),
+        onLessonEnd: (r) => registro.push({ tipo: "fin", ...r }),
+      };
+      const pse = new PSELight({ avatar: { setState() {}, setSpeaking() {} }, tts: { speak: async () => {}, cancel() {} }, ui });
+      await pse.play({ escena: "t", intencion: "practicar", directivas: [
+        { tipo: "pizarra", contenido: "3/5 + 1/2 = ?", id: 1 },
+        { tipo: "preguntar", texto: "¿Cuánto es 3/5 + 1/2?", respuesta: "11/10", id: 2 },
+      ] });
+      return registro;
+    };
+    const bien = await probar(["11/10"]);
+    const iCierre = bien.findIndex((r) => r.tipo === "cierre");
+    const iFeedback = bien.findIndex((r) => r.tipo === "feedback");
+    check(
+      "al acertar: primero se cierra el ejercicio en la pizarra y después el feedback, que nombra el resultado final",
+      iCierre >= 0 && iCierre < iFeedback && bien[iCierre].acerto === true && bien[iCierre].respuesta === "11/10" &&
+        /Resultado final: 11\/10\.$/.test(bien[iFeedback].msg),
+      JSON.stringify(bien),
+    );
+    const mal = await probar(["1/2", "4/7", "9/10"]);
+    const cierres = mal.filter((r) => r.tipo === "cierre");
+    const ultimo = mal.filter((r) => r.tipo === "feedback").at(-1);
+    check(
+      "con los tres intentos agotados el ejercicio TAMBIÉN se cierra: la pizarra lo resuelve y el tutor lo dice",
+      cierres.length === 1 && cierres[0].acerto === false && /resultado final es 11\/10/.test(ultimo?.msg ?? "") &&
+        mal.findIndex((r) => r.tipo === "cierre") < mal.lastIndexOf(ultimo),
+      JSON.stringify(mal),
+    );
+    check(
+      "mientras quedan intentos, la respuesta NO se revela: las dos primeras correcciones sólo dan pistas",
+      mal.filter((r) => r.tipo === "feedback").slice(0, 2).every((r) => !/11\/10/.test(r.msg)),
+    );
+    check(
+      "y al terminar la lección el aula recibe la respuesta, para cerrar por si acaso",
+      mal.at(-1)?.tipo === "fin" && mal.at(-1).respuesta === "11/10",
+    );
+    check(
+      "el aula escribe el cierre al resolverse el ejercicio, y la línea de cierre nunca se descarta como replanteo",
+      /onExerciseResolved: \(\{ respuesta, pregunta: textoPregunta \}\) =>/.test(aulaTsx) &&
+        /const esCierre = operacion\?\.tipo === "resultado";/.test(aulaTsx) &&
+        /!esCierre &&\s*ejercicioRef\.current != null/.test(aulaTsx),
+    );
+    check(
+      "mientras el tutor PREGUNTA, la pizarra no sigue a la voz: la pregunta no la rebobina al primer paso",
+      /narracion=\{estadoAvatar === "preguntando" \? null : subtitulo\}/.test(aulaTsx),
+    );
+    check(
+      "y el desglose de la práctica —que ahora llega al final— se anima como el del ejemplo",
+      /esAclaracion\.current =\s*Boolean\(opciones\.soloExplicacion\) && !desgloseDelEjemplo && !desgloseDeLaPractica;/.test(aulaTsx),
+    );
+    check(
+      "la pizarra clásica también la enseña enmarcada, con su rótulo «Resultado final»",
+      /const esCierre = linea\.operacion\?\.tipo === "resultado"/.test(pizarraTsx) && /Resultado final\s*<\/span>/.test(pizarraTsx) &&
+        /\.pz-final \.fbox \{[^}]*border-color/.test(estilos) && /\.pz-animada \.pz-final \.fbox \{[^}]*transparent/.test(estilos),
+    );
+    check("y el reproductor no guarda un «NO revelamos» tras agotar los intentos", !/NO revelamos el número/.test(reproductor));
+  }
+
+  // ── 3. EN PROYECCIÓN, EL EJERCICIO ORIGINAL FIJO ARRIBA ─────────────────────
+  //
+  // "Mantén fijado en la parte superior el ejercicio original limpio
+  // (2(x + 3) = 16), y renderiza abajo el paso del desarrollo activo con la
+  // distributiva."
+  check(
+    "el panel recibe el enunciado de la tarjeta y, al proyectar, lo fija arriba",
+    /enunciado=\{ejercicio\?\.texto \?\? null\}/.test(aulaTsx) &&
+      /proyeccion && enunciadoFijo !== ""/.test(panelTsx) &&
+      /\{conEnunciadoFijo && <EnunciadoFijo texto=\{enunciadoFijo\} \/>\}\s*[\s\S]{0,700}<div className="pz-escenario">/.test(panelTsx),
+  );
+  check(
+    "limpio —compuesto tal cual, sin marcas ni piezas por destapar— y pegado arriba aunque el panel se desplace",
+    /function EnunciadoFijo[\s\S]{0,900}notacionFormal\(texto\) \?\? \(pareceMatematica\(texto\) \? planoALatex\(texto\) : null\)/.test(panelTsx) &&
+      /\.pz-enunciado-fijo \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
+  );
+  check(
+    "sin repetirlo cuando lo único que se proyecta es el propio enunciado",
+    /!\(sinAnimacion && reposo\?\.texto\?\.trim\(\) === enunciadoFijo\)/.test(panelTsx),
+  );
+
+  // ── 4. EL VISTO VERDE, SÓLO EN LA RESPUESTA FINAL ───────────────────────────
+  //
+  // "En el paso 2x + 6 = 16 − 6, aparece un check verde (✓) flotando sobre la x
+  // … Retira ese check verde. El foco debe estar únicamente en los términos que
+  // se restan (+6 y −6)."
+  {
+    const paso = escenaDeLinea({ latex: "2x + 6 = 16", operacion: { tipo: "cancelacion", terminosFoco: ["6"] } }, "p");
+    check(
+      "sobre 2x + 6 = 16 hay UN foco: el tachado del +6 y del −6, cada uno con su marca",
+      paso.focos.length === 1 && paso.focos[0].tipo === "tachado" &&
+        JSON.stringify(paso.focos[0].piezas) === JSON.stringify(["pz-cancela-izq", "pz-cancela-der"]),
+      JSON.stringify(paso.focos),
+    );
+    check(
+      "ni marca de resultado, ni visto, ni coeficiente encendido junto a la x, ni la solución adelantada",
+      !paso.focos.some((f) => f.tipo === "resultado" || f.final) &&
+        !clasesDe(paso.latex).includes("pz-coef-despeje") && !/Rightarrow/.test(paso.latex),
+      paso.latex,
+    );
+    check(
+      "el visto se dibuja SÓLO en una respuesta final; un resultado intermedio lleva el doble subrayado y nada más",
+      /\{foco\.final \? \(\s*<path[\s\S]{0,200}className="pz-trazo pz-visto"/.test(panelTsx) &&
+        /\{foco\.final \? \(\s*<rect[\s\S]{0,300}className="pz-trazo pz-marco-final"/.test(panelTsx),
+    );
+    // En toda la lección de 2(x + 3) = 16, la única respuesta final es el cierre.
+    const ev = simularLeccion(leccion(linealResueltaLSG({ nivel: "normal", instancia: "2(x + 3) = 16" })));
+    const escenasFinales = [...new Set(ev.flatMap((e) => e.escenas).filter((s) => s.focos.some((f) => f.final)).map((s) => s.texto))];
+    check(
+      "en la lección de 2(x + 3) = 16 sólo la línea de cierre, x = 5, lleva respuesta final",
+      escenasFinales.length === 1 && escenasFinales[0] === "x = 5",
+      JSON.stringify(escenasFinales),
+    );
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 en ambos lados/.test(e.d.texto));
+    const enResta = ev[iResta];
+    const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
+    check(
+      "y cuando el tutor dice «restamos 6 en ambos lados», la pizarra está en ese tachado",
+      enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "tachado",
+      `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco}`,
+    );
+    const iDivide = ev.findIndex((e) => e.d.tipo === "hablar" && /Dividimos ambos lados entre 2/.test(e.d.texto));
+    const enDivide = ev[iDivide];
+    check(
+      "la división entre 2 se señala en SU línea, 2x = 10, con una caja —no con el visto—",
+      enDivide?.escenas[enDivide.escena]?.texto === "2x = 10" &&
+        enDivide.escenas[enDivide.escena].focos[enDivide.foco]?.tipo === "caja",
+      `${enDivide?.escenas[enDivide.escena]?.texto} foco ${enDivide?.foco}`,
+    );
+    const poli = escenaDePolinomio("3x⁴ - 2x²", "p");
+    check(
+      "señalar un coeficiente o un exponente tampoco es un resultado: van en caja",
+      poli.focos.filter((f) => /pz-(coef|exp)/.test(f.clase)).every((f) => f.tipo === "caja"),
+    );
+  }
+
+  // ── 5. LA ESCALA TIPOGRÁFICA EN PROYECCIÓN ──────────────────────────────────
+  //
+  // "«Propiedad uniforme de la suma: lo mismo a los dos lados» sigue en tamaño
+  // diminuto (text-sm). Sube el tamaño de estas explicaciones en proyección a un
+  // formato visible para aula (text-2xl o text-3xl), centrado y con fuente
+  // clara."
+  check(
+    "una nota sola en su lienzo de proyección nunca baja de text-3xl, centrada y en trazo grueso",
+    /\.modo-proyeccion \.pz-animada \.pz-nota \{[^}]*font-size: clamp\(1\.875rem,[^}]*font-weight: 600;[^}]*justify-content: center;/.test(estilos) &&
+      /\.modo-proyeccion \.pz-nota \{[^}]*color: hsl\(0 0% 100%\)/.test(estilos),
+  );
+  check(
+    "y lo que explica el tutor bajo cada paso, al menos text-2xl",
+    /\.modo-proyeccion \.pz-pie \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos),
+  );
+  {
+    const lin = leccion(linealResueltaLSG({ concepto: true, nivel: "normal" }));
+    const regla = lin.modulos.find((m) => m.id === "regla").directivas.find((d) => d.tipo === "pizarra")?.contenido ?? "";
+    check(
+      "la regla de ecuaciones se proyecta como NOTA de pizarra —rótulo y cuerpo—, no como fórmula",
+      escenaEstatica(regla, "r").latex === null && partirNota(regla)[0]?.rotulo === "Propiedad uniforme de la suma:",
+      regla,
+    );
+  }
+}
+
 titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí» y la tarjeta");
 
 {
-  // SIMULACIÓN DE "LA PIZARRA SIGUE A LA VOZ", con las funciones de verdad.
-  //
-  // Recorre una lección ya procesada directiva a directiva, con las líneas que
-  // la pizarra tendría escritas en cada momento, y coloca el panel donde lo
-  // colocaría `situacionParaNarracion` al oír cada frase. Devuelve, por cada
-  // frase y cada pausa, qué escena y qué foco se estaban viendo.
-  const simular = (lsg) => {
-    const eventos = [];
-    for (const m of lsg.modulos ?? [{ id: "leccion", directivas: lsg.directivas }]) {
-      const lineas = [];
-      let escenas = [];
-      let pos = { escena: 0, foco: -1 };
-      let dicho = "";
-      for (const d of m.directivas) {
-        if (d.tipo === "pizarra") {
-          lineas.push(d.operacion ? { latex: d.contenido, operacion: d.operacion, narracion: d.narracion } : d.contenido);
-          escenas = guionDeLeccion(lineas);
-        } else if (d.tipo === "hablar") dicho = d.texto;
-        if (dicho && escenas.length) {
-          const destino = situacionParaNarracion(escenas, dicho, pos.escena, pos.foco);
-          if (destino) pos = destino;
-        }
-        eventos.push({ fase: m.id, d, escenas, escena: pos.escena, foco: pos.foco });
-      }
-    }
-    return eventos;
-  };
+  const simular = simularLeccion;
   const leccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
 
   // 3. EL FOTOGRAMA DE LOS NUMERADORES YA NO DURA "UNOS MILISEGUNDOS".
@@ -954,8 +1327,9 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
       JSON.stringify(ajenas),
     );
     check(
-      "y llega a la respuesta final consolidada, 5/6",
-      escrito.includes("1/2 + 1/3 = 3/6 + 2/6 = (3 + 2)/6 = 5/6") && /Nos queda 5\/6/.test(dicho),
+      "y llega a la respuesta final consolidada, 5/6, etiquetada como cierre y anunciada",
+      des.directivas.some((d) => d.contenido === "1/2 + 1/3 = 3/6 + 2/6 = (3 + 2)/6 = 5/6" && d.operacion?.tipo === "resultado") &&
+        /Resultado final: 5\/6/.test(dicho),
     );
     const iAndamiaje = des.directivas.findIndex((d) => d.tipo === "hablar" && /con el mismo denominador los trozos son del mismo tamaño/.test(d.texto));
     const iSuma = des.directivas.findIndex((d) => d.contenido === "3/6 + 2/6 = 5/6");
@@ -965,20 +1339,37 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     );
     check("y no trae pregunta propia: la lección se reanuda con la suya", !des.directivas.some((d) => d.tipo === "preguntar"));
 
+    // EN LA PRÁCTICA TAMBIÉN SE LLEGA AL FINAL (revisión daa127d, punto 2). Se
+    // detenía en "6/10 + 5/10 = ?" para no darle la respuesta, y el cliente lo
+    // rechazó: "ningún ejercicio puede quedar inconcluso". Llega al resultado
+    // enmarcado y, en vez de "¡Y listo!" a secas, le devuelve la palabra.
     const prac = leccion(desgloseDelEjercicioLSG({ ejercicio: "3/5 + 1/2 = ?", conResultado: false }));
-    const todo = JSON.stringify(prac.directivas);
+    const dichoPrac = prac.directivas.filter((d) => d.tipo === "hablar").map((d) => d.texto);
     check(
-      "en la PRÁCTICA el desglose se detiene antes del resultado: no aparece 11/10 ni escrito ni dicho",
-      !/11\/10/.test(todo) && prac.directivas.some((d) => d.contenido === "6/10 + 5/10 = ?"),
+      "en la PRÁCTICA el desglose también llega al resultado final enmarcado: nada de pararse en 6/10 + 5/10 = ?",
+      prac.directivas.some((d) => d.contenido === "3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10" && d.operacion?.tipo === "resultado") &&
+        !prac.directivas.some((d) => d.contenido === "6/10 + 5/10 = ?") &&
+        dichoPrac.some((t) => /Resultado final: 11\/10/.test(t)),
+      JSON.stringify(prac.directivas.filter((d) => d.tipo === "pizarra").map((d) => d.contenido)),
     );
-    for (const [ej, prohibido, tema] of [
-      ["2(x + 4) = 3x - 1", /x = 9/, ""],
-      ["19 + 45 = ?", /= 64|\b64\b/, ""],
-      ["x² - 9", /\(x - 3\)\(x \+ 3\)/, "factorización"],
+    check(
+      "y le devuelve la palabra al alumno para que lo escriba él",
+      /escríbelo tú/i.test(dichoPrac.at(-1) ?? ""),
+      dichoPrac.at(-1),
+    );
+    for (const [ej, final, tema] of [
+      ["2(x + 4) = 3x - 1", "x = 9", ""],
+      ["19 + 45 = ?", "19 + 45 = 64", ""],
+      ["x² - 9", "x² - 9 = (x - 3)(x + 3)", "factorización"],
     ]) {
       const d = desgloseDelEjercicioLSG({ ejercicio: ej, conResultado: false, tema });
       const t = JSON.stringify(d?.directivas ?? []);
-      check(`práctica "${ej}": se desglosa el mismo ejercicio sin darle la respuesta`, Boolean(d) && t.includes(ej.replace(" = ?", "")) && !prohibido.test(t));
+      const cierre = (d?.directivas ?? []).find((x) => x.tipo === "pizarra" && x.operacion?.tipo === "resultado");
+      check(
+        `práctica "${ej}": se desglosa el mismo ejercicio hasta su resultado final enmarcado, ${final}`,
+        Boolean(d) && t.includes(ej.replace(" = ?", "")) && cierre?.contenido === final,
+        cierre?.contenido,
+      );
     }
     for (const [ej, tema] of [["2(x + 4) = 3x - 1", ""], ["234 + 178", ""], ["3x⁴ - 2x²", "derivadas"], ["x² - 9", "factorización"]]) {
       const d = desgloseDelEjercicioLSG({ ejercicio: ej, tema });
@@ -1253,11 +1644,13 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
     /vistoNumerador=\{vistoNumerador\}/.test(pizarraTsx) && /vistoDenominador=\{vistoDenominador\}/.test(pizarraTsx),
   );
 
-  // 1c. LA EXPRESIÓN FORMAL, AL CERRAR LA IDEA.
+  // 1c. LA EXPRESIÓN FORMAL, AL CERRAR LA IDEA —vertical, sin barra inclinada
+  //     (revisión daa127d, punto 1)—.
   check(
     '"falta mostrar la expresión matemática explícita": aparece cuando ya se han dicho las dos palabras',
-    /Numerador \/ Denominador:<\/span>/.test(pizarraTsx) &&
-      /vistoNumerador && vistoDenominador && \(/.test(pizarraTsx),
+    /<FraccionFormal/.test(pizarraTsx) &&
+      /vistoNumerador && vistoDenominador && \(/.test(pizarraTsx) &&
+      !/Numerador \/ Denominador/.test(pizarraTsx),
   );
 
   // 1d. LA NARRACIÓN SE CUENTA EN DOS PASOS, NO EN UNO —Y LA MARCA DE ROTACIÓN
@@ -1503,20 +1896,37 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
     "sin desarrollo, se añade el enunciado resuelto",
     cierreDelDesarrollo({ enunciado: "2411 + 2457 = ?", lineas: [], respuesta: "4868" })?.texto === "2411 + 2457 = 4868",
   );
-  check(
-    "lo que ya está cerrado no se toca",
-    cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10 = 11/10"], respuesta: "11/10" }) === null,
-  );
+  {
+    // Una línea que ya dice la respuesta no se reescribe ni se duplica: sólo se
+    // etiqueta como cierre, que es lo que la enmarca.
+    const yaDice = cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10 = 11/10"], respuesta: "11/10" });
+    check(
+      "lo que ya dice la respuesta no se reescribe: sólo se etiqueta como cierre, para enmarcarlo",
+      yaDice?.accion === "completar" && yaDice.texto === "6/10 + 5/10 = 11/10" && yaDice.operacion.tipo === "resultado",
+      JSON.stringify(yaDice),
+    );
+    check(
+      "y lo que ya está cerrado no se toca",
+      cierreDelDesarrollo({
+        enunciado: "3/5 + 1/2 = ?",
+        lineas: [{ texto: "3/5 + 1/2 = 11/10", operacion: { tipo: "resultado" } }],
+        respuesta: "11/10",
+      }) === null,
+    );
+  }
   check(
     "y nunca se escribe una cuenta que no sale",
     cierreDelDesarrollo({ enunciado: "3/5 + 1/2 = ?", lineas: ["6/10 + 5/10"], respuesta: "1/2" }) === null &&
-      cierreDelDesarrollo({ enunciado: "¿Cuál es la derivada de 5x²?", lineas: [], respuesta: "10x" }) === null,
+      cierreDelDesarrollo({ enunciado: "¿Cuál es la derivada de 5x²?", lineas: [], respuesta: "5x" }) === null &&
+      cierreDelDesarrollo({ enunciado: "3x + 2 = 11", lineas: [], respuesta: "4" }) === null &&
+      cierreDelDesarrollo({ enunciado: "x² - 9", lineas: [], respuesta: "(x - 3)(x + 4)", pregunta: "¿Cómo se factoriza x² - 9?" }) === null,
   );
   check(
-    "el cierre se aplica al acertar, con la respuesta que da el reproductor",
-    /onLessonEnd: \(\{ acerto, respuesta \}/.test(aulaTsx) &&
-      /if \(acerto && respuesta\)/.test(aulaTsx) &&
-      /respuesta: this\._acerto \? this\._respuesta : null/.test(reproductor),
+    "el cierre se escribe en cuanto el ejercicio queda resuelto —acertado o con los intentos agotados—, justo antes del feedback",
+    /onExerciseResolved: \(\{ respuesta, pregunta: textoPregunta \}\) =>\s*cerrarEjercicio\(/.test(aulaTsx) &&
+      /cierra\(true\);[\s\S]{0,700}this\.ui\.showFeedback\(true, msg\)/.test(reproductor) &&
+      /cierra\(false\);\s*const cierre = `No te preocupes/.test(reproductor) &&
+      /respuesta: this\._respondio \? this\._respuesta : null/.test(reproductor),
   );
 
   // 4a (b). LA EXPLICACIÓN NO SE COME LA PREGUNTA.
@@ -1580,13 +1990,17 @@ titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
   // escribían texto y la pizarra lo adivinaba. Se comprueba con la salida REAL
   // de cada motor pasada por el PRE Light, que es por donde llega al alumno.
   const MOTORES = [
-    ["suma", () => sumaResueltaLSG({ concepto: true }), 1],
-    ["resta", () => restaResueltaLSG({ concepto: true }), 1],
-    ["multiplicación", () => multiplicacionResueltaLSG({ concepto: true }), 2],
-    ["división", () => divisionResueltaLSG({ concepto: true }), 2],
-    ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 1],
-    ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 3],
-    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 2],
+    // Uno más que antes en cada motor: el CIERRE del ejercicio, la línea con la
+    // respuesta final etiquetada como `resultado` (revisión daa127d, punto 2).
+    // En derivadas y factorización el cierre va en la misma línea que la
+    // operación (`final`), así que no suma ninguna.
+    ["suma", () => sumaResueltaLSG({ concepto: true }), 2],
+    ["resta", () => restaResueltaLSG({ concepto: true }), 2],
+    ["multiplicación", () => multiplicacionResueltaLSG({ concepto: true }), 3],
+    ["división", () => divisionResueltaLSG({ concepto: true }), 3],
+    ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 2],
+    ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 4],
+    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 3],
     ["derivadas", () => derivadaResueltaLSG({ concepto: true }), 1],
     ["factorización", () => factorizacionResueltaLSG({ concepto: true }), 1],
   ];
@@ -2249,13 +2663,25 @@ titulo("A2. Polinomios, despejes y prosa");
     /20 menos 5 son 15/.test(escena.focos[0].narracion),
     escena.focos[0].narracion,
   );
+  // UN PASO, UNA OPERACIÓN (revisión del cliente sobre la build daa127d): en
+  // "3x + 5 = 20" se quita el 5 de los dos lados y ahí acaba la escena. Dividir
+  // entre 3 es la línea siguiente, "3x = 15", con su propia escena.
   check(
-    "el último foco da la solución",
-    escena.focos.at(-1).narracion === "x vale 5.",
-    escena.focos.at(-1).narracion,
+    "sobre 3x + 5 = 20 sólo se cancela: ni se divide ni se adelanta la solución",
+    escena.focos.length === 1 && !escena.latex.includes("pz-coef-despeje") && !escena.latex.includes("Rightarrow"),
+    escena.latex,
   );
 
-  const fraccion = escenaDeDespeje("2x - 6 = 9", "e");
+  const division = escenaDeDespeje("3x = 15", "e");
+  check(
+    "la división va en SU línea, 3x = 15: caja sobre el 3 y luego la solución",
+    division.focos.length === 2 &&
+      division.focos[0].clase === "pz-coef-despeje" && division.focos[0].tipo === "caja" &&
+      division.focos.at(-1).narracion === "x vale 5.",
+    JSON.stringify(division.focos),
+  );
+
+  const fraccion = escenaDeDespeje("2x = 15", "e");
   check(
     "una solución no entera se da como fracción exacta, no como decimal",
     fraccion.focos.at(-1).narracion === "x vale 15/2." &&
@@ -2647,7 +3073,12 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     "en cuanto la animación termina —o la lección para— el desarrollo vuelve",
     aula.includes("!animacionCompleta && controles.playing && lineasAnimadas.length > 0"),
   );
-  check("y la pizarra recibe lo que el tutor está diciendo", aula.includes("narracion={subtitulo}"));
+  // Lo que dice, salvo cuando pregunta: una pregunta no es un paso y no mueve
+  // la pizarra (revisión daa127d, 2ª).
+  check(
+    "y la pizarra recibe lo que el tutor está diciendo",
+    aula.includes('narracion={estadoAvatar === "preguntando" ? null : subtitulo}'),
+  );
 
   check(
     "esAnimable distingue una cuenta de una frase",
@@ -3026,9 +3457,10 @@ const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
   const voz = locutorFalso();
   const s = crearSincronizador({ escenas: GUION, locutor: voz.locutor, reloj: r.reloj });
 
-  s.situar(1, 2);
+  s.situar(1, 0);
   check("situar coloca la pizarra donde va la voz", s.instantanea().escena === 1);
-  check("en el foco pedido", s.instantanea().foco === 2);
+  s.situar(0, 2);
+  check("en el foco pedido", s.instantanea().escena === 0 && s.instantanea().foco === 2);
   check("sin decir una palabra", voz.dichos.length === 0);
   check("y sin arrancar ningún temporizador", r.pendientes() === 0);
   check("la lección no se pone en marcha por situarla", s.instantanea().estado === "inicio");

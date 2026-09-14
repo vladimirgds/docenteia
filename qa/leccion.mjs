@@ -1497,11 +1497,14 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
       fuenteA,
     ),
   );
-  // Sustitución, no concatenación: entre peticiones el array se reemplaza.
+  // Sustitución, no concatenación: entre peticiones el array se reemplaza. Se
+  // concatena en dos sitios, y los dos escriben un paso: `anadirLinea` y
+  // `cerrarEjercicio`, que añade el cierre del ejercicio resuelto.
   const concatenaciones = (fuenteA.match(/return \[\.\.\.prev, linea\];/g) ?? []).length;
   check(
-    "el desarrollo sólo se concatena al escribir un paso, nunca entre peticiones",
-    concatenaciones === 1,
+    "el desarrollo sólo se concatena al escribir un paso —o el cierre del ejercicio—, nunca entre peticiones",
+    concatenaciones === 2 &&
+      /const cerrarEjercicio = useCallback\([\s\S]{0,1800}return \[\.\.\.prev, linea\];/.test(fuenteA),
     `concatenaciones encontradas: ${concatenaciones}`,
   );
   const reemplazos = (fuenteA.match(/setDesarrollo\(\[\]\)/g) ?? []).length;
@@ -2115,9 +2118,11 @@ console.log("\n · Cuentas dibujadas con guiones");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
+  // Antes que nada —salvo el cierre del ejercicio, que nunca es una cuenta
+  // dibujada y va con su marco (revisión daa127d, 2ª)—.
   check(
     "la pizarra recompone la cuenta dibujada antes que nada",
-    /const latex =\s*\n\s*columnaDeCuentaDibujada\(linea\.texto\)/.test(fuentePzC),
+    /const latex =\s*\n(?:\s*\/\/[^\n]*\n)*\s*\(linea\.operacion\?\.tipo === "resultado" \|\| linea\.operacion\?\.final \? latexDeLaSubrutina\(linea\) : null\)\s*\n\s*\?\? columnaDeCuentaDibujada\(linea\.texto\)/.test(fuentePzC),
   );
   check(
     "la prosa tampoco compone la raya de guiones",
@@ -2432,8 +2437,10 @@ console.log("\n · Ninguna fase abre con la pizarra en blanco");
     /const adelantada = !plantea \? enunciadoPorFase\.current\.get\(clave\) : null;/.test(fuenteAuE),
   );
   check(
+    // Si llega otra vez como CIERRE, sustituye a la que había —con la etiqueta
+    // que la enmarca—; si no, no se escribe dos veces.
     "y no la escribe dos veces cuando el motor llega a ella",
-    /if \(ultima && ultima\.texto === limpio\) return prev;/.test(fuenteAuE),
+    /if \(ultima && ultima\.texto === limpio\) \{\s*return esCierre \? \[\.\.\.prev\.slice\(0, -1\), linea\] : prev;/.test(fuenteAuE),
   );
 }
 
@@ -2714,10 +2721,11 @@ console.log("\n · El desarrollo de aritmética es UNA matriz resuelta");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
-  // La composición SUSTITUYE: un solo elemento, no un array que crece.
+  // La composición SUSTITUYE: la cuenta compuesta y, como mucho, el cierre del
+  // ejercicio con su resultado enmarcado —no un array que crece—.
   check(
     "el desarrollo se sustituye, no se acumula",
-    /pasos: \[\s*\{ linea: \{ \.\.\.ejercicio, id: -ejercicio\.id - 2, texto: cuenta\.texto \}, columna: "resuelta" \},\s*\]/.test(
+    /pasos: \[\s*\{ linea: \{ \.\.\.ejercicio, id: -ejercicio\.id - 2, texto: cuenta\.texto \}, columna: "resuelta" \},\s*\.\.\.\(cierre \? \[\{ linea: cierre \}\] : \[\]\),\s*\]/.test(
       fuentePzH,
     ),
   );

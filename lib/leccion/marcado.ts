@@ -30,6 +30,12 @@ import type { Escena, Foco, TipoFoco } from "./animacion.ts";
  * números y el tema, no el gesto con el que se enseña. Las tres primeras son
  * las que nombró el cliente —columna, factor, cancelación—; las otras tres son
  * gestos compuestos que tienen su propio dibujo.
+ *
+ * `resultado` es el CIERRE del ejercicio: la respuesta final, enmarcada. Lo
+ * pidió el cliente sin matices —"ningún ejercicio puede quedar inconcluso; el
+ * último paso debe mostrar siempre el resultado final enmarcado"—, y es el
+ * único gesto que lleva el visto verde: una marca de "correcto" sobre un paso
+ * intermedio le dice al alumno que ya ha terminado cuando no es así.
  */
 export type TipoOperacion =
   | "columna"
@@ -37,7 +43,8 @@ export type TipoOperacion =
   | "cancelacion"
   | "amplificacion"
   | "suma-fracciones"
-  | "distributiva";
+  | "distributiva"
+  | "resultado";
 
 /**
  * La lista, para quien necesite validar sin conocer el tipo.
@@ -53,11 +60,19 @@ export const TIPOS_OPERACION: readonly TipoOperacion[] = [
   "amplificacion",
   "suma-fracciones",
   "distributiva",
+  "resultado",
 ];
 
 /** La instrucción de foco que acompaña a un paso. */
 export interface OperacionPaso {
   tipo: TipoOperacion;
+  /**
+   * El paso hace una operación Y ADEMÁS es el último del ejercicio: "derivada de
+   * 3x² = 6x" recuadra el 3 y el 2 que se multiplican, y el 6x que sale es la
+   * respuesta. Con esto, tras la operación se enmarca el resultado; sin esto el
+   * paso final quedaba igual que uno intermedio.
+   */
+  final?: boolean;
   /**
    * Los términos sobre los que actúa la operación, TAL COMO APARECEN ESCRITOS
    * en el paso: `["2", "3"]` para los numeradores que se suman, `["5"]` para lo
@@ -88,6 +103,7 @@ const TRAZO: Record<TipoOperacion, TipoFoco> = {
   amplificacion: "caja",
   "suma-fracciones": "caja",
   distributiva: "caja",
+  resultado: "resultado",
 };
 
 /** Lo que el tutor dice si el paso no trae narración propia. */
@@ -98,6 +114,7 @@ const NARRACION: Record<TipoOperacion, (terminos: string[]) => string> = {
   amplificacion: (t) => `Multiplicamos arriba y abajo por el mismo número: ${t.join(" es ")}.`,
   "suma-fracciones": (t) => `Operamos los numeradores: ${t.join(" y ")}.`,
   distributiva: (t) => `Repartimos entre ${t.join(" y ")}.`,
+  resultado: (t) => `Resultado final: ${t.join(" ")}.`,
 };
 
 // ── ¿Está el término en el paso? ─────────────────────────────────────────────
@@ -334,6 +351,7 @@ export function escenaDePasoSemantico(
     // recuadro se encuentran.
     narracion: paso.narracion?.trim() || NARRACION[operacion.tipo](dichos),
     ...(operacion.etiqueta ? { etiqueta: operacion.etiqueta } : {}),
+    ...(operacion.tipo === "resultado" ? { final: true } : {}),
   };
 
   return {

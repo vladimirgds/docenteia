@@ -56,3 +56,20 @@ export function partirNota(texto: string): TrozoDeNota[] {
     .filter(Boolean)
     .map(partirTrozo);
 }
+
+/**
+ * LA DEFINICIÓN DE FRACCIÓN, EN NOTACIÓN FORMAL: Numerador sobre Denominador,
+ * igual a la fracción del dibujo.
+ *
+ * Antes se escribía "Numerador / Denominador: 1/4", con la barra inclinada, y
+ * el cliente lo corrigió: "evita usar la barra inclinada en explicaciones de
+ * conceptos básicos; el estudiante necesita ver la estructura de numerador
+ * arriba y denominador abajo". Aquí va entera en una sola expresión —palabras
+ * y números, cada uno con su raya horizontal—, compuesta en modo `\dfrac` para
+ * que ninguna de las dos fracciones baje a tamaño de subíndice.
+ */
+export function expresionFormalDeFraccion(numerador = 1, denominador = 4): string {
+  const n = Number.isInteger(numerador) ? numerador : 1;
+  const d = Number.isInteger(denominador) && denominador > 0 ? denominador : 4;
+  return `\\dfrac{\\text{Numerador}}{\\text{Denominador}} = \\dfrac{${n}}{${d}}`;
+}

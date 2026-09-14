@@ -958,7 +958,10 @@ async function contestar(pagina, estado) {
   const { pagina, errores } = await sesionRapida("revision.arit", "PRIMARIA", 6);
   await abrirTema(pagina, /aritm/i);
 
-  // 2. La marca del resultado no puede tapar las cifras.
+  // 2. La marca del resultado no puede tapar las cifras. El total de una cuenta
+  // en columna es la RESPUESTA FINAL del ejercicio: se enmarca —un rectángulo
+  // con aire alrededor de las cifras— y lleva el visto a la derecha del marco
+  // (revisión daa127d, 2ª: el visto, sólo en la respuesta final).
   let marca = null;
   for (let k = 0; k < 160 && !marca; k++) {
     marca = await pagina.evaluate(() => {
@@ -971,11 +974,18 @@ async function contestar(pagina, estado) {
         .map((el) => el.getBoundingClientRect())
         .filter((r) => r.width > 0);
       if (glifos.length === 0) return null;
+      const marco = g.querySelector("rect.pz-marco-final");
       return {
         elipses: document.querySelectorAll(".pz-animada ellipse").length,
+        final: g.getAttribute("data-final") === "si",
+        marco: marco
+          ? { x: Number(marco.getAttribute("x")), y: Number(marco.getAttribute("y")), w: Number(marco.getAttribute("width")), h: Number(marco.getAttribute("height")) }
+          : null,
         rayas: [...g.querySelectorAll("line")].map((l) => Number(l.getAttribute("y1"))),
         visto: g.querySelector("path.pz-visto") ? g.querySelector("path.pz-visto").getBBox().x : null,
+        arriba: Math.min(...glifos.map((r) => r.top - svg.top)),
         abajo: Math.max(...glifos.map((r) => r.bottom - svg.top)),
+        izquierda: Math.min(...glifos.map((r) => r.left - svg.left)),
         derecha: Math.max(...glifos.map((r) => r.right - svg.left)),
       };
     });
@@ -984,11 +994,15 @@ async function contestar(pagina, estado) {
   if (!marca) {
     check("la lección llega a marcar un resultado", false, "no apareció en 40 s");
   } else {
-    console.log(`  · resultado: rayas en y=${marca.rayas.map((y) => y.toFixed(0)).join(",")} · cifras hasta y=${marca.abajo.toFixed(0)} · visto en x=${marca.visto?.toFixed(0)} · cifras hasta x=${marca.derecha.toFixed(0)}`);
+    const m = marca.marco;
+    console.log(`  · resultado: final=${marca.final} · marco ${m ? `x=${m.x.toFixed(0)}..${(m.x + m.w).toFixed(0)} y=${m.y.toFixed(0)}..${(m.y + m.h).toFixed(0)}` : "—"} · cifras x=${marca.izquierda.toFixed(0)}..${marca.derecha.toFixed(0)} y=${marca.arriba.toFixed(0)}..${marca.abajo.toFixed(0)} · visto en x=${marca.visto?.toFixed(0)}`);
     check("el resultado ya no se rodea con una elipse", marca.elipses === 0);
-    check("se subraya dos veces", marca.rayas.length === 2);
-    check("y las dos rayas van POR DEBAJO de las cifras, sin cruzarlas", Math.min(...marca.rayas) > marca.abajo);
-    check("con el visto a la derecha del número, sin tocarlo", marca.visto != null && marca.visto > marca.derecha);
+    check("el total de la cuenta es la respuesta final: se ENMARCA", marca.final && m != null && marca.rayas.length === 0);
+    check(
+      "y el marco rodea las cifras con aire, sin cruzar ninguna",
+      m != null && m.x < marca.izquierda && m.x + m.w > marca.derecha && m.y < marca.arriba && m.y + m.h > marca.abajo,
+    );
+    check("con el visto a la derecha del marco, sin tocarlo", m != null && marca.visto != null && marca.visto > m.x + m.w);
   }
 
   // 4a. Se contesta la práctica: la lección termina con el ejercicio cerrado.
@@ -1096,7 +1110,6 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
         paths: svg.querySelectorAll("path").length,
         numerador: /numerador: \d/.test(texto),
         denominador: /denominador: \d/.test(texto),
-        formal: /Numerador \/ Denominador:/.test(texto),
       };
     });
     if (!primera) await pagina.waitForTimeout(200);
@@ -1121,10 +1134,16 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     vistos.push(
       await pagina.evaluate(() => {
         const texto = document.body.innerText ?? "";
+        // La expresión formal, VERTICAL (revisión daa127d, 2ª): una sola fórmula
+        // con dos rayas de fracción y sin ninguna barra inclinada.
+        const f = document.querySelector(".pz-fraccion-formal");
+        const compuesta = (f?.querySelector(".katex-html")?.textContent ?? "").replace(/\s+/g, "");
         return {
           numerador: /numerador: \d/.test(texto),
           denominador: /denominador: \d/.test(texto),
-          formal: /Numerador \/ Denominador:/.test(texto),
+          formal: Boolean(f) && f.querySelectorAll(".mfrac").length === 2 &&
+            /Numerador/.test(compuesta) && /Denominador/.test(compuesta) && /=/.test(compuesta) && !/\//.test(compuesta),
+          barra: /Numerador\s*\/\s*Denominador/.test(texto),
         };
       }),
     );
@@ -1146,9 +1165,10 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     );
   }
   check(
-    "la expresión formal —Numerador / Denominador: n/d— acaba apareciendo",
+    "la expresión formal acaba apareciendo, VERTICAL: Numerador sobre Denominador = n sobre d",
     vistos.some((v) => v.formal),
   );
+  check("y en ningún momento se escribe con barra inclinada («Numerador / Denominador»)", !vistos.some((v) => v.barra));
   check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
   // Se cierra la sesión al terminar: una batería larga con muchas sesiones
   // seguidas es más estable liberando cada una según se deja de usar.
@@ -1392,11 +1412,18 @@ console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí e
     });
   const fotos = [];
   const t0 = Date.now();
-  while (Date.now() - t0 < 60_000) {
+  // Hasta dos minutos: el bucle sale en cuanto el paso de los numeradores se ha
+  // visto y apagado, y el margen sólo cuenta cuando la lección tarda en llegar
+  // (con la clave de IA rechazada, el servidor espera antes de su respaldo).
+  while (Date.now() - t0 < 120_000) {
     const f = await foto();
     fotos.push(f);
     // Se sigue hasta que el paso de los numeradores se haya visto y apagado.
-    const vistoNum = fotos.some((x) => x.etiqueta === "numeradores");
+    // "Visto" es en DOS muestras seguidas: al montarse la escena, la frase de
+    // entrada —que nombra "el denominador 4"— pasa por el primer foco camino del
+    // de los denominadores en un solo fotograma, y parar en ese destello dejaba
+    // la medida en 0 ms sin llegar al paso de verdad (que dura 1,4 s).
+    const vistoNum = fotos.some((x, k) => x.etiqueta === "numeradores" && fotos[k - 1]?.etiqueta === "numeradores");
     if (vistoNum && f.etiqueta !== "numeradores" && /Ejemplo/.test(f.fase)) break;
     await pagina.waitForTimeout(120);
   }
@@ -1495,6 +1522,208 @@ console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí e
     "y después retoma la clase: llega a la práctica con su pregunta, sin darse por «completada» antes",
     Boolean(ultimo.pregunta) && !ultimo.completada && /Práctica/.test(ultimo.fase ?? ""),
     `fase ${ultimo.fase}`,
+  );
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  await pagina.context().close();
+}
+
+// ── Revisión daa127d (2ª): fracción formal, cierre enmarcado, ejercicio fijo ─
+console.log("\n── Revisión daa127d (2ª): fracción formal, cierre enmarcado, ejercicio fijo, visto final ──");
+
+/** Todo lo que se ve del panel animado y de la proyección, de una vez. */
+const fotoPanel = (pagina) =>
+  pagina.evaluate(() => {
+    const panel = document.querySelector(".pz-animada");
+    const fijo = document.querySelector(".pz-enunciado-fijo");
+    const nota = document.querySelector(".modo-proyeccion .pz-animada .pz-nota");
+    const formal = document.querySelector(".modo-proyeccion .pz-fraccion-formal");
+    // Se comparan fórmulas sin sus marcas ni su espaciado: la tarjeta puede
+    // llevar resaltados (\htmlClass) y la cabecera fija va limpia.
+    const plano = (t) => String(t ?? "").replace(/\\htmlClass\{[^}]*\}/g, "").replace(/\\left|\\right|[{}\s]/g, "");
+    return {
+      fase: [...document.querySelectorAll("h2")].map((h) => h.textContent?.trim()).find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "",
+      subtitulo: document.querySelector('p[class*="bg-muted/60"]')?.textContent ?? "",
+      proyeccion: Boolean(document.querySelector(".modo-proyeccion")),
+      panel: document.querySelector("[data-panel]")?.getAttribute("data-panel") ?? null,
+      gesto: panel?.getAttribute("data-gesto") ?? null,
+      escena: plano(panel?.querySelector(".pz-formula annotation")?.textContent),
+      visto: Boolean(panel?.querySelector("path.pz-visto")),
+      marco: Boolean(panel?.querySelector("rect.pz-marco-final")),
+      tachado: Boolean(panel?.querySelector('.pz-resaltado[data-tipo="tachado"]')),
+      fijo: fijo ? plano(fijo.querySelector("annotation")?.textContent ?? fijo.textContent) : null,
+      fijoAbajo: fijo ? fijo.getBoundingClientRect().bottom : null,
+      pasoArriba: panel ? panel.getBoundingClientRect().top : null,
+      tarjeta: plano([...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Ejercicio")?.parentElement?.querySelector("annotation")?.textContent),
+      formal: formal ? formal.querySelectorAll(".mfrac").length : 0,
+      notaPx: nota ? parseFloat(getComputedStyle(nota).fontSize) : null,
+      notaCentro: nota ? getComputedStyle(nota).textAlign : null,
+      notaTexto: nota ? (nota.textContent ?? "").replace(/\s+/g, " ").trim() : null,
+      pregunta: Boolean([...document.querySelectorAll("input")].find((i) => /respuesta/i.test(i.placeholder ?? ""))),
+    };
+  });
+
+/** Entra o sale de Modo proyección con el botón del panel. */
+async function proyeccion(pagina, activar) {
+  const boton = pagina.getByRole("button", { name: activar ? /Modo proyección/ : /Salir de proyección/ }).first();
+  if (await boton.count()) await boton.click();
+  for (let k = 0; k < 20; k++) {
+    if ((await pagina.evaluate(() => Boolean(document.querySelector(".modo-proyeccion")))) === activar) return true;
+    await pagina.waitForTimeout(150);
+  }
+  return false;
+}
+
+/** Muestrea el panel hasta que aparezca la pregunta de la práctica. */
+async function muestrearHastaLaPractica(pagina, ms) {
+  const fotos = [];
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const f = await fotoPanel(pagina);
+    fotos.push(f);
+    if (f.pregunta && /Práctica/.test(f.fase)) break;
+    await pagina.waitForTimeout(140);
+  }
+  return fotos;
+}
+
+// 1, 2 y 4. FRACCIONES: la definición formal en vertical, el visto sólo en la
+// respuesta final, y el ejercicio que no queda inconcluso ni fallándolo.
+{
+  const { pagina, errores } = await sesionRapida("revision.d.frac", "PRIMARIA", 6);
+  await abrirTema(pagina, /fracci/i);
+  await pagina.waitForTimeout(500);
+  check("se entra en Modo proyección desde el principio de la lección", await proyeccion(pagina, true));
+  const fotos = await muestrearHastaLaPractica(pagina, 150_000);
+  console.log(`  · fases: ${[...new Set(fotos.map((f) => f.fase).filter(Boolean))].join(" → ")} · ${fotos.length} muestras`);
+
+  check(
+    "Concepto proyectado: bajo el gráfico, la definición formal con sus DOS rayas de fracción",
+    fotos.some((f) => /Concepto/.test(f.fase) && f.formal === 2),
+  );
+  const vistoFueraDeSitio = fotos.filter((f) => f.visto && f.gesto !== "cierre");
+  check(
+    "en ningún paso intermedio aparece el visto verde: sólo en el cierre del ejercicio",
+    vistoFueraDeSitio.length === 0,
+    vistoFueraDeSitio.slice(0, 2).map((f) => `${f.gesto}: ${f.escena.slice(0, 40)}`).join(" | "),
+  );
+  const alCerrar = fotos.filter((f) => /Resultado final/.test(f.subtitulo) && /Ejemplo/.test(f.fase));
+  check(
+    "al decir «Resultado final» la pizarra enmarca la respuesta y la confirma con el visto",
+    alCerrar.some((f) => f.gesto === "cierre" && f.marco && f.visto),
+    `${alCerrar.length} muestras; gestos: ${[...new Set(alCerrar.map((f) => f.gesto))].join(",")}`,
+  );
+  // Mientras se ANIMA un paso. Antes del primero, lo único proyectado es el
+  // propio enunciado, y ahí la cabecera no lo repite (a propósito).
+  const enEjemplo = fotos.filter((f) => /Ejemplo/.test(f.fase) && f.panel === "animado");
+  const escenasVistas = new Set(enEjemplo.map((f) => f.escena));
+  check(
+    "proyectando el ejemplo, el ejercicio original está fijo ARRIBA mientras abajo cambia el paso activo",
+    enEjemplo.length > 0 && escenasVistas.size >= 2 &&
+      enEjemplo.every((f) => f.fijo && f.fijo === f.tarjeta && f.fijoAbajo <= f.pasoArriba),
+    `${enEjemplo.filter((f) => !f.fijo || f.fijo !== f.tarjeta).length} muestras sin él · ${escenasVistas.size} pasos`,
+  );
+
+  // Se sale de proyección para contestar: tres respuestas erróneas.
+  await proyeccion(pagina, false);
+  const enunciado = (await estadoVisible(pagina)).pregunta;
+  const correcta = resolverPregunta(enunciado);
+  for (const mala of ["1/99", "2/99", "3/99"]) {
+    await esperar(pagina, (e) => Boolean(e.pregunta), 30_000);
+    await pagina.locator("input[placeholder*='respuesta' i]").fill(mala);
+    await pagina.getByRole("button", { name: /Responder/ }).click();
+    await pagina.waitForTimeout(1600);
+  }
+  const fin = await esperar(pagina, (e) => e.completada, 40_000);
+  const ultima = fin.desarrollo.at(-1) ?? "";
+  const [n, d] = String(correcta).split("/");
+  const cerrada = /\\boxed\{/.test(ultima) && (d ? ultima.includes(`\\frac{${n}}{${d}}`) : ultima.includes(String(n)));
+  const cuerpo = await pagina.evaluate(() => document.body.innerText ?? "");
+  console.log(`  · práctica "${enunciado}" fallada tres veces · última línea: ${ultima.replace(/\\htmlClass\{[^}]*\}/g, "").slice(0, 80)}…`);
+  check(
+    "fallada con los intentos agotados, el ejercicio NO queda inconcluso: la pizarra termina en su resultado enmarcado",
+    fin.completada && cerrada,
+  );
+  check(
+    "y el tutor da el feedback de conclusión con el resultado final",
+    new RegExp(`resultado final es ${String(correcta).replace("/", "\\/")}`).test(cuerpo),
+  );
+  const rotuloCierre = await pagina.evaluate(() => {
+    const fbox = [...document.querySelectorAll(".pz-final .fbox")].find((b) => !b.closest(".pz-animada"));
+    return {
+      rotulo: [...document.querySelectorAll("span")].some((s) => /^Resultado final$/i.test((s.textContent ?? "").trim())),
+      borde: fbox ? getComputedStyle(fbox).borderTopColor : null,
+    };
+  });
+  check(
+    "en la pizarra clásica, la línea de cierre lleva su marco visible y su rótulo «Resultado final»",
+    rotuloCierre.rotulo && Boolean(rotuloCierre.borde) && !/rgba\(0, 0, 0, 0\)|transparent/.test(rotuloCierre.borde),
+    JSON.stringify(rotuloCierre),
+  );
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  await pagina.context().close();
+}
+
+// 3, 4 y 5. ECUACIONES: la regla a tamaño de aula, el ejercicio fijo arriba al
+// proyectar 2(x + 3) = 16 y ningún visto sobre la x al quitar el 6.
+{
+  const { pagina, errores } = await sesionRapida("revision.d.lin", "SECUNDARIA", 2);
+  await abrirTema(pagina, /lineal/i);
+  await pagina.waitForTimeout(500);
+  await proyeccion(pagina, true);
+  const primera = await muestrearHastaLaPractica(pagina, 150_000);
+  const regla = primera.filter((f) => /Propiedad uniforme/.test(f.notaTexto ?? ""));
+  console.log(`  · regla proyectada: ${regla[0] ? `${regla[0].notaPx}px · ${regla[0].notaCentro}` : "—"}`);
+  check(
+    "«Propiedad uniforme de la suma: lo mismo a los dos lados» se proyecta a tamaño de aula (≥ text-3xl, 30 px) y centrada",
+    regla.length > 0 && regla.every((f) => f.notaPx >= 30 && f.notaCentro === "center"),
+  );
+
+  // "Más difícil" trae 2(x + 3) = 16, el ejercicio de la captura. Para pulsar se
+  // sale un momento de proyección: el lienzo proyectado tapa los botones.
+  await proyeccion(pagina, false);
+  let fotos = [];
+  let conParentesis = false;
+  for (let intento = 0; intento < 5 && !conParentesis; intento++) {
+    const masDificil = pagina.getByRole("button", { name: /Más difícil/ }).first();
+    if (!(await masDificil.count())) break;
+    await masDificil.click();
+    // La pregunta de la práctica anterior sigue en pantalla hasta que llega la
+    // lección nueva: se espera a que se vaya antes de muestrear.
+    for (let k = 0; k < 80 && (await fotoPanel(pagina)).pregunta; k++) await pagina.waitForTimeout(250);
+    await proyeccion(pagina, true);
+    fotos = await muestrearHastaLaPractica(pagina, 150_000);
+    // El ejemplo de "Más difícil" se cuenta dentro de la vista en la que se
+    // pidió (la de Práctica): se reconoce por el panel animado, no por el rótulo.
+    conParentesis = fotos.some((f) => f.panel === "animado" && /^\d+\(x[+-]\d+\)=/.test(f.tarjeta ?? ""));
+    await proyeccion(pagina, false);
+  }
+  const ejemplo = fotos.filter((f) => f.panel === "animado");
+  const tarjeta = ejemplo[0]?.tarjeta ?? "";
+  console.log(`  · ejemplo: ${tarjeta} · pasos animados vistos: ${new Set(ejemplo.map((f) => f.gesto)).size}`);
+  if (!conParentesis) {
+    console.log("  · (no salió un ejemplo con paréntesis en 5 intentos; se comprueba igual con el que salió)");
+  }
+  check(
+    "proyectando la ecuación, el ejercicio original limpio queda fijo arriba en TODOS los pasos",
+    ejemplo.length > 0 && ejemplo.every((f) => f.fijo === tarjeta && f.fijoAbajo <= f.pasoArriba),
+    `${ejemplo.filter((f) => f.fijo !== tarjeta).length} de ${ejemplo.length} sin él`,
+  );
+  if (conParentesis) {
+    check(
+      "y debajo se anima el paso activo con la distributiva, sin quitar el enunciado",
+      ejemplo.some((f) => f.gesto === "distributiva" && f.fijo === tarjeta),
+    );
+  }
+  const quitando = ejemplo.filter((f) => f.tachado);
+  check(
+    "al quitar el término de los dos lados, el foco está sólo en él: sin visto verde sobre la x",
+    quitando.length > 0 && quitando.every((f) => !f.visto),
+    `${quitando.length} muestras con el tachado, ${quitando.filter((f) => f.visto).length} con visto`,
+  );
+  check(
+    "el visto aparece únicamente en la respuesta final",
+    ejemplo.filter((f) => f.visto).every((f) => f.gesto === "cierre") &&
+      ejemplo.some((f) => f.gesto === "cierre" && f.marco && f.visto),
   );
   check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
   await pagina.context().close();

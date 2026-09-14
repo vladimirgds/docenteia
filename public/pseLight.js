@@ -384,7 +384,7 @@ export class PSELight {
         // ejercicio y el tutor se callaba (queja del cliente: "enseña un tema, enseña un ejercicio y
         // culmina la clase. La clase debe continuar"). Ahora se avisa a la interfaz de CÓMO terminó
         // —si hubo ejercicio calificable y si lo acertó— para que enlace la siguiente parte de la clase.
-        this.ui.onLessonEnd?.({ respondio: this._respondio, acerto: this._acerto, respuesta: this._acerto ? this._respuesta : null });
+        this.ui.onLessonEnd?.({ respondio: this._respondio, acerto: this._acerto, respuesta: this._respondio ? this._respuesta : null });
       }
     } finally {
       this.avatar.setSpeaking(false);
@@ -528,15 +528,24 @@ export class PSELight {
     // acierta: una lección que termina con el ejercicio a medias ("6/10 + 5/10", sin el 11/10) no se
     // puede dar por completada.
     this._respuesta = String(expected);
+    // EL EJERCICIO SE CIERRA EN CUANTO QUEDA RESUELTO, y el feedback lo dice. El cliente lo fijó como
+    // norma: "ningún ejercicio puede quedar inconcluso; el último paso debe mostrar siempre el resultado
+    // final enmarcado con su feedback de conclusión". Antes la pizarra se completaba —y sólo si había
+    // acertado— al terminar la lección entera, y el tutor felicitaba con el desarrollo aún a medias. Ahora
+    // la interfaz escribe la línea de cierre, enmarcada, JUSTO ANTES del feedback, y el feedback nombra el
+    // resultado final: lo que se oye y lo que se ve cierran a la vez.
+    const cierra = (acerto) => this.ui.onExerciseResolved?.({ acerto, respuesta: String(expected), pregunta: d.texto });
+    const conclusion = ` Resultado final: ${String(expected)}.`;
     if (checkAnswer(answer, expected).correct) {
       this._acerto = true;
+      cierra(true);
       // El elogio VARÍA. Repetir siempre la misma frase es lo que hacía que el tutor pareciera un
       // robot (queja del cliente). `_frase` recorre la lista sin repetir hasta agotarla.
-      const msg = d.si_correcto === "felicitar"
+      const msg = (d.si_correcto === "felicitar"
         ? this._frase("bien", ["¡Muy bien! 🎉 Respuesta correcta.", "¡Exacto! 🎉 Así se hace.",
             "¡Correcto! 🎉 Lo has resuelto bien.", "¡Perfecto! 🎉 Ese es el resultado.",
             "¡Muy bien! 🎉 Has aplicado el método correctamente."])
-        : this._frase("sigue", ["¡Correcto! Continuemos.", "Bien, sigamos.", "Exacto. Vamos con lo siguiente.", "Correcto, seguimos."]);
+        : this._frase("sigue", ["¡Correcto! Continuemos.", "Bien, sigamos.", "Exacto. Vamos con lo siguiente.", "Correcto, seguimos."])) + conclusion;
       this.ui.showFeedback(true, msg);
       await this._speak(msg, "sonriendo", signal);
       return;
@@ -546,7 +555,12 @@ export class PSELight {
     // respuesta, damos una PISTA (cada vez más concreta) del MÉTODO y permitimos REINTENTAR. La caja
     // de respuesta NO desaparece: se reabre de inmediato y la voz suena en paralelo.
     const boardText = this._exerciseBoard(timeline, index);
-    const acerto = async (msg) => { this._acerto = true; this.ui.showFeedback(true, msg); await this._speak(msg, "sonriendo", signal); };
+    const acerto = async (msg) => {
+      this._acerto = true;
+      cierra(true);
+      this.ui.showFeedback(true, msg + conclusion);
+      await this._speak(msg + conclusion, "sonriendo", signal);
+    };
 
     // 1er error → mostrar OTRO EJEMPLO resuelto (si lo hay) o una pista; luego permitir REINTENTAR.
     if (d.otro_ejemplo) {
@@ -571,8 +585,11 @@ export class PSELight {
     if (signal.aborted || retry == null) return;
     if (checkAnswer(retry, expected).correct) { await acerto("¡Muy bien, lo lograste! 🎉"); return; }
 
-    // Sigue sin acertar: NO revelamos el número. Recordamos el MÉTODO y animamos a repasar/reintentar.
-    const cierre = `No te preocupes, así se aprende. ${buildHint(d.texto, boardText, 2)} Puedes volver a reproducir la lección para repasar el método y luego intentarlo de nuevo. ¡Tú puedes!`;
+    // Sigue sin acertar y ya no quedan intentos. Mientras quedaban, la respuesta no se revelaba —se daban
+    // pistas del método—; agotados, el ejercicio NO se queda a medias: la pizarra lo cierra con el
+    // resultado final enmarcado y el tutor lo dice, para que el alumno vea a dónde había que llegar.
+    cierra(false);
+    const cierre = `No te preocupes, así se aprende. Mira la pizarra: el resultado final es ${String(expected)}. Repasa cómo se llega hasta él y lo intentamos con otro. ¡Tú puedes!`;
     this.ui.showFeedback(false, cierre);
     await this._speak(cierre, "hablando", signal);
   }

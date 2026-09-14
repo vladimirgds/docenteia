@@ -442,6 +442,80 @@
   stroke: hsl(152 60% 55%);
 }
 
+/* LA RESPUESTA FINAL, ENMARCADA.
+   Sólo el cierre del ejercicio lleva marco y visto (ver `Foco.final`): un
+   resultado intermedio se subraya y nada más. El marco va en el mismo verde que
+   el visto —los dos dicen "terminado"—, y se traza antes que él. */
+.pz-marco-final {
+  stroke: hsl(152 69% 34%);
+  stroke-width: 3;
+}
+
+.dark .pz-marco-final {
+  stroke: hsl(152 60% 55%);
+}
+
+.pz-resaltado[data-final="si"] .pz-visto {
+  animation-delay: 380ms;
+}
+
+/* En la pizarra clásica el marco lo pone KaTeX (`\boxed`), en verde y con un
+   trazo que se vea; en la animada lo dibuja la capa de resaltados en su
+   momento, así que el de KaTeX se oculta para no pintar dos marcos. El borde
+   lleva el grosor en línea (0.04em), de ahí el `!important`. */
+.pz-final {
+  color: hsl(160 84% 30%);
+  font-weight: 600;
+}
+
+.dark .pz-final {
+  color: hsl(160 84% 55%);
+}
+
+.pz-final .fbox {
+  border-color: hsl(152 69% 34%);
+  border-width: 2px !important;
+  border-radius: 4px;
+}
+
+.pz-animada .pz-final .fbox {
+  border-color: transparent;
+}
+
+/* La definición formal de la fracción (Numerador sobre Denominador = 1/4), bajo
+   el dibujo de la fase de Concepto. */
+.pz-fraccion-formal .katex {
+  font-size: 1.35em;
+}
+
+/* EL EJERCICIO ORIGINAL, FIJO EN LO ALTO DE LA PROYECCIÓN. Sólo se pinta al
+   proyectar (ver `EnunciadoFijo`). `sticky` lo mantiene arriba aunque el panel
+   se desplace con un desarrollo largo; el fondo es el de la pizarra, para que
+   lo que pase por debajo no se transparente. */
+.pz-enunciado-fijo {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem 1.25rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 2px solid hsl(210 40% 60% / 0.35);
+  background: inherit;
+}
+
+.pz-enunciado-rotulo {
+  font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  font-weight: 700;
+  color: hsl(25 95% 38%);
+}
+
+.pz-enunciado-formula .katex-display {
+  margin: 0;
+}
+
 /* El rótulo de la llevada o de la reagrupación, sobre la caja. Es una nota
    escrita a mano sobre la pizarra —"llevo 1", "× 2"—, así que va en la fuente
    de tiza, igual que los rótulos del diagrama. */
@@ -589,6 +663,19 @@
   font-size: 1.35em;
 }
 
+/* UNA NOTA SOLA EN SU LIENZO —la regla que se está contando, "Propiedad
+   uniforme de la suma: lo mismo a los dos lados"—, un escalón más: el cliente
+   la volvió a señalar diminuta y pidió "text-2xl o text-3xl, centrado y con
+   fuente clara". No baja nunca de text-3xl (1.875rem), va centrada en el
+   lienzo y en blanco sobre la pizarra oscura, con el trazo engrosado para que
+   la letra de pizarra se lea desde el fondo del aula. */
+.modo-proyeccion .pz-animada .pz-nota {
+  font-size: clamp(1.875rem, 3vw, 3rem);
+  font-weight: 600;
+  line-height: 1.35;
+  justify-content: center;
+}
+
 /* Las notas ya escritas se quedan a la vista un punto por debajo de la que se
    está contando, sin apagarse: siguen siendo pizarra que el aula tiene que leer. */
 .modo-proyeccion .pz-nota-anterior {
@@ -684,11 +771,49 @@
   font-size: clamp(1rem, 1.8vw, 1.75rem);
 }
 
+/* Lo que el tutor explica en cada paso, bajo la fórmula: a tamaño de aula
+   también (nunca por debajo de text-2xl), centrado. */
 .modo-proyeccion .pz-pie {
-  font-size: clamp(1.05rem, 2vw, 1.75rem);
+  font-size: clamp(1.5rem, 2.3vw, 2.25rem);
   color: hsl(210 40% 92%);
   max-width: 60ch;
   margin-inline: auto;
+}
+
+/* El marco de la respuesta final, en el verde de tiza del visto. */
+.modo-proyeccion .pz-marco-final {
+  stroke: hsl(142 70% 62%);
+  stroke-width: 6;
+}
+
+.modo-proyeccion .pz-final {
+  color: hsl(142 70% 72%);
+}
+
+/* El ejercicio fijo arriba: grande, pero un punto por debajo del paso activo,
+   que es lo que se está explicando. */
+.modo-proyeccion .pz-enunciado-fijo {
+  background: hsl(222 47% 8%);
+}
+
+.modo-proyeccion .pz-enunciado-rotulo {
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+  color: hsl(45 96% 62%);
+}
+
+.modo-proyeccion .pz-enunciado-fijo .katex {
+  font-size: clamp(1.75rem, 3.4vw, 2.75rem);
+}
+
+/* Con el ejercicio fijo arriba, el lienzo del paso cede algo de altura para
+   que los dos quepan en la pantalla sin desplazarse. */
+.modo-proyeccion[data-enunciado-fijo="si"] .pz-animada {
+  min-height: min(46vh, 28rem);
+}
+
+/* La definición formal de la fracción, proyectada bajo el dibujo. */
+.modo-proyeccion .pz-fraccion-formal .katex {
+  font-size: clamp(1.75rem, 3vw, 2.75rem);
 }
 
 /* Cabecera y mandos, legibles y pulsables desde una pantalla táctil de aula. */

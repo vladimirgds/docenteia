@@ -275,6 +275,13 @@ export function reanudarTrasAclaracion<T extends LSGConModulos>(
  * comparte cifras con el primer foco y lo encendía, así que la pizarra hacía el
  * primer paso del ejercicio que tenía que resolver el alumno —y la tarjeta de
  * arriba ya enseñaba "= 2x + 8"—. El cliente lo fotografió en Ecuaciones.
+ *
+ * UN PASO ETIQUETADO NO ES UN ENUNCIADO. Tras «No entendí este paso» en la
+ * práctica, el desglose termina en su cierre —"1/7 + 5/7 = 6/7", etiquetado
+ * como resultado— y justo detrás se le devuelve la pregunta al alumno. Leído
+ * como "la última línea antes de la pregunta", el cierre pasaba por enunciado,
+ * se llevaba la tarjeta y vaciaba el desarrollo que se acababa de explicar. Un
+ * enunciado se escribe sin etiqueta; lo etiquetado es desarrollo.
  */
 export function enunciadosParaResolver(lsg: LSGConModulos | null | undefined): Set<string> {
   const conjunto = new Set<string>();
@@ -283,9 +290,10 @@ export function enunciadosParaResolver(lsg: LSGConModulos | null | undefined): S
     : [Array.isArray(lsg?.directivas) ? lsg.directivas : []];
   for (const lista of listas) {
     let ultima: string | null = null;
-    for (const d of lista as Array<{ tipo?: string; contenido?: string }>) {
-      if (d?.tipo === "pizarra" && String(d.contenido ?? "").trim()) ultima = String(d.contenido).trim();
-      else if (d?.tipo === "preguntar" && ultima) conjunto.add(ultima);
+    for (const d of lista as Array<{ tipo?: string; contenido?: string; operacion?: unknown }>) {
+      if (d?.tipo === "pizarra" && String(d.contenido ?? "").trim()) {
+        ultima = d.operacion ? null : String(d.contenido).trim();
+      } else if (d?.tipo === "preguntar" && ultima) conjunto.add(ultima);
     }
   }
   return conjunto;

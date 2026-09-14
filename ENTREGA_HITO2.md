@@ -1422,7 +1422,8 @@ Cada paso operativo de la pizarra sale del motor con su instrucción de foco:
   que nombró el cliente— y tres gestos compuestos con dibujo propio:
   `amplificacion`, `suma-fracciones` y `distributiva`. Un catálogo de miles de
   ejercicios cabe en esos seis, porque lo que cambia de un ejercicio a otro son
-  los números, no el gesto.
+  los números, no el gesto. (Desde la sección 31 hay un séptimo, `resultado`:
+  el cierre del ejercicio, la respuesta final enmarcada.)
 - `terminosFoco` son términos **escritos** en el paso, tal cual.
 - `narracion` es lo que dice el tutor mientras se marca.
 
@@ -1955,3 +1956,127 @@ ejecuciones largas contra el servidor de desarrollo la base de datos remota
 cortó la conexión (`ConnectionReset`) tras cientos de sesiones de prueba, lo que
 detuvo esa ejecución a mitad. Repetida contra el servidor de producción,
 terminó completa y limpia.
+
+## 31. Revisión daa127d (2ª): fracción formal, cierre enmarcado, ejercicio fijo y visto sólo al final
+
+Cinco puntos más sobre las capturas de `daa127d`. Se comprobaron uno a uno sobre
+el código ya entregado en la ronda anterior (`36a49a7`) y los cinco seguían
+siendo ciertos o lo eran en parte, así que se corrigen todos.
+
+### 1. Fracciones: notación formal, sin barra inclinada
+
+Bajo el gráfico circular aparecía «Numerador / Denominador: 1/4», con la barra
+inclinada. Ahora es **una sola expresión vertical** compuesta por KaTeX:
+*Numerador* sobre *Denominador* igual a *1* sobre *4*, cada fracción con su raya
+horizontal y en estilo de bloque (`\dfrac`), de modo que ninguna baja a tamaño
+de subíndice. Se destapa, como antes, cuando ya se han dicho las dos palabras,
+usa la fracción que enseña el dibujo (3 de 8 se escribe 3 sobre 8) y aparece
+también **al proyectar Concepto**, debajo del gráfico. La expresión se genera en
+un solo sitio (`expresionFormalDeFraccion`, en `lib/leccion/notas.ts`), y la
+pizarra y la proyección la componen con el mismo componente.
+
+### 2. Ningún ejercicio queda inconcluso
+
+«El último paso debe mostrar siempre el resultado final enmarcado con su
+feedback de conclusión.» Se aplica a todos los temas, no sólo a las fracciones:
+
+- **Un gesto nuevo en el contrato del paso: `resultado`.** Es el cierre del
+  ejercicio: la línea con la respuesta final. La pizarra la **enmarca** —un
+  rectángulo con aire alrededor de la respuesta, que no roza ninguna cifra— y le
+  pone el visto verde; la pizarra clásica la muestra con el marco (`\boxed`) y el
+  rótulo «✓ Resultado final». Un paso que opera y a la vez cierra (la derivada
+  de un monomio, la diferencia de cuadrados) lleva la marca `final`: primero se
+  recuadra la operación y después se enmarca su resultado.
+- **Todos los ejemplos terminan en su cierre**, anunciado con «¡Y listo!
+  Resultado final: …». En fracciones con denominadores distintos es la respuesta
+  consolidada, `3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10`; con el mismo
+  denominador, `2/6 + 3/6 = 5/6` (o `… = 4/6 = 2/3` si se simplifica); en
+  ecuaciones, `x = 5`; en aritmética, la cuenta igualada a su total; en
+  derivadas y factorización, la línea del resultado.
+- **«No entendí este paso» en la práctica llega también al final.** Antes se
+  detenía en «6/10 + 5/10 = ?» para no darle al alumno la respuesta que tenía que
+  escribir: era exactamente lo que se ve en la captura. Ahora el desglose llega
+  al resultado enmarcado y, en vez de cerrar, le devuelve la palabra: «Ahora
+  escríbelo tú en la casilla de respuesta para comprobarlo». Sus pasos se animan
+  como los del ejemplo.
+- **La práctica se cierra en cuanto queda resuelta**, acertada o con los tres
+  intentos agotados. El reproductor avisa a la interfaz (`onExerciseResolved`)
+  justo antes del feedback; la interfaz escribe la línea de cierre —comprobada:
+  sumando, sustituyendo la x, derivando o multiplicando de vuelta— y el feedback
+  la nombra: «¡Muy bien! Respuesta correcta. Resultado final: 11/10». Con los
+  intentos agotados ya no se queda sin respuesta: «Mira la pizarra: el resultado
+  final es 11/10». Mientras quedan intentos, sigue sin revelarse: sólo pistas del
+  método.
+
+### 3. Proyección: el ejercicio original, fijo arriba
+
+Al proyectar «2(x + 3) = 16» sólo se veía la línea que se operaba. Ahora la
+proyección lleva arriba, fijo, **el ejercicio original limpio** —tal como está en
+la tarjeta, sin marcas— y debajo el paso activo del desarrollo, con la
+distributiva y todo lo que sigue. Va con `position: sticky`, así que no se
+pierde aunque el panel se desplace; no se repite cuando lo único proyectado es el
+propio enunciado (la práctica, antes de contestar), y el lienzo del paso cede
+algo de altura para que los dos quepan sin desplazarse.
+
+### 4. El visto verde, sólo en la respuesta final
+
+El visto que flotaba junto a la x de «2x + 6 = 16 − 6» era el del coeficiente:
+esa escena, además de cancelar el 6, encendía el 2 con la marca de resultado y
+terminaba en «⇒ x = 5», adelantando el paso siguiente. Ahora:
+
+- **Un paso, una operación.** Sobre `2x + 6 = 16` sólo se quitan el +6 y el −6,
+  cada uno con su tachado; el 2 no se marca ni se colorea. Dividir entre 2 va en
+  **su** línea, `2x = 10`, con una caja y el rótulo «÷ 2».
+- **El visto es sólo para la respuesta final.** Un resultado intermedio —lo que
+  queda al amplificar, al repartir, al sumar numeradores— lleva el doble
+  subrayado y nada más. Señalar un coeficiente o un exponente es una caja, no un
+  resultado.
+- La pizarra reconoce además la **locución exacta** que el motor asigna a cada
+  paso: si el tutor dice esa frase, ese paso gana a cualquier parecido. Así, la
+  regla de la potencia ya no se queda en el enunciado «x²» y la pizarra llega a
+  enmarcar el resultado de la derivada.
+
+### 5. Escala tipográfica en proyección
+
+La captura es de `daa127d`, anterior a las notas de pizarra de la ronda pasada.
+Con ellas, «Propiedad uniforme de la suma: lo mismo a los dos lados» ya se
+proyectaba a `text-2xl`; ahora una nota sola en su lienzo sube a **`text-3xl`
+como mínimo** (crece con la pantalla hasta 3 rem), centrada, en blanco sobre la
+pizarra oscura y con trazo más grueso. Lo que el tutor explica bajo cada paso
+proyectado no baja de `text-2xl`.
+
+### Un fallo más, encontrado al probarlo
+
+La batería de Chrome cazó uno que no estaba en las capturas: con el desglose de
+la práctica llegando ya a su cierre, la pregunta que se le devuelve al alumno
+iba justo detrás de esa línea, y el aula la tomaba por el enunciado de la
+pregunta —«la última línea escrita antes de preguntar»—: se llevaba la tarjeta y
+vaciaba el desarrollo recién explicado. Ahora un paso etiquetado nunca pasa por
+enunciado. Y mientras el tutor **pregunta**, la pizarra animada deja de seguir a
+la voz: «¿Cuánto es 1/7 + 5/7?» repite las cifras del primer paso y la
+rebobinaba hasta él, escondiendo el desarrollo resuelto justo cuando el alumno
+tenía que contestar.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **577 comprobaciones**, con un bloque nuevo para esta
+revisión: la definición formal (una sola expresión, dos rayas de fracción,
+ninguna barra); el cierre enmarcado en el ejemplo de `3/5 + 1/2`; que en **todos
+los motores** —suma, resta, multiplicación, división, fracciones en tres
+niveles, ecuaciones, derivadas y factorización— la pizarra esté en la respuesta
+enmarcada al sonar «Resultado final»; que el desglose de la práctica llegue al
+final en fracciones, ecuaciones, aritmética y derivadas; el cierre comprobado de
+once prácticas distintas; el **reproductor real** cerrando el ejercicio antes
+del feedback, acertando y con los tres intentos agotados (sin revelar nada
+mientras quedan intentos); que sobre `2x + 6 = 16` sólo haya el tachado del +6 y
+el −6, y que en toda la lección de `2(x + 3) = 16` la única respuesta final sea
+`x = 5`. `qa/navegador.mjs` sube a **90** y lo mide en Chrome de verdad,
+proyectando: la fracción formal bajo el gráfico; **ningún visto** en ningún paso
+intermedio; al decir «Resultado final», marco y visto sobre la respuesta; el
+ejercicio original fijo arriba mientras abajo cambia el paso —también en
+`2(x + 3) = 16`, con la distributiva—; la práctica fallada tres veces termina
+enmarcada y con su feedback de conclusión; la línea de cierre de la pizarra
+clásica, con su marco visible y su rótulo; y «Propiedad uniforme de la suma»
+proyectada a 38 px, centrada. Todo contra la **compilación de producción**. Las
+demás baterías, con el servidor levantado —incluido el barrido de 200 sesiones y
+1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build` limpios.

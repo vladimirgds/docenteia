@@ -81,6 +81,19 @@ function pasoNarrado(contenido, operacion, locuciones) {
   return out;
 }
 
+// EL CIERRE DEL EJERCICIO: la línea con la respuesta final, etiquetada como `resultado` para que la
+// pizarra la ENMARQUE y le ponga el visto, y la frase que la anuncia, con su pausa de lectura.
+//
+// El cliente lo fijó como norma después de ver una suma de fracciones cuyo desarrollo se paraba en
+// "6/10 + 5/10": "ningún ejercicio puede quedar inconcluso; el último paso debe mostrar siempre el
+// resultado final enmarcado con su feedback de conclusión". Todo ejercicio resuelto —ejemplo guiado o
+// desglose de «No entendí este paso»— termina aquí. La frase dice "Resultado final": son las palabras
+// con las que la pizarra, que sigue a la voz, reconoce el cierre y lo enmarca en ese momento.
+function cierreDelEjercicio(contenido, respuesta, dicho) {
+  const texto = dicho || `¡Y listo! Resultado final: ${respuesta}.`;
+  return pasoNarrado(contenido, foco("resultado", [respuesta]), [texto]);
+}
+
 // 1/2 → 3/6, contado en dos tiempos: el factor que multiplica arriba y abajo, y lo que queda.
 //
 // La frase nombra la fracción por su ORDEN ("la primera", "la segunda") y no por sus cifras, a
@@ -628,11 +641,12 @@ function pasoMCM(d1, d2, L) {
 //   · Cada paso se escribe ANTES de narrarlo y se sostiene con la pausa de lectura (ver PAUSA_LECTURA).
 //   · `explica`: frases de apoyo que el desglose intercala antes de un paso ({ mcm, amplificacion, suma,
 //     simplificacion }) — el andamiaje del paso exacto en el que el alumno se atascó.
-//   · `conResultado: false` se detiene ANTES de sumar: en la práctica, dar la suma sería resolverle el
-//     ejercicio que tiene que contestar él.
-//   · Con resultado, se cierra con la RESPUESTA FINAL CONSOLIDADA —el enunciado igualado a su
-//     resultado—, que el cliente pidió explícitamente: "1/2 + 1/3 = (3+2)/6 = 5/6".
-function pasosDeFraccion(A, { explica = {}, conResultado = true } = {}) {
+//   · SIEMPRE llega al final y cierra con la RESPUESTA FINAL CONSOLIDADA —el enunciado igualado a su
+//     resultado, "1/2 + 1/3 = 3/6 + 2/6 = (3 + 2)/6 = 5/6"—, enmarcada y anunciada. Antes, en la
+//     práctica, el desglose se detenía en "6/10 + 5/10 = ?" para no darle al alumno la respuesta que
+//     tenía que escribir él; el cliente lo vio parado ahí y fue tajante: ningún ejercicio puede quedar
+//     inconcluso. El alumno la escribe después igualmente: la lección le devuelve la pregunta.
+function pasosDeFraccion(A, { explica = {} } = {}) {
   const out = [];
   const apoyo = (clave) => (explica[clave] ? [{ tipo: "hablar", texto: explica[clave] }, { ...PAUSA_LECTURA }] : []);
   if (A.L) {
@@ -646,40 +660,24 @@ function pasosDeFraccion(A, { explica = {}, conResultado = true } = {}) {
       { tipo: "hablar", texto: `Es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
       ...amplificaNarrada(A.n1, A.d1, A.a, A.L, "La primera"),
       ...amplificaNarrada(A.n2, A.d2, A.b, A.L, "La segunda"),
-    );
-    if (!conResultado) {
-      out.push(
-        { tipo: "pizarra", accion: "escribir", contenido: `${A.a}/${A.L} + ${A.b}/${A.L} = ?` },
-        { tipo: "hablar", texto: `Ya tienen el mismo denominador, ${A.L}. Ahora te toca a ti: suma los numeradores, deja el ${A.L} abajo y, si se puede, simplifica.` },
-      );
-      return out;
-    }
-    out.push(
       ...apoyo("suma"),
       ...sumaNarrada(`${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}`, A.a, A.b, A.L, `Ahora las dos tienen denominador ${A.L}.`),
     );
     if (A.simp) out.push(...apoyo("simplificacion"), ...simplificaNarrada(A.suma, A.L, A.g, A.simp));
-    out.push({
-      tipo: "pizarra", accion: "escribir",
-      contenido: `${A.texto} = ${A.a}/${A.L} + ${A.b}/${A.L} = (${A.a} + ${A.b})/${A.L} = ${A.suma}/${A.L}${A.simp ? ` = ${A.simp}` : ""}`,
-    });
-    return out;
-  }
-  if (!conResultado) {
-    out.push({ tipo: "hablar", texto: `Fíjate: las dos tienen el mismo denominador, ${A.d}, así que los trozos son del mismo tamaño. Solo tienes que sumar los numeradores y dejar el ${A.d} abajo. ¡Inténtalo!` });
+    out.push(...cierreDelEjercicio(
+      `${A.texto} = ${A.a}/${A.L} + ${A.b}/${A.L} = (${A.a} + ${A.b})/${A.L} = ${A.suma}/${A.L}${A.simp ? ` = ${A.simp}` : ""}`,
+      A.final,
+    ));
     return out;
   }
   out.push(
     ...apoyo("suma"),
     ...sumaNarrada(`${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}`, A.n1, A.n2, A.d, `Las dos tienen el mismo denominador, ${A.d}.`),
   );
-  if (A.simp) {
-    out.push(
-      ...apoyo("simplificacion"),
-      ...simplificaNarrada(A.suma, A.d, A.g, A.simp),
-      { tipo: "pizarra", accion: "escribir", contenido: `${A.texto} = ${A.suma}/${A.d} = ${A.simp}` },
-    );
-  }
+  if (A.simp) out.push(...apoyo("simplificacion"), ...simplificaNarrada(A.suma, A.d, A.g, A.simp));
+  // El cierre también aquí, aunque la suma ya diga cuánto da: es la línea que se enmarca, y la que
+  // resume el ejercicio entero en una sola igualdad.
+  out.push(...cierreDelEjercicio(`${A.texto} = ${A.suma}/${A.d}${A.simp ? ` = ${A.simp}` : ""}`, A.final));
   return out;
 }
 // Acepta un string (compatibilidad: `fraccionResueltaLSG(evitar)`) o { evitar, nivel }.
@@ -764,14 +762,11 @@ export function fraccionResueltaLSG(opts) {
     { tipo: "esperar", segundos: 1 },
     ...pasosDeFraccion(A),
   );
-  // El cierre dice lo que QUEDA y no repite las fracciones de partida: "¡Y listo! 1/2 + 1/3 = 5/6" lleva
-  // las cifras de la entrada de la última escena, y la pizarra, que sigue a la voz, volvía a su principio
-  // —con el resultado otra vez oculto— justo cuando el tutor lo anunciaba. Tampoco dice "resultado": esa
-  // palabra la reconocen como suya los resultados de CADA conversión, y el recuadro saltaba a la
-  // primera. "Nos queda…" es la frase del último paso. El enunciado igualado a su resultado ya está
-  // escrito en la línea consolidada que se acaba de pintar.
-  dir.push({ tipo: "hablar", texto: `¡Y listo! Nos queda ${A.final}: esa es la respuesta final. Ahora te toca a ti con otra suma parecida.` });
-  // El resultado final se sostiene un segundo antes de pasar a la práctica: también ésa es una transición.
+  // El ejercicio ya está cerrado —la línea consolidada, enmarcada, y "¡Y listo! Resultado final: …"—:
+  // aquí sólo se pasa la palabra. La frase del cierre no repite las fracciones de partida: llevaba las
+  // cifras de la entrada de la última escena y la pizarra, que sigue a la voz, volvía a su principio.
+  dir.push({ tipo: "hablar", texto: "Ahora te toca a ti con otra suma parecida." });
+  // Y se sostiene un segundo antes de pasar a la práctica: también ésa es una transición.
   dir.push({ ...PAUSA_LECTURA });
   // PRÁCTICA: otra fracción DISTINTA que resuelve el alumno (calificable).
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${B.texto} = ?` });
@@ -794,10 +789,12 @@ export function fraccionResueltaLSG(opts) {
 // servidor caía en una lección de demostración genérica del TEMA, con su propio ejemplo.
 //
 // Aquí se desglosa EL MISMO ejercicio que hay en la tarjeta, sin IA: el paso exacto en el que estaba el
-// alumno —si se sabe cuál— lleva un andamiaje propio, y el resto se cuenta más despacio. En el ejemplo
-// guiado se llega hasta la respuesta final consolidada; en la práctica se detiene antes, porque darla
-// sería resolverle lo que tiene que contestar él. Volver al ejercicio —reanudar la lección donde iba—
-// lo hace el aula, que es quien sabe por dónde iba.
+// alumno —si se sabe cuál— lleva un andamiaje propio, y el resto se cuenta más despacio. SIEMPRE se
+// llega hasta la respuesta final, enmarcada y anunciada: en la práctica se detenía antes —para no
+// resolverle lo que tenía que contestar él— y el cliente lo rechazó, "ningún ejercicio puede quedar
+// inconcluso". En la práctica (`conResultado: false`, el nombre de siempre) lo único que cambia es la
+// frase final, que le devuelve la palabra: escribe tú la respuesta. Volver al ejercicio —reanudar la
+// lección donde iba y repetirle la pregunta— lo hace el aula, que es quien sabe por dónde iba.
 const ANDAMIAJE_FRACCION = {
   mcm: (A) => `Antes de nada, por qué hace falta: ${A.d1} y ${A.d2} son denominadores distintos, así que los trozos son de tamaños distintos y no se pueden juntar tal cual. Buscamos un número que esté a la vez en la tabla del ${A.d1} y en la del ${A.d2}: el más pequeño es el mínimo común denominador.`,
   amplificacion: () => "La clave de este paso: multiplicar ARRIBA y ABAJO por el mismo número no cambia lo que vale la fracción. 1/2 y 2/4 son la misma mitad, sólo que cortada en más trozos.",
@@ -844,6 +841,9 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
   if (!ej) return null;
   const base = { escena: "desglose_ejercicio", intencion: "explicar", duracion_estimada: 60, _mock: true };
   const abre = (que) => ({ tipo: "hablar", texto: que });
+  // ¿Es el ejercicio que tiene que contestar el alumno? Entonces, tras el cierre, se le pasa la palabra.
+  const practica = !conResultado;
+  const devuelve = "Ahora escríbelo tú en la casilla de respuesta para comprobarlo.";
 
   // 1) SUMA DE FRACCIONES (el caso de la captura).
   const inst = extraerFraccionSuma(ej);
@@ -858,10 +858,11 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
       abre(clave
         ? `Sin problema. Vamos a mirar con calma ${NOMBRE_PASO_FRACCION[clave]} en ${A.texto}, el mismo ejercicio, sin cambiarlo.`
         : `Sin problema. Vamos con el MISMO ejercicio, ${A.texto}, más despacio y sin saltarnos nada.`),
-      { tipo: "pizarra", accion: "escribir", contenido: conResultado ? A.texto : `${A.texto} = ?` },
-      ...pasosDeFraccion(A, { explica, conResultado }),
+      // En la práctica el enunciado ya está en la tarjeta, tal como se le preguntó: no se reescribe.
+      ...(practica ? [] : [{ tipo: "pizarra", accion: "escribir", contenido: A.texto }]),
+      ...pasosDeFraccion(A, { explica }),
+      abre(practica ? devuelve : `Así queda resuelto ${A.texto}, de principio a fin.`),
     ];
-    if (conResultado) dir.push(abre(`Nos queda ${A.final}: esa es la respuesta final de ${A.texto}.`));
     return { ...base, directivas: dir };
   }
 
@@ -871,23 +872,25 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
     const lineas = [lin.original, ...lin.steps.map((s) => s.escribe)].map(compacto);
     const enDuda = paso ? lineas.indexOf(compacto(paso)) : -1;
     const reparto = locucionesDistributiva(lin.original);
-    const pasos = conResultado ? lin.steps : lin.steps.slice(0, -1);
     const dir = [
       { tipo: "avatar", accion: "sonreir" },
       abre(`Sin problema. Vamos con la MISMA ecuación, ${lin.original}, paso a paso y más despacio.`),
       escribePaso(lin.original, lin.steps[0]?.accion ?? null, lin.steps[0]?.explica),
       { tipo: "esperar", segundos: 1 },
     ];
-    pasos.forEach((s, k) => {
+    lin.steps.forEach((s, k) => {
       // Sin saber el paso, todos llevan su andamiaje; sabiéndolo, sólo ése.
       if (enDuda < 0 || enDuda === k) dir.push(abre(andamiajeLineal(s.explica)), { ...PAUSA_LECTURA });
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
       if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
-      dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
+      // La última línea es la solución, "x = 5": el cierre del ejercicio, enmarcado.
+      if (k === lin.steps.length - 1) {
+        dir.push(...cierreDelEjercicio(s.escribe, lin.answer, `¡Y listo! Resultado final: ${lin.varName} = ${lin.answer}.`));
+      } else {
+        dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
+      }
     });
-    dir.push(abre(conResultado
-      ? `Así llegamos a la solución: ${lin.varName} = ${lin.answer}.`
-      : `Te queda el último paso: deja la ${lin.varName} sola y escribe cuánto vale.`));
+    dir.push(abre(practica ? devuelve : `Así llegamos a la solución de ${lin.original}.`));
     return { ...base, directivas: dir };
   }
 
@@ -899,20 +902,21 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
     const enColumna = op.op === "suma" || op.op === "resta";
     const col = String(paso ?? "").toLowerCase().match(/unidades|decenas|centenas|millar/)?.[0] ?? "";
     const enDuda = col ? E.steps.findIndex((s) => s.explica.toLowerCase().includes(col)) : -1;
-    const pasos = conResultado ? E.steps : E.steps.slice(0, 1);
+    const eq = E.aproximado ? "≈" : "=";
     const dir = [
       { tipo: "avatar", accion: "sonreir" },
       abre(`Sin problema. Vamos con la MISMA cuenta, ${E.texto}, más despacio.`),
       escribePaso(E.texto, enColumna ? foco("columna", [op.a, op.b]) : null, `Vamos a ${cfg.verbo} ${E.texto} paso a paso.`),
       { tipo: "esperar", segundos: 1 },
     ];
-    pasos.forEach((s, k) => {
+    E.steps.forEach((s, k) => {
       if (enDuda === k || (enDuda < 0 && k === 0)) dir.push(abre(ANDAMIAJE_ARITMETICA[op.op]), { ...PAUSA_LECTURA });
       dir.push(escribePaso(s.escribe, s.foco ?? null, s.explica), { tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
     });
-    dir.push(abre(conResultado
-      ? `Así, ${E.texto} ${E.aproximado ? "≈" : "="} ${E.answer}.`
-      : "Sigue tú con el resto, de la misma manera, y escribe el resultado."));
+    dir.push(
+      ...cierreDelEjercicio(`${E.texto} ${eq} ${E.answer}`, String(E.answer), `Así, ${E.texto} ${eq} ${E.answer}. Resultado final: ${E.answer}.`),
+      ...(practica ? [abre(devuelve)] : []),
+    );
     return { ...base, directivas: dir };
   }
 
@@ -1635,7 +1639,14 @@ function aritmeticaLSG(opts, cfg) {
     // La columna recién contada se queda a la vista un segundo más antes de pasar a la siguiente.
     dir.push({ ...PAUSA_LECTURA });
   }
-  dir.push({ tipo: "hablar", texto: `Así, ${E.texto} ${eq} ${E.answer}. Ahora te toca a ti.` }, { ...PAUSA_LECTURA });
+  // El cierre: la cuenta igualada a su resultado, enmarcado. En suma y resta la pizarra animada ya
+  // enmarca el total dentro de la propia cuenta en columna —es la misma operación—; esta línea es la
+  // que lo deja enmarcado también en el desarrollo de la pizarra clásica.
+  dir.push(
+    ...cierreDelEjercicio(`${E.texto} ${eq} ${E.answer}`, String(E.answer), `Así, ${E.texto} ${eq} ${E.answer}. Resultado final: ${E.answer}.`),
+    { tipo: "hablar", texto: "Ahora te toca a ti." },
+    { ...PAUSA_LECTURA },
+  );
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${P.texto} = ?` });
   dir.push({ tipo: "preguntar", texto: pregArit(P), respuesta: String(P.answer), esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
   if (opts.seguimiento && !opts.practica) aperturaEjemplo(dir, `Vamos con otro: ${E.texto}.`, E.texto);
@@ -1773,9 +1784,14 @@ export function linealResueltaLSG(opts = {}) {
     // antes de escribir la siguiente.
     dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
     if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
-    dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+    // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
+    if (k === sol.steps.length - 1) {
+      dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
+    } else {
+      dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+    }
   });
-  dir.push({ tipo: "hablar", texto: `Comprobado: ${sol.varName} = ${sol.answer}. Ahora te toca a ti con otra ecuación parecida.` }, { ...PAUSA_LECTURA });
+  dir.push({ tipo: "hablar", texto: "Ahora te toca a ti con otra ecuación parecida." }, { ...PAUSA_LECTURA });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: solP.original });
   dir.push({ tipo: "preguntar", texto: `¿Cuánto vale ${solP.varName} en ${solP.original}? Escribe solo el número.`, respuesta: solP.answer, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
   if (opts.seguimiento && !opts.practica) aperturaEjemplo(dir, `Vamos con otra ecuación: ${sol.original}.`, sol.original);
@@ -1863,12 +1879,20 @@ export function derivadaResueltaLSG(opts = {}) {
   if (opts.reglaSuma) dir.push({ tipo: "hablar", texto: "Y así se suman y se restan las derivadas: la derivada de una SUMA es la suma de las derivadas, y la de una RESTA, la resta de las derivadas. Por eso un polinomio se deriva término a término, cada uno por su cuenta, y luego se juntan con sus signos." });
   const desglose = pm ? null : desglosePolinomio(ejemplo);
   if (desglose) dir.push({ tipo: "pizarra", accion: "escribir", contenido: `Término a término:  ${desglose.join("   ·   ")}` });
+  // El cierre del ejercicio: "¡Y listo! Resultado final: …", con el resultado enmarcado.
+  const cierre = `¡Y listo! Resultado final: la derivada de ${ejemplo} es ${derE}.`;
+  const potencia = focoDePotencia(pm);
   dir.push(
     // La regla de la potencia, a la vista: se recuadran el coeficiente, el exponente que baja y el
-    // coeficiente nuevo que sale de multiplicarlos. En un polinomio no hay un único exponente que
-    // bajar, así que va sin etiqueta y la pizarra hace lo que ya hacía.
-    escribePaso(`derivada de ${ejemplo} = ${derE}`, focoDePotencia(pm), explica),
-    { tipo: "hablar", texto: `Así, la derivada de ${ejemplo} es ${derE}. Ahora te toca a ti.` },
+    // coeficiente nuevo que sale de multiplicarlos, y DESPUÉS se enmarca el resultado (`final`): esta
+    // línea es a la vez el paso y la respuesta. En un polinomio no hay un único exponente que bajar, así
+    // que la línea es sólo el cierre.
+    potencia
+      ? escribePaso(`derivada de ${ejemplo} = ${derE}`, { ...potencia, final: true }, explica)
+      : escribePaso(`derivada de ${ejemplo} = ${derE}`, foco("resultado", [derE]), cierre),
+    { tipo: "hablar", texto: cierre },
+    { ...PAUSA_LECTURA },
+    { tipo: "hablar", texto: "Ahora te toca a ti." },
     { ...PAUSA_LECTURA },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cuál es la derivada de ${practica}?`, respuesta: derP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
@@ -2257,12 +2281,19 @@ export function factorizacionResueltaLSG(opts = {}) {
   } else {
     dir.push({ tipo: "hablar", texto: `Vamos a factorizar ${ejemplo}. ${reglaDeFactorizacion(ejemplo)}` });
   }
+  // El cierre del ejercicio: la factorización enmarcada y anunciada como resultado final.
+  const cierreF = `¡Y listo! Resultado final: ${ejemplo} se factoriza como ${facE}.`;
+  const difCuadrados = focoDiferenciaDeCuadrados(ejemplo, facE);
   dir.push(
     { tipo: "pizarra", accion: "escribir", contenido: ejemplo },
     { tipo: "esperar", segundos: 1 },
     { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo) },
-    escribePaso(`${ejemplo} = ${facE}`, focoDiferenciaDeCuadrados(ejemplo, facE), explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo)),
-    { tipo: "hablar", texto: `Así, ${ejemplo} se factoriza como ${facE}. Ahora te toca a ti con otra parecida.` },
+    difCuadrados
+      ? escribePaso(`${ejemplo} = ${facE}`, { ...difCuadrados, final: true }, explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo))
+      : escribePaso(`${ejemplo} = ${facE}`, foco("resultado", [facE]), cierreF),
+    { tipo: "hablar", texto: cierreF },
+    { ...PAUSA_LECTURA },
+    { tipo: "hablar", texto: "Ahora te toca a ti con otra parecida." },
     { ...PAUSA_LECTURA },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cómo se factoriza ${practica}? ${comoEscribirla(practica)}`, respuesta: facP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },

@@ -231,6 +231,8 @@ export function Aula({
   const pasoEnPantalla = useRef<string | null>(null);
   /** La práctica ya se contestó bien: a partir de ahí, desglosarla no le resuelve nada. */
   const practicaResuelta = useRef(false);
+  /** La última pregunta planteada: dice QUÉ se pedía —derivar, factorizar— para poder cerrarla. */
+  const ultimaPregunta = useRef<string | null>(null);
   /** Cuántos «no entendí» seguidos: la escalera de simplificación del concepto. */
   const insistencia = useRef(0);
   /**
@@ -438,11 +440,17 @@ export function Aula({
       // llegaría aquí y lo pintaría por segunda vez.
       if (ejercicioRef.current?.texto === limpio) return;
 
+      // EL CIERRE DEL EJERCICIO ENTRA SIEMPRE: es la respuesta final enmarcada,
+      // no un replanteo del enunciado aunque empiece por la misma cuenta
+      // ("24 + 17 = 41" bajo la tarjeta "24 + 17").
+      const esCierre = operacion?.tipo === "resultado";
+
       // Y tampoco lo replantea con otras palabras: la tarjeta muestra
       // "19 + 45 = ?" y el motor abre el desarrollo escribiendo "19 + 45", que
       // es la misma cuenta sin resolver. Un dibujo con su desarrollo sí entra:
       // eso ya no es el enunciado, es el procedimiento.
       const replanteaElEnunciado =
+        !esCierre &&
         ejercicioRef.current != null &&
         leerSumaOResta(limpio) != null &&
         esLaMismaCuenta(ejercicioRef.current.texto, limpio);
@@ -457,9 +465,12 @@ export function Aula({
         // anterior en lugar de añadirse.
         const ultima = prev[prev.length - 1];
         // La línea adelantada al abrir la fase no se escribe dos veces cuando el
-        // motor llega a ella.
-        if (ultima && ultima.texto === limpio) return prev;
-        if (ultima && esLaMismaCuenta(ultima.texto, limpio)) {
+        // motor llega a ella. Salvo que llegue ahora como CIERRE: entonces la
+        // sustituye, porque es esa etiqueta la que la enmarca.
+        if (ultima && ultima.texto === limpio) {
+          return esCierre ? [...prev.slice(0, -1), linea] : prev;
+        }
+        if (!esCierre && ultima && esLaMismaCuenta(ultima.texto, limpio)) {
           return [...prev.slice(0, -1), linea];
         }
         return [...prev, linea];
@@ -467,6 +478,47 @@ export function Aula({
     },
     [asegurarFase, faseConEjercicio, fijarLineaEjercicio],
   );
+
+  /**
+   * CIERRA EL EJERCICIO EN LA PIZARRA: la respuesta final, enmarcada.
+   *
+   * El cliente, sin matices: "ningún ejercicio puede quedar inconcluso; el
+   * último paso debe mostrar siempre el resultado final enmarcado con su
+   * feedback de conclusión". Se llama en cuanto el ejercicio queda resuelto
+   * —acertado o con los intentos agotados— y otra vez al terminar la lección,
+   * por si acaso; la segunda no hace nada si la primera ya lo cerró.
+   *
+   * Qué línea se escribe lo decide `cierreDelDesarrollo`, que sólo firma
+   * cuentas comprobadas: completa la última si vale la respuesta, o añade el
+   * enunciado resuelto. Va etiquetada como `resultado`, y por eso la pizarra la
+   * enmarca y la animada la dibuja cuando el tutor dice "resultado final".
+   */
+  const cerrarEjercicio = useCallback((respuesta: string, pregunta?: string | null) => {
+    const enunciado = ejercicioRef.current?.texto ?? null;
+    setDesarrollo((prev) => {
+      const cierre = cierreDelDesarrollo({
+        enunciado,
+        lineas: prev.map((l) => ({ texto: l.texto, operacion: l.operacion ?? null })),
+        respuesta,
+        pregunta,
+      });
+      if (!cierre) return prev;
+      const linea: LineaPizarra = {
+        id: idLinea.current++,
+        texto: cierre.texto,
+        clase: "formula",
+        // Aunque la lección siga en una aclaración, el cierre es del ejercicio
+        // y se anima como tal.
+        aclaracion: false,
+        operacion: cierre.operacion,
+        narracion: cierre.narracion,
+      };
+      if (cierre.accion === "completar") {
+        return prev.map((l, i) => (i === cierre.indice ? { ...l, ...linea } : l));
+      }
+      return [...prev, linea];
+    });
+  }, []);
 
   /**
    * Rellena la tarjeta de EJERCICIO de la fase en curso a partir de una frase.
@@ -644,6 +696,11 @@ export function Aula({
         // pantalla junto al "¡Correcto!" en verde.
         if (ok) setVeredicto(veredictoTrasAcierto);
       },
+      // UN EJERCICIO RESUELTO SE CIERRA EN LA PIZARRA, en el momento en que queda
+      // resuelto: acertado o con los intentos agotados. Llega justo antes del
+      // feedback del tutor, que ya nombra el resultado final.
+      onExerciseResolved: ({ respuesta, pregunta: textoPregunta }) =>
+        cerrarEjercicio(respuesta, textoPregunta ?? ultimaPregunta.current),
       onLessonEnd: ({ acerto, respuesta } = { respondio: false, acerto: false }) => {
         setPregunta(null);
         setEstadoAvatar("sonriendo");
@@ -654,31 +711,10 @@ export function Aula({
         fasesAReanudar.current = new Set();
         if (acerto) practicaResuelta.current = true;
 
-        // EL EJERCICIO ACERTADO SE CIERRA EN LA PIZARRA.
-        //
-        // La explicación que se pide mientras se resuelve se detiene antes del
-        // resultado —dárselo sería resolverle la práctica—, y el cliente vio
-        // la lección terminar con el desarrollo cortado en "6/10 + 5/10". Con
-        // la respuesta ya acertada no hay nada que proteger: se completa la
-        // última línea si vale eso, o se añade el enunciado resuelto. Sólo lo
-        // que se puede comprobar; si no, la pizarra se queda como estaba.
-        if (acerto && respuesta) {
-          const enunciado = ejercicioRef.current?.texto ?? null;
-          setDesarrollo((prev) => {
-            const cierre = cierreDelDesarrollo({
-              enunciado,
-              lineas: prev.map((l) => l.texto),
-              respuesta,
-            });
-            if (!cierre) return prev;
-            if (cierre.accion === "completar") {
-              return prev.map((l, i) =>
-                i === cierre.indice ? { ...l, id: idLinea.current++, texto: cierre.texto } : l,
-              );
-            }
-            return [...prev, { id: idLinea.current++, texto: cierre.texto, clase: "formula" }];
-          });
-        }
+        // Y POR SI ACASO, AL TERMINAR. El cierre ya se escribió al resolver el
+        // ejercicio; si por lo que sea no llegó —una lección de otra versión
+        // del reproductor—, se escribe aquí. Si ya está, no hace nada.
+        if (respuesta) cerrarEjercicio(respuesta, ultimaPregunta.current);
         // Se cierra la sesión para que quede su duración registrada.
         if (sesionId.current) {
           void fetch("/api/sesion", {
@@ -696,6 +732,7 @@ export function Aula({
           // escribir ni narrar el enunciado, lo lleva la propia pregunta.
           fijarEjercicio(String(textoPregunta ?? ""));
           setPregunta(String(textoPregunta ?? ""));
+          ultimaPregunta.current = String(textoPregunta ?? "") || null;
           setBorrador("");
           setIntento(1);
           // La retroalimentación del ejercicio anterior no acompaña al
@@ -718,7 +755,7 @@ export function Aula({
       pseRef.current?.stop();
       tts.cancel();
     };
-  }, [anadirLinea, abrirEscena]);
+  }, [anadirLinea, abrirEscena, cerrarEjercicio]);
 
   // ── Petición de lección al servidor ────────────────────────────────────────
   const pedirLeccion = useCallback(
@@ -774,11 +811,19 @@ export function Aula({
       setPregunta(null);
       setTerminoLaLeccion(false);
 
-      // En el EJEMPLO, el desglose vuelve a resolver el mismo ejercicio: sus
-      // pasos son el desarrollo de la tarjeta y se animan como tales. Como
-      // aclaración aparte sólo queda la de la práctica, que se detiene antes del
-      // resultado y se retira cuando llega la siguiente.
-      esAclaracion.current = Boolean(opciones.soloExplicacion) && !desgloseDelEjemplo;
+      // El desglose vuelve a resolver el mismo ejercicio de la tarjeta, hasta su
+      // resultado final enmarcado —también en la práctica: "ningún ejercicio
+      // puede quedar inconcluso"—, así que sus pasos son el desarrollo de la
+      // tarjeta y se animan como tales, en el ejemplo y en la práctica. Como
+      // aclaración aparte sólo queda la que no desglosa el ejercicio.
+      const desgloseDeLaPractica =
+        Boolean(opciones.soloExplicacion) &&
+        opciones.parte === "resolucion" &&
+        enTarjeta != null &&
+        faseConEjercicio() &&
+        tarjetaParaResolver;
+      esAclaracion.current =
+        Boolean(opciones.soloExplicacion) && !desgloseDelEjemplo && !desgloseDeLaPractica;
 
       // TODA petición que vaya a escribir en la pizarra vacía antes el
       // desarrollo. Si no, el procedimiento del ejercicio anterior se queda
@@ -851,6 +896,14 @@ export function Aula({
         if (!r.ok) {
           setError(datos.error ?? "No se pudo generar la lección.");
           return;
+        }
+
+        // En la práctica, sólo el desglose determinista —el que llega siempre a
+        // su resultado final enmarcado— se anima como desarrollo de la tarjeta.
+        // Si la aclaración la redactó el modelo, sigue siendo una aclaración
+        // aparte: de ella no se sabe dónde termina.
+        if (desgloseDeLaPractica && datos?.lsg?.escena !== "desglose_ejercicio") {
+          esAclaracion.current = true;
         }
 
         const estado = conversacion.current;
@@ -1538,6 +1591,9 @@ export function Aula({
             // Sin nada que animar, el panel se queda como barra con el botón de
             // proyección, y proyecta esto.
             reposo={reposo}
+            // Al proyectar, el ejercicio de la tarjeta queda fijo arriba y el
+            // paso activo se anima debajo.
+            enunciado={ejercicio?.texto ?? null}
             avatarDeLaLeccion={{ estado: avatarPizarra ?? estadoAvatar, hablando }}
             // Terminada —y no vuelta a reproducir—, la pizarra queda resuelta.
             leccionTerminada={terminoLaLeccion && !controles.playing}
@@ -1545,7 +1601,13 @@ export function Aula({
             vozActiva={vozActiva}
             // Lo que el tutor está diciendo: con esto la pizarra se coloca
             // sola donde va la voz, sin esperar a que nadie pulse Reproducir.
-            narracion={subtitulo}
+            //
+            // SALVO CUANDO PREGUNTA. "¿Cuánto es 1/7 + 5/7?" repite las cifras
+            // del primer paso explicado, y la pizarra rebobinaba hasta él —con
+            // el desarrollo ya resuelto escondido— justo cuando el alumno tenía
+            // que contestar. Una pregunta (o la pista de un reintento) no es un
+            // paso de la explicación: la pizarra se queda donde está.
+            narracion={estadoAvatar === "preguntando" ? null : subtitulo}
             alCambiarAvatar={alCambiarAvatar}
             alProgresar={alProgresarAnimacion}
             reinicio={reinicioAnimacion}

@@ -85,10 +85,18 @@ export interface UIPSELight {
   onProgress?(indice: number, total: number): void;
   /**
    * La lección terminó. `respuesta` es la respuesta esperada del último
-   * ejercicio, sólo si el alumno lo acertó: con ella la pizarra cierra el
-   * desarrollo en vez de dejarlo a medias.
+   * ejercicio que el alumno contestó —acertado o con los intentos agotados—:
+   * con ella la pizarra cierra el desarrollo en vez de dejarlo a medias.
    */
   onLessonEnd?(resultado: { respondio: boolean; acerto: boolean; respuesta?: string | null }): void;
+  /**
+   * Un ejercicio calificable acaba de quedar RESUELTO: acertado, o fallado con
+   * los intentos agotados. Llega justo antes del feedback, para que la línea de
+   * cierre —el resultado final enmarcado— esté en la pizarra mientras el tutor
+   * lo anuncia. `pregunta` es el texto de la pregunta, que dice qué se pedía
+   * ("¿Cuál es la derivada de…?").
+   */
+  onExerciseResolved?(resultado: { acerto: boolean; respuesta: string; pregunta?: string | null }): void;
 }
 
 export function flattenLSG(lsg: LSG): Directiva[];

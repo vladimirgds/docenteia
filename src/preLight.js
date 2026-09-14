@@ -1045,17 +1045,25 @@ function metodoDe(ejercicio, tema = "") {
 // `respuesta` (opcional) es la respuesta ya calculada por el PRE Light para ese ejercicio.
 // Devuelve un LSG crudo o null si no hay ejercicio.
 // Opciones del desglose (las usa el botón «No entendí este paso»):
-//   · conResultado: false → se detiene ANTES del resultado. En la práctica, dárselo sería resolverle al
-//     alumno el ejercicio que tiene que contestar él: se explica el método y el primer paso, y el resto
-//     lo termina él.
+//   · conResultado: false → es el ejercicio que tiene que contestar el alumno. El desglose llega IGUAL
+//     hasta el resultado final —el cliente: "ningún ejercicio puede quedar inconcluso"—; lo único que
+//     cambia es que al final se le devuelve la palabra para que lo escriba él.
 //   · cierre: false → sin la frase final "¿lo intentamos con otro ejemplo?": tras el desglose la clase
 //     se REANUDA donde estaba, no se propone otra cosa.
 // Cada paso se escribe ANTES de contarlo y se sostiene con una pausa de lectura, como en las lecciones.
+// La última línea —la respuesta— va etiquetada como `resultado`: la pizarra la enmarca y la anuncia.
 const LECTURA = { tipo: "esperar", segundos: 1, lectura: true };
+const lineaDeCierre = (contenido, respuesta, dicho) => [
+  { tipo: "pizarra", accion: "escribir", contenido, operacion: { tipo: "resultado", terminosFoco: [String(respuesta)] }, narracion: dicho },
+  { tipo: "hablar", texto: dicho },
+  { ...LECTURA },
+];
 export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResultado = true, cierre = true } = {}) {
   const ej = str(ejercicio);
   if (!ej) return null;
-  const CIERRE = cierre ? [{ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." }] : [];
+  const CIERRE = !conResultado
+    ? [{ tipo: "hablar", texto: "Ahora escríbelo tú en la casilla de respuesta para comprobarlo." }]
+    : cierre ? [{ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." }] : [];
   // QUÉ hay que hacer con la expresión. La misma "4x³ - 3x² + 2x" se puede derivar o factorizar, y el
   // texto del ejercicio no siempre lo dice ("Ejercicio 1: 4x³ - 3x² + 2x", tal cual sale de la pizarra
   // de práctica). Manda, por este orden: lo que pida el enunciado y, si calla, el TEMA ACTIVO de la
@@ -1080,17 +1088,14 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResulta
   if (der) {
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: der.expr });
     directivas.push({ tipo: "hablar", texto: "Derivamos con la regla de la potencia: el exponente baja a multiplicar al coeficiente y al exponente le restamos 1. Si hay varios términos, se hace uno a uno." });
-    // Sin resultado, sólo el PRIMER término hecho, como muestra: los demás los termina el alumno.
-    for (const paso of conResultado ? der.pasos : der.pasos.slice(0, 1)) {
+    for (const paso of der.pasos) {
       directivas.push({ tipo: "pizarra", accion: "escribir", contenido: paso.escribe });
       directivas.push({ tipo: "hablar", texto: paso.explica }, { ...LECTURA });
     }
-    if (!conResultado) {
-      directivas.push({ tipo: "hablar", texto: der.pasos.length > 1 ? "Ahora haz lo mismo con los demás términos, uno a uno, y junta lo que salga." : "Ahora compruébalo tú y escribe la derivada." });
-      return { escena: "desglose_pasos", intencion: "explicar", directivas };
-    }
-    directivas.push({ tipo: "pizarra", accion: "escribir", contenido: `derivada de ${der.expr} = ${der.resultado}` });
-    directivas.push({ tipo: "hablar", texto: `Juntando lo que salió de cada término, la derivada de ${der.expr} es ${der.resultado}.` });
+    directivas.push(...lineaDeCierre(
+      `derivada de ${der.expr} = ${der.resultado}`, der.resultado,
+      `Juntando lo que salió de cada término: resultado final, la derivada de ${der.expr} es ${der.resultado}.`,
+    ));
     directivas.push(...CIERRE);
     return { escena: "desglose_pasos", intencion: "explicar", directivas };
   }
@@ -1100,11 +1105,7 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResulta
     directivas.push({ tipo: "hablar", texto: `Primero identificamos los dos cuadrados: ${fac.izq} y ${fac.der}.` });
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: fac.reescrito });
     directivas.push({ tipo: "hablar", texto: "La regla de la diferencia de cuadrados dice que a² - b² se escribe como (a - b)(a + b)." }, { ...LECTURA });
-    if (!conResultado) {
-      directivas.push({ tipo: "hablar", texto: "Ahora te toca a ti: escribe las dos raíces en (a - b)(a + b)." });
-      return { escena: "desglose_pasos", intencion: "explicar", directivas };
-    }
-    directivas.push({ tipo: "pizarra", accion: "escribir", contenido: `${fac.expr} = ${fac.factor}` });
+    directivas.push(...lineaDeCierre(`${fac.expr} = ${fac.factor}`, fac.factor, `Resultado final: ${fac.expr} = ${fac.factor}.`));
     // COMPROBACIÓN con matemática distinta de la que produjo el resultado: se multiplica de vuelta.
     directivas.push({ tipo: "hablar", texto: `Y se comprueba multiplicando: al desarrollar ${fac.factor} los términos del medio se cancelan y vuelve a quedar ${fac.expr}.` });
     directivas.push(...CIERRE);
@@ -1112,26 +1113,23 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResulta
   }
   const lin = solveLinearSteps(ej);
   if (lin) {
-    // Ecuación lineal: mostramos el enunciado y CADA paso del despeje (los mismos que valida el sistema).
-    // Sin resultado, todos menos el último: el último despeje lo hace el alumno.
+    // Ecuación lineal: mostramos el enunciado y CADA paso del despeje (los mismos que valida el sistema),
+    // hasta la solución, que es el cierre enmarcado.
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: lin.original });
-    const pasos = conResultado ? lin.steps : lin.steps.slice(0, -1);
-    for (const p of pasos) {
+    lin.steps.forEach((p, k) => {
       directivas.push({ tipo: "hablar", texto: p.explica }, { ...LECTURA });
-      directivas.push({ tipo: "pizarra", accion: "escribir", contenido: p.escribe });
-    }
-    directivas.push({ tipo: "hablar", texto: conResultado
-      ? `Y así llegamos a la solución: ${lin.varName} = ${lin.answer}.`
-      : `Te queda un último paso: deja la ${lin.varName} sola y escribe cuánto vale.` });
+      if (k === lin.steps.length - 1) {
+        directivas.push(...lineaDeCierre(p.escribe, lin.answer, `Y así llegamos a la solución. Resultado final: ${lin.varName} = ${lin.answer}.`));
+      } else {
+        directivas.push({ tipo: "pizarra", accion: "escribir", contenido: p.escribe });
+      }
+    });
   } else {
     // Aritmética / fórmula / problema verbal: enunciado + método + resultado exacto.
-    const ans = conResultado ? (str(respuesta) || computeAnswer(ej) || "") : "";
+    const ans = str(respuesta) || computeAnswer(ej) || "";
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: ej.length <= 80 ? ej : "Repasemos el ejercicio" });
     directivas.push({ tipo: "hablar", texto: metodoDe(ej, tema) });
-    if (ans) {
-      directivas.push({ tipo: "pizarra", accion: "escribir", contenido: `Resultado: ${ans}` });
-      directivas.push({ tipo: "hablar", texto: `Siguiendo esos pasos, el resultado es ${ans}.` });
-    }
+    if (ans) directivas.push(...lineaDeCierre(`Resultado: ${ans}`, ans, `Siguiendo esos pasos, resultado final: ${ans}.`));
   }
   directivas.push(...CIERRE);
   return { escena: "desglose_pasos", intencion: "explicar", directivas };
@@ -1457,7 +1455,8 @@ function normalizeDirectivas(arr, counter, warnings, pasos, context) {
 // Es la misma lista que `TIPOS_OPERACION` en lib/leccion/marcado.ts; se repite
 // aquí porque este módulo es JavaScript de servidor y no importa la interfaz.
 // qa/hito2.mjs comprueba que las dos digan lo mismo.
-export const TIPOS_OPERACION = ["columna", "factor", "cancelacion", "amplificacion", "suma-fracciones", "distributiva"];
+// `resultado` es el cierre del ejercicio: la respuesta final, que la pizarra enmarca con su visto.
+export const TIPOS_OPERACION = ["columna", "factor", "cancelacion", "amplificacion", "suma-fracciones", "distributiva", "resultado"];
 
 // ¿Está `termino` escrito en `texto` como término, y no como trozo de otro?
 // Misma regla que el marcador de la pizarra: el "5" no está en "15", ni el "1" en
@@ -1556,6 +1555,8 @@ function sanitizeDirectiva(raw, warnings, context) {
         if (TIPOS_OPERACION.includes(str(op.tipo)) && terminos.length > 0 && escritos) {
           d.operacion = { tipo: str(op.tipo), terminosFoco: terminos };
           if (str(op.etiqueta)) d.operacion.etiqueta = str(op.etiqueta).slice(0, 24);
+          // El paso opera Y es el último del ejercicio: tras su operación, la pizarra enmarca el resultado.
+          if (op.final === true) d.operacion.final = true;
         } else {
           warnings.push(`"operacion" no válida descartada en ${context}.`);
         }

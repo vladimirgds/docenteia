@@ -10,6 +10,7 @@ import {
   etiquetaValida,
   leerAmplificacion,
   leerSumaDeFracciones,
+  miembros,
   type PasoSemantico,
   type TipoOperacion,
 } from "./marcado.ts";
@@ -67,6 +68,17 @@ export interface Foco {
    * mientras que las cifras y los verbos cambian de una frase a otra.
    */
   pista?: string;
+  /**
+   * ES LA RESPUESTA FINAL DEL EJERCICIO.
+   *
+   * Sólo ella se enmarca y lleva el visto verde. Antes el visto acompañaba a
+   * cualquier foco de tipo "resultado", y el cliente lo fotografió flotando
+   * sobre la x de "2x + 6 = 16 − 6": en ese paso no se ha resuelto nada —se
+   * están quitando el +6 y el −6—, y una marca de "correcto" ahí le dice al
+   * alumno que la x ya está resuelta. Un resultado intermedio se subraya; la
+   * respuesta final se enmarca y se confirma.
+   */
+  final?: boolean;
 }
 
 export interface Escena {
@@ -94,6 +106,7 @@ export interface Escena {
     | "suma-fracciones"
     | "distributiva"
     | "semantica"
+    | "cierre"
     | "texto";
   /**
    * Quién decidió qué se marca: la instrucción de foco que traía el paso, o la
@@ -290,11 +303,14 @@ function focosDeColumna(
   return focos;
 }
 
+// El total de la cuenta ES la respuesta del ejercicio: una suma o una resta en
+// columna no tiene un paso después. Por eso es de los pocos que se enmarcan.
 function focoDelResultado(op: OperacionEnColumna): Foco {
   return {
     clase: "pz-resultado",
     tipo: "resultado",
     narracion: `El resultado es ${op.resultado}.`,
+    final: true,
   };
 }
 
@@ -391,10 +407,13 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
         tipo: "caja",
         narracion: `Miramos el término ${legible.trim()}.`,
       });
+      // Señalar el coeficiente o el exponente no es llegar a ningún resultado:
+      // van en caja, con su rótulo. Con el subrayado y el visto de un resultado
+      // parecía que el coeficiente fuera ya la respuesta.
       if (t.coeficiente && t.variable) {
         focos.push({
           clase: `pz-coef-${i}`,
-          tipo: "resultado",
+          tipo: "caja",
           narracion: `Su coeficiente es ${t.coeficiente}.`,
           etiqueta: "coeficiente",
         });
@@ -402,7 +421,7 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
       if (t.exponente) {
         focos.push({
           clase: `pz-exp-${i}`,
-          tipo: "resultado",
+          tipo: "caja",
           narracion: `Su exponente es ${t.exponente}.`,
           etiqueta: "exponente",
         });
@@ -461,9 +480,13 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
    */
   // El coeficiente sólo se marca cuando está escrito. En "x + 5 = 20" no hay
   // un 1 que señalar, y dibujar un recuadro sobre nada deja la caja flotando.
+  // Y sólo en el paso en que se DIVIDE entre él: en "2x + 6 = 16" el 2 no se
+  // toca, y marcado salía en color junto a la x mientras se quitaba el 6.
   const coefLatex = unitario
     ? `${coeficiente === -1 ? "-" : ""}`
-    : marcar("pz-coef-despeje", String(coeficiente));
+    : b === 0
+      ? marcar("pz-coef-despeje", String(coeficiente))
+      : String(coeficiente);
   // Cada término que se cancela lleva SU clase además de la común: la común
   // identifica el foco, las propias delimitan una caja por término.
   const terminoLatex =
@@ -474,31 +497,62 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   /** El miembro izquierdo, con sus marcas y sólo las suyas. */
   const izquierda = `${coefLatex}${variable}${terminoLatex}`;
 
-  // Cuántos focos habrá, para saber en cuál se destapa la solución. La ecuación
-  // no puede empezar con el resultado escrito: eso es dar la respuesta antes de
-  // la pregunta.
-  const focosPrevistos = (b !== 0 ? 1 : 0) + (unitario ? 0 : 1) + 1;
-  const pasoSolucion = focosPrevistos - 1;
+  const solucion = formatearRacional(c - b, coeficiente);
+
+  // "x = 5" TAL CUAL: no queda nada que despejar. Es la solución, y se enmarca
+  // como respuesta final —sin un "x = 5 ⇒ x = 5" que repita la línea—.
+  if (coeficiente === 1 && b === 0) {
+    return {
+      id,
+      texto,
+      latex: `${variable} = ${marcar("pz-solucion", racionalLatex(c, 1))}`,
+      narracion: `Ya tenemos la ${variable} sola.`,
+      clase: "despeje",
+      focos: [{ clase: "pz-solucion", tipo: "resultado", narracion: `${variable} vale ${solucion}.`, final: true }],
+    };
+  }
+
+  /**
+   * UN PASO, UNA OPERACIÓN.
+   *
+   * Sobre "2x + 6 = 16" se quita el 6 de los dos lados, y nada más: dividir
+   * entre 2 es lo que se hace en la línea SIGUIENTE, "2x = 10", que ya tiene su
+   * propia escena. Antes esta escena hacía las dos cosas a la vez —cancelaba,
+   * luego encendía el coeficiente con la marca de resultado y acababa en
+   * "⇒ x = 5"—, y el cliente fotografió el visto verde flotando sobre la x
+   * mientras la voz hablaba del 6: una marca de "resuelto" en un paso en el que
+   * no se ha resuelto nada. Ahora el foco está únicamente en lo que se resta, el
+   * +6 y el −6.
+   *
+   * Sólo cuando la x queda sola al cancelar ("x + 5 = 20") la misma escena
+   * llega a la solución, porque no hay ningún paso más en medio.
+   */
+  const cancela = b !== 0;
+  const divide = !cancela && !unitario;
+  const llegaALaSolucion = !cancela || unitario;
 
   // Lo que se resta a la derecha aparece en el momento de cancelar, no antes.
-  const compensacion =
-    b === 0
-      ? ""
-      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`;
+  const compensacion = cancela
+    ? ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`
+    : "";
 
-  const solucion = formatearRacional(c - b, coeficiente);
   /** El miembro derecho: el número y, al cancelar, su compensación. */
   const derecha = `${c}${compensacion}`;
 
+  // La solución se destapa en el último foco: la ecuación no puede empezar con
+  // el resultado escrito, eso es dar la respuesta antes de la pregunta.
+  const pasoSolucion = (cancela ? 1 : 0) + (divide ? 1 : 0);
   const latex =
     `${izquierda} = ${derecha}` +
-    ` ${marcar(
-      `pz-rev-${pasoSolucion}`,
-      `\\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,
-    )}`;
+    (llegaALaSolucion
+      ? ` ${marcar(
+          `pz-rev-${pasoSolucion}`,
+          `\\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,
+        )}`
+      : "");
 
   const focos: Foco[] = [];
-  if (b !== 0) {
+  if (cancela) {
     focos.push({
       clase: "pz-cancela",
       // Una caja por término: la del miembro izquierdo y la del derecho. Nunca
@@ -509,19 +563,25 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       etiqueta: "se cancelan",
     });
   }
-  if (!unitario) {
+  if (divide) {
+    // Señalar el número que divide es una CAJA, no un resultado: con la marca
+    // de resultado se dibujaba el visto verde justo al lado de la x.
     focos.push({
       clase: "pz-coef-despeje",
-      tipo: "resultado",
-      narracion: `Queda ${coeficiente}${variable} = ${c - b}. Dividimos los dos lados entre ${coeficiente}.`,
-      etiqueta: "dividimos",
+      tipo: "caja",
+      narracion: `Dividimos los dos lados entre ${coeficiente}.`,
+      etiqueta: `÷ ${coeficiente}`,
     });
   }
-  focos.push({
-    clase: "pz-solucion",
-    tipo: "resultado",
-    narracion: `${variable} vale ${solucion}.`,
-  });
+  if (llegaALaSolucion) {
+    // Subrayada, sin visto: la respuesta final la enmarca el cierre del
+    // ejercicio, que es la línea "x = 5" que viene detrás.
+    focos.push({
+      clase: "pz-solucion",
+      tipo: "resultado",
+      narracion: `${variable} vale ${solucion}.`,
+    });
+  }
 
   return {
     id,
@@ -930,6 +990,118 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
   };
 }
 
+// ── El cierre del ejercicio ──────────────────────────────────────────────────
+
+/**
+ * LA RESPUESTA FINAL, ENMARCADA.
+ *
+ * El cliente lo pidió como norma: "ningún ejercicio puede quedar inconcluso;
+ * el último paso debe mostrar siempre el resultado final enmarcado con su
+ * feedback de conclusión". Lo había visto en una suma de fracciones con
+ * denominadores distintos cuyo desarrollo se paraba en "6/10 + 5/10" sin llegar
+ * nunca al 11/10.
+ *
+ * La línea de cierre es el ejercicio entero igualado a su respuesta —"3/5 + 1/2
+ * = 6/10 + 5/10 = (6 + 5)/10 = 11/10", "x = 5"—, y lo que se enmarca es su
+ * ÚLTIMO miembro: la respuesta. Va dentro de `\boxed`, que es como se enmarca
+ * un resultado en matemáticas, para que la pizarra clásica la enseñe enmarcada
+ * sin necesidad de ninguna animación; en la animada ese marco se oculta y lo
+ * dibuja la capa de resaltados, trazándose en el momento en que el tutor dice
+ * "resultado final", con el visto a su lado.
+ *
+ * `null` si la línea no se deja componer como fórmula: un recuadro alrededor de
+ * media frase no enmarca nada.
+ */
+export function escenaDeCierre(texto: string, id: string, narracion?: string | null): Escena | null {
+  const limpio = String(texto ?? "").trim();
+  // "Resultado: 42" —un rótulo de palabras y el valor—: el rótulo va como texto
+  // y sólo el valor, enmarcado. El marco alrededor de la palabra no enmarca
+  // ninguna respuesta.
+  const rotulada = limpio.match(/^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{2,40}):\s*(.+)$/);
+  const valor = rotulada ? componerPaso(rotulada[2]) : null;
+  if (rotulada && valor) {
+    const rotulo = rotulada[1].trim();
+    return {
+      id,
+      texto: limpio,
+      latex: `\\text{${rotulo}:}\\;${marcar("pz-final", `\\boxed{${valor}}`)}`,
+      narracion: "El ejercicio completo, de principio a fin.",
+      clase: "cierre",
+      focos: [
+        {
+          clase: "pz-final",
+          tipo: "resultado",
+          narracion: narracion?.trim() || `Resultado final: ${rotulada[2].trim()}.`,
+          final: true,
+        },
+      ],
+    };
+  }
+  const compuesto = componerPaso(limpio);
+  if (!compuesto) return null;
+
+  let partes = miembros(compuesto).map((p) => p.trim());
+  // Una división no exacta se cierra con "≈": la respuesta es lo que va detrás.
+  let union = " = ";
+  const aprox = compuesto.lastIndexOf("\\approx");
+  if (partes.length === 1 && aprox > 0) {
+    partes = [compuesto.slice(0, aprox).trim(), compuesto.slice(aprox + "\\approx".length).trim()];
+    union = " \\approx ";
+  }
+  const respuesta = partes[partes.length - 1];
+  if (!respuesta) return null;
+
+  const cabeza = partes.slice(0, -1).join(" = ");
+  const enmarcada = marcar("pz-final", `\\boxed{${respuesta}}`);
+  const latex = cabeza ? `${cabeza}${union}${enmarcada}` : enmarcada;
+  const dicha = limpio.split(/=|≈/).at(-1)?.trim() || limpio;
+
+  return {
+    id,
+    texto: limpio,
+    latex,
+    // Neutra a propósito: si dijera "resultado final", la frase del tutor
+    // empataría con la entrada y la pizarra podría quedarse sin enmarcar nada
+    // justo cuando lo anuncia.
+    narracion: "El ejercicio completo, de principio a fin.",
+    clase: "cierre",
+    focos: [
+      {
+        clase: "pz-final",
+        tipo: "resultado",
+        narracion: narracion?.trim() || `Resultado final: ${dicha}.`,
+        final: true,
+      },
+    ],
+  };
+}
+
+/**
+ * Un paso que opera Y cierra el ejercicio: tras su operación, su resultado
+ * enmarcado.
+ *
+ * Es el caso de "derivada de 3x² = 6x": se recuadran el 3 y el 2 que se
+ * multiplican y, a continuación, se enmarca el 6x, que es la respuesta. Si la
+ * escena ya termina en una respuesta final —una cuenta en columna, un "x = 5"—
+ * se deja como está.
+ */
+function conCierre(escena: Escena): Escena {
+  if (escena.focos.some((f) => f.final) || !escena.latex) return escena;
+  const partes = miembros(escena.latex);
+  if (partes.length < 2) return escena;
+  const respuesta = partes[partes.length - 1].trim();
+  if (!respuesta) return escena;
+  const dicha = escena.texto.split("=").at(-1)?.trim() || escena.texto;
+  return {
+    ...escena,
+    latex: [...partes.slice(0, -1).map((p) => p.trim()), marcar("pz-final", `\\boxed{${respuesta}}`)].join(" = "),
+    focos: [
+      ...escena.focos,
+      { clase: "pz-final", tipo: "resultado", narracion: `Resultado final: ${dicha}.`, final: true },
+    ],
+  };
+}
+
 // ── Escena de respaldo ───────────────────────────────────────────────────────
 
 /**
@@ -964,13 +1136,19 @@ export function escenaDeTexto(texto: string, id: string): Escena {
  * el coeficiente—; en cualquier otro paso lo dibuja el marcador genérico, que
  * pone su recuadro sobre los términos que diga la etiqueta.
  */
-const COMPOSITOR: Record<TipoOperacion, (texto: string, id: string) => Escena | null> = {
+const COMPOSITOR: Record<
+  TipoOperacion,
+  (texto: string, id: string, narracion?: string | null) => Escena | null
+> = {
   columna: (t, id) => escenaDeColumna(t, id),
   factor: (t, id) => escenaDeDespeje(t, id),
   cancelacion: (t, id) => escenaDeDespeje(t, id) ?? escenaDeSimplificacion(t, id),
   amplificacion: (t, id) => escenaDeAmplificacion(t, id),
   "suma-fracciones": (t, id) => escenaDeSumaDeFracciones(t, id),
   distributiva: (t, id) => escenaDeDistributiva(t, id),
+  // El cierre lleva la locución del motor —"¡Y listo! Resultado final: 11/10."—
+  // en su foco: es la frase exacta con la que la pizarra lo reconoce.
+  resultado: (t, id, narracion) => escenaDeCierre(t, id, narracion),
 };
 
 /**
@@ -1026,9 +1204,12 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
 
   if (typeof paso !== "string" && paso.operacion && etiquetaValida(texto, paso.operacion)) {
     const porEtiqueta =
-      COMPOSITOR[paso.operacion.tipo]?.(texto, id) ??
+      COMPOSITOR[paso.operacion.tipo]?.(texto, id, paso.narracion) ??
       escenaDePasoSemantico(paso, id, componerPaso);
-    if (porEtiqueta) return { ...porEtiqueta, origen: "etiqueta" };
+    if (porEtiqueta) {
+      const escena = paso.operacion.final ? conCierre(porEtiqueta) : porEtiqueta;
+      return { ...escena, origen: "etiqueta" };
+    }
   }
 
   const deducida =
@@ -1146,6 +1327,7 @@ export function situacionParaNarracion(
    * primer paso mientras la voz iba por las unidades.
    */
   const palabras = palabrasDe(narracion);
+  const dichoLiteral = literal(narracion);
 
   // EL CIERRE DEL EJEMPLO, ANTES QUE NADA.
   //
@@ -1188,6 +1370,13 @@ export function situacionParaNarracion(
       // para cambiar ninguna diferencia real entre candidatos.
       puntos += aciertos(candidato.texto, palabras) * 0.001;
       if (!enumera && candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
+      // LA LOCUCIÓN EXACTA DEL MOTOR MANDA. Un paso etiquetado trae la frase
+      // con la que el tutor lo va a contar; si lo dicho ES esa frase, ningún
+      // parecido vale más. Sin esto, la regla de la potencia —"el coeficiente
+      // es 1 y el exponente 2…"— encajaba mejor en el enunciado "x²", que tiene
+      // un foco llamado "exponente", que en el paso "derivada de x² = 2x" que el
+      // tutor estaba contando, y la pizarra no llegaba a enmarcar su resultado.
+      if (dichoLiteral !== "" && literal(candidato.texto) === dichoLiteral) puntos += 1;
       // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
       // escena por un decimal es peor que quedarse.
       if (indice === escenaActual) puntos += 0.05;
@@ -1351,6 +1540,7 @@ function clavesDeFoco(foco: Foco): string[] {
       : [foco.pista];
   }
   if (foco.tipo === "tachado") return ["cancel", "quitamos", "restamos", "ambos lados", "los dos lados"];
+  if (foco.clase === "pz-final") return ["resultado final", "respuesta final"];
   if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
   if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];
   if (foco.clase === "pz-resultado") return ["resultado", "en total"];
@@ -1385,6 +1575,11 @@ function solapamiento(narracion: string, palabras: Set<string>): number {
 function aciertos(narracion: string, palabras: Set<string>): number {
   const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
   return piezas.filter((pieza) => palabras.has(pieza)).length;
+}
+
+/** La frase sin signos ni mayúsculas: para reconocer una locución dicha tal cual. */
+function literal(texto: string): string {
+  return normalizar(texto).replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 /** Las palabras de lo dicho, enteras. */

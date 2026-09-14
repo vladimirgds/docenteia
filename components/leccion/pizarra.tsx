@@ -7,7 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
+import { FraccionFormal, NotaDePizarra } from "@/components/leccion/nota-pizarra";
 import { conceptoDeFraccion } from "@/lib/leccion/diagramas";
 import { partirNota } from "@/lib/leccion/notas";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
@@ -301,10 +301,14 @@ export function Pizarra({
     // apiladas, con barra de desplazamiento y sin rastro de la alineación. Da
     // igual con qué trozos llegue: se compone la cuenta entera, calculada aquí,
     // y los trozos no se pintan. Lo que el tutor va diciendo sigue oyéndose.
+    // Salvo el CIERRE: la respuesta final enmarcada va debajo de la cuenta. Es
+    // el último paso de cualquier ejercicio, también de uno en columna.
     if (ejercicio && cuenta) {
+      const cierre = [...desarrollo].reverse().find((l) => l.operacion?.tipo === "resultado");
       return {
         pasos: [
           { linea: { ...ejercicio, id: -ejercicio.id - 2, texto: cuenta.texto }, columna: "resuelta" },
+          ...(cierre ? [{ linea: cierre }] : []),
         ],
         pasoSuelto: null,
       };
@@ -480,17 +484,20 @@ export function Pizarra({
                 {/* LA FRACCIÓN FORMAL, PARA CERRAR LA IDEA.
                     El cliente lo pidió con estas palabras: "falta mostrar la
                     expresión matemática explícita correspondiente al
-                    gráfico". El dibujo y la palabra hablada dicen lo mismo con
-                    otro lenguaje —una pizza cortada, "el número de arriba"—,
-                    pero la NOTACIÓN con la que se escribe en cualquier otro
-                    sitio no aparecía en ningún lado. Se destapa cuando ya se
-                    han dicho las dos palabras: antes de eso no cierra nada
-                    todavía. */}
+                    gráfico". Se destapa cuando ya se han dicho las dos
+                    palabras: antes de eso no cierra nada todavía.
+
+                    Y SIN BARRA INCLINADA. Se escribía "Numerador /
+                    Denominador: 1/4", y el cliente lo corrigió: "el estudiante
+                    necesita ver la estructura de numerador arriba y
+                    denominador abajo". Ahora es una sola expresión vertical,
+                    Numerador sobre Denominador igual a 1 sobre 4. */}
                 {esFaseDeConcepto(actual.id) && tema === "FRACCIONES" && vistoNumerador && vistoDenominador && (
-                  <p className="flex flex-wrap items-baseline justify-center gap-2 text-sm text-muted-foreground">
-                    <span className="pz-tiza">Numerador / Denominador:</span>
-                    <Formula latex={`\\dfrac{${fraccionEnCurso?.numerador ?? 1}}{${fraccionEnCurso?.denominador ?? 4}}`} />
-                  </p>
+                  <FraccionFormal
+                    numerador={fraccionEnCurso?.numerador ?? 1}
+                    denominador={fraccionEnCurso?.denominador ?? 4}
+                    className="overflow-x-auto text-center"
+                  />
                 )}
 
                 {/* Fases con ejercicio: el enunciado anclado arriba y su
@@ -837,7 +844,11 @@ function LineaRenderizada({
     // se lee como una cadena de restas: es lo que reportó el cliente.
     const texto = sinRayasDibujadas(linea.texto);
     const latex =
-      columnaDeCuentaDibujada(linea.texto)
+      // EL CIERRE, ANTES QUE NADA: la línea con la respuesta final se compone
+      // con su marco. Detrás del resaltado de coeficientes, "derivada de 3x² =
+      // 6x" salía con las cifras en color y sin enmarcar su resultado.
+      (linea.operacion?.tipo === "resultado" || linea.operacion?.final ? latexDeLaSubrutina(linea) : null)
+      ?? columnaDeCuentaDibujada(linea.texto)
       // Números con su nombre debajo: "24 [sumando] + 17 [sumando] = 41 [suma]".
       // El tutor los nombra sobre los números concretos, y así la pizarra
       // enseña lo mismo en vez del esquema abstracto.
@@ -888,7 +899,9 @@ function LineaRenderizada({
     } catch {
       return null;
     }
-  }, [linea.texto, linea.clase, columna, destacarTerminos, soloEnunciado]);
+    // La etiqueta cuenta: la misma línea etiquetada como cierre se compone con
+    // su marco, y sin etiqueta no.
+  }, [linea.texto, linea.clase, linea.operacion, columna, destacarTerminos, soloEnunciado]);
 
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.
@@ -898,16 +911,30 @@ function LineaRenderizada({
     </span>
   ) : null;
 
+  // EL CIERRE DEL EJERCICIO SE DISTINGUE DE UN PASO MÁS. La respuesta ya sale
+  // enmarcada en la fórmula (ver `escenaDeCierre`); aquí va además su rótulo de
+  // conclusión, con el visto: es lo que el cliente pidió para el último paso,
+  // "el resultado final enmarcado con su feedback de conclusión".
+  const esCierre = linea.operacion?.tipo === "resultado" && Boolean(formulaEntera);
+
   if (formulaEntera) {
     return (
-      <div>
+      <div className={cn(esCierre && "pz-linea-final")}>
         {etiqueta}
+        {esCierre && (
+          <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            <Check className="h-3 w-3" />
+            Resultado final
+          </span>
+        )}
         <div
           className={cn(
             "overflow-x-auto rounded-md px-3 py-2 transition-colors",
             resaltada
               ? "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50"
-              : "bg-muted/40",
+              : esCierre
+                ? "bg-emerald-500/5 ring-1 ring-emerald-600/30"
+                : "bg-muted/40",
           )}
           dangerouslySetInnerHTML={{ __html: formulaEntera }}
         />

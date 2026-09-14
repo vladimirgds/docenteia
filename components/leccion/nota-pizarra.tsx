@@ -3,7 +3,7 @@
 import katex from "katex";
 import { Fragment, useMemo } from "react";
 
-import { partirNota } from "@/lib/leccion/notas";
+import { expresionFormalDeFraccion, partirNota } from "@/lib/leccion/notas";
 import { planoALatex, separarProsaYMatematicas } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +74,44 @@ function CuerpoDeNota({ texto }: { texto: string }) {
         ),
       )}
     </span>
+  );
+}
+
+/**
+ * La definición formal de la fracción del dibujo: Numerador sobre Denominador,
+ * igual a 1/4, con las dos rayas horizontales y en una sola fórmula.
+ *
+ * La usan la pizarra y la proyección de la fase de Concepto: la misma
+ * expresión en los dos sitios, compuesta del mismo modo.
+ */
+export function FraccionFormal({
+  numerador,
+  denominador,
+  className,
+}: {
+  numerador?: number;
+  denominador?: number;
+  className?: string;
+}) {
+  const html = useMemo(() => {
+    try {
+      return katex.renderToString(expresionFormalDeFraccion(numerador, denominador), {
+        displayMode: true,
+        throwOnError: false,
+        strict: false,
+      });
+    } catch {
+      return null;
+    }
+  }, [numerador, denominador]);
+  if (!html) return null;
+  return (
+    <div
+      className={cn("pz-fraccion-formal", className)}
+      role="math"
+      aria-label={`Numerador partido por denominador, igual a ${numerador ?? 1} partido por ${denominador ?? 4}`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 

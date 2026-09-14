@@ -22,7 +22,7 @@ import {
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
+import { FraccionFormal, NotaDePizarra } from "@/components/leccion/nota-pizarra";
 import { Button } from "@/components/ui/button";
 import {
   useGuionEstable,
@@ -38,6 +38,7 @@ import {
 } from "@/lib/leccion/animacion";
 import type { EstadoAvatar } from "@/public/pseLight";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
+import { notacionFormal, pareceMatematica, planoALatex } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 import type { PasoSemantico } from "@/lib/leccion/marcado";
 import type { VozUtilizable } from "@/lib/leccion/voz";
@@ -329,36 +330,59 @@ function Resaltado({
   caja: Caja;
   conEtiqueta?: boolean;
 }) {
-  // EL RESULTADO NO SE RODEA: SE SUBRAYA Y SE CONFIRMA.
+  // EL RESULTADO NO SE RODEA CON UN ÓVALO.
   //
   // Era un óvalo, y el cliente lo fotografió sobre el 3800: el contorno pasaba
   // por encima de las cifras y las cruzaba. Una marca que tapa el número que
-  // quiere destacar no destaca nada. Ahora nada toca las cifras: dos rayas
-  // DEBAJO del número y un visto a su DERECHA, con aire de por medio. Es la
-  // marca que se hace a mano bajo un resultado correcto —el cliente la dibujó
-  // así—, y el número, ya en verde, se lee entero.
+  // quiere destacar no destaca nada. Ahora nada toca las cifras.
+  //
+  // Y EL VISTO VERDE ES SÓLO PARA LA RESPUESTA FINAL. El cliente lo fotografió
+  // flotando junto a la x de "2x + 6 = 16 − 6", en un paso en el que no se
+  // resolvía nada: "solo genera ruido visual y confunde al alumno haciéndole
+  // creer que la x ya está resuelta". Un resultado INTERMEDIO —lo que queda al
+  // amplificar, al repartir, al sumar los numeradores— lleva dos rayas debajo y
+  // nada más. La RESPUESTA FINAL se enmarca —un rectángulo con aire, que no roza
+  // ninguna cifra— y se confirma con el visto a su derecha.
   if (foco.tipo === "resultado") {
     // Todo proporcional al tamaño del número: en proyección la fórmula se
     // multiplica y el trazo engorda, y con huecos fijos de 5 px las dos rayas
     // se fundían en una sola barra.
-    const izquierda = caja.x - 3;
-    const derecha = caja.x + caja.ancho + 3;
+    const aire = Math.max(6, caja.alto * 0.14);
+    const izquierda = caja.x - (foco.final ? aire : 3);
+    const derecha = caja.x + caja.ancho + (foco.final ? aire : 3);
     const primera = caja.y + caja.alto + Math.max(5, caja.alto * 0.09);
     const segunda = primera + Math.max(5, caja.alto * 0.1);
-    // El visto, proporcionado al número y separado de él por un hueco limpio.
+    // El visto, proporcionado al número y separado del marco por un hueco limpio.
     const tam = Math.min(64, Math.max(12, caja.alto * 0.45));
     const x0 = derecha + Math.max(10, caja.alto * 0.12);
     const y0 = caja.y + caja.alto / 2;
     return (
-      <g className="pz-resaltado" data-tipo={foco.tipo}>
-        <line x1={izquierda} y1={primera} x2={derecha} y2={primera} className="pz-trazo pz-subrayado" pathLength={1} />
-        <line x1={izquierda} y1={segunda} x2={derecha} y2={segunda} className="pz-trazo pz-subrayado pz-subrayado-2" pathLength={1} />
-        <path
-          d={`M ${x0} ${y0} l ${tam * 0.35} ${tam * 0.4} l ${tam * 0.65} ${-tam * 0.85}`}
-          className="pz-trazo pz-visto"
-          fill="none"
-          pathLength={1}
-        />
+      <g className="pz-resaltado" data-tipo={foco.tipo} data-final={foco.final ? "si" : undefined}>
+        {foco.final ? (
+          <rect
+            x={izquierda}
+            y={caja.y - aire}
+            width={derecha - izquierda}
+            height={caja.alto + aire * 2}
+            rx={8}
+            className="pz-trazo pz-marco-final"
+            fill="none"
+            pathLength={1}
+          />
+        ) : (
+          <>
+            <line x1={izquierda} y1={primera} x2={derecha} y2={primera} className="pz-trazo pz-subrayado" pathLength={1} />
+            <line x1={izquierda} y1={segunda} x2={derecha} y2={segunda} className="pz-trazo pz-subrayado pz-subrayado-2" pathLength={1} />
+          </>
+        )}
+        {foco.final ? (
+          <path
+            d={`M ${x0} ${y0} l ${tam * 0.35} ${tam * 0.4} l ${tam * 0.65} ${-tam * 0.85}`}
+            className="pz-trazo pz-visto"
+            fill="none"
+            pathLength={1}
+          />
+        ) : null}
         {foco.etiqueta && conEtiqueta ? (
           <text
             x={caja.x + caja.ancho / 2}
@@ -494,6 +518,38 @@ function NotasDeLaFase({ notas }: { notas: readonly string[] }) {
 }
 
 /**
+ * El ejercicio original, fijo en lo alto de la proyección.
+ *
+ * Limpio: compuesto tal como está escrito, sin marcas ni piezas por destapar
+ * —es el enunciado, no un paso—. Va con `position: sticky` (ver la hoja de
+ * estilos): si el desarrollo es largo y el panel se desplaza, el ejercicio no
+ * se va con él.
+ */
+function EnunciadoFijo({ texto: crudo }: { texto: string }) {
+  // "Ejercicio 1:  2/6 + 3/6" → "2/6 + 3/6": el rótulo ya dice que es el ejercicio.
+  const texto = crudo.replace(/^\s*ejercicio[^:]{0,20}:\s*/i, "").trim() || crudo;
+  const html = useMemo(() => {
+    const latex = notacionFormal(texto) ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
+    if (!latex) return null;
+    try {
+      return katex.renderToString(latex, { displayMode: true, throwOnError: false, strict: false });
+    } catch {
+      return null;
+    }
+  }, [texto]);
+  return (
+    <div className="pz-enunciado-fijo" data-enunciado={texto}>
+      <span className="pz-enunciado-rotulo">Ejercicio</span>
+      {html ? (
+        <span className="pz-enunciado-formula" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <span className="pz-enunciado-formula pz-tiza">{texto}</span>
+      )}
+    </div>
+  );
+}
+
+/**
  * LA PIZARRA ANIMADA EN FUNCIONAMIENTO: guion, voz y mandos.
  *
  * Recibe las líneas de la lección tal como las escribe el motor, las convierte
@@ -523,8 +579,19 @@ export function PanelAnimado({
   reposo = null,
   leccionTerminada = false,
   avatarDeLaLeccion,
+  enunciado = null,
   className,
 }: {
+  /**
+   * EL EJERCICIO ORIGINAL, FIJO ARRIBA AL PROYECTAR.
+   *
+   * El cliente lo pidió sobre una ecuación: al proyectar "2(x + 3) = 16" sólo
+   * se veía la línea que se estaba operando, y el enunciado desaparecía. En el
+   * aula, quien se despista un momento pierde de vista qué se está resolviendo.
+   * Con esto la proyección lleva arriba, fijo, el ejercicio limpio —tal como
+   * está en la tarjeta de la pizarra—, y debajo el paso activo del desarrollo.
+   */
+  enunciado?: string | null;
   /**
    * Los pasos de la lección.
    *
@@ -747,6 +814,13 @@ export function PanelAnimado({
     [reposo?.texto, reposo?.latex],
   );
   const sinAnimacion = escenas.length === 0;
+
+  // El ejercicio de la cabecera fija. Si lo único que se proyecta es el propio
+  // enunciado —la práctica, antes de que haya desarrollo—, no se repite arriba.
+  const enunciadoFijo = String(enunciado ?? "").trim();
+  const conEnunciadoFijo =
+    proyeccion && enunciadoFijo !== "" && !(sinAnimacion && reposo?.texto?.trim() === enunciadoFijo);
+
   if (sinAnimacion && !escenaDeReposo) return null;
 
   const enMarcha = estado.estado === "reproduciendo";
@@ -774,6 +848,7 @@ export function PanelAnimado({
         className,
       )}
       data-panel={sinAnimacion ? "reposo" : "animado"}
+      data-enunciado-fijo={conEnunciadoFijo ? "si" : undefined}
     >
       <div
         className={cn(
@@ -811,6 +886,9 @@ export function PanelAnimado({
         </Button>
       </div>
 
+      {/* Arriba y fijo: el ejercicio original, limpio. Debajo, el paso activo. */}
+      {conEnunciadoFijo && <EnunciadoFijo texto={enunciadoFijo} />}
+
       {/*
         En proyección la pizarra comparte escenario con el avatar: el tutor
         tiene que seguir a la vista del aula mientras la fórmula ocupa el resto
@@ -835,13 +913,25 @@ export function PanelAnimado({
             // componente que pinta la pizarra clásica arriba: mismo dibujo,
             // mismos rótulos progresivos, ninguna redacción segunda.
             <div className="pz-diagrama-proyectado mx-auto w-full max-w-2xl text-center">
-              <DiagramaConcepto
-                tema={reposo.diagrama.tema}
-                numerador={reposo.diagrama.numerador}
-                denominador={reposo.diagrama.denominador}
-                vistoNumerador={reposo.diagrama.vistoNumerador}
-                vistoDenominador={reposo.diagrama.vistoDenominador}
-              />
+              <div className="pz-diagrama-y-fraccion">
+                <DiagramaConcepto
+                  tema={reposo.diagrama.tema}
+                  numerador={reposo.diagrama.numerador}
+                  denominador={reposo.diagrama.denominador}
+                  vistoNumerador={reposo.diagrama.vistoNumerador}
+                  vistoDenominador={reposo.diagrama.vistoDenominador}
+                />
+                {/* Y bajo el dibujo, la definición en notación formal —vertical,
+                    sin barra inclinada—, la misma que en la pizarra de arriba. */}
+                {reposo.diagrama.tema === "FRACCIONES" &&
+                  reposo.diagrama.vistoNumerador &&
+                  reposo.diagrama.vistoDenominador && (
+                    <FraccionFormal
+                      numerador={reposo.diagrama.numerador ?? 1}
+                      denominador={reposo.diagrama.denominador ?? 4}
+                    />
+                  )}
+              </div>
               {/* Debajo del dibujo, lo ESCRITO en la fase —no lo dicho: eso va en
                   el subtítulo—, como notas de pizarra y todas a la vez. */}
               <NotasDeLaFase notas={reposo.notas?.length ? reposo.notas : [reposo.texto]} />
