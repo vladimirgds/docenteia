@@ -1822,3 +1822,136 @@ aceptación, lección multimodal, barrido, PASO 1, preflight)—: **0 fallos**, 
 el barrido completo (200 sesiones, 1.800 turnos) pasando por la rama de
 fracciones difíciles que ejercita el punto 3b. `tsc --noEmit` y `npm run build`
 limpios en cada paso.
+
+## 30. Revisión daa127d: lo que dice el avatar es lo que muestra la pizarra
+
+Cinco incoherencias sobre el despliegue `daa127d`, más dos anotaciones sobre la
+proyección de Concepto («no sincroniza lo que dice con lo que muestra», «el
+avatar habla mucho pero muestra poco»). Casi todas tenían la misma raíz, y por
+eso se corrigió la raíz y no cada síntoma: **el motor narraba primero y escribía
+después**. Cada línea aparecía cuando su frase ya había terminado, así que la
+pizarra iba siempre una frase por detrás de la voz.
+
+### 1 y 2. «No entendí este paso»: el mismo ejercicio, desglosado, y la clase sigue
+
+Reproducido tal cual: el botón pedía la explicación al modelo en vivo y, cuando
+el modelo no respondía (cuota agotada), el servidor caía en una **lección de
+demostración genérica del tema** —la de la pizza, con «1/4 + 1/4 = 2/4» y otra
+pregunta—. De ahí las dos capturas: el desarrollo resolvía una cuenta distinta
+de la del enunciado, se hablaba de una pizza que no se veía, y la explicación
+*sustituía* a la lección, que acababa en «¡Lección completada!» sin llegar a la
+práctica. Había además un segundo fallo debajo: el ejercicio que viajaba con la
+petición era el último escrito de la lección —el de la práctica—, no el de la
+tarjeta, así que en el ejemplo se explicaba un ejercicio que el alumno aún no
+había visto.
+
+Ahora:
+
+- **El botón desglosa el ejercicio de la tarjeta, sin IA.** Fracciones con todo
+  detalle (por qué hace falta el denominador común, el MCM escrito, cada
+  conversión, la suma y la simplificación), y también ecuaciones, aritmética,
+  derivadas y factorización.
+- **El paso exacto.** La interfaz envía el paso que el alumno tiene delante —el
+  que enseña la pizarra animada—, y ese paso recibe su andamiaje justo antes de
+  desglosarse («la clave de este paso: con el mismo denominador los trozos son
+  del mismo tamaño…»).
+- **La respuesta final consolidada.** En el ejemplo se llega hasta el final:
+  `1/2 + 1/3 = 3/6 + 2/6 = (3 + 2)/6 = 5/6`. Esa misma línea cierra ahora
+  también el ejemplo normal de la lección. En la práctica, con la pregunta sin
+  contestar, el desglose se detiene antes del resultado (darlo sería
+  resolverle el ejercicio) y le devuelve su pregunta.
+- **Retomar el ejercicio.** Tras explicar, la lección se **reanuda**: vuelve la
+  pregunta pendiente, si la había, y las fases que quedaban (la práctica), en
+  lugar de darse por completada.
+- En Concepto y Reglas, donde no hay ejercicio en la tarjeta, se cuenta la misma
+  idea con otras palabras, sin traer ningún ejemplo nuevo. Y «Explicar regla»,
+  si el modelo no responde, tampoco cae ya en la lección de demostración:
+  explica la regla sobre el mismo ejercicio.
+
+### 3. El fotograma de los numeradores ya no dura «unos milisegundos»
+
+En el ejemplo, la línea `3/6 + 2/6 = 5/6` se escribía **después** de su frase
+(«Sumamos los numeradores…»), y 0,7 s más tarde la frase siguiente se la
+llevaba. Ahora cada paso animado se escribe antes de contarlo, **cada foco
+tiene su propia frase** —la misma que enseña el pie del panel: primero los
+numeradores, luego el denominador que no cambia, luego lo que queda— y detrás de
+cada frase hay una **pausa de lectura de 1 segundo** antes de cualquier
+transición (sin poner al avatar a «pensar»). Lo mismo para las conversiones del
+MCM, la simplificación, las columnas de aritmética, el reparto del paréntesis en
+ecuaciones y el paso de cada resultado final a la práctica. La reproducción del
+propio panel pasa también de 0,6 s a 1 s entre pasos. Como red de seguridad
+general, el PRE Light reordena cualquier paso etiquetado que se narre antes de
+escribirse y le añade su pausa, venga del motor o del modelo.
+
+### 4. Tipografía y jerarquía en Modo Proyección
+
+Los rótulos («Fracciones equivalentes:», «MCM(2, 3):», «Propiedad uniforme de la
+suma:») se proyectaban como un párrafo a tamaño de texto junto a una fórmula a
+tamaño de proyección. Ahora cada línea escrita se proyecta como **nota de
+pizarra**: el rótulo en letra de pizarra (Chalkboard SE / Segoe Print) y nunca
+por debajo de `text-2xl` —crece con la pantalla—, la fórmula en KaTeX y en
+estilo de bloque, un escalón por encima del rótulo, y cada idea en su renglón
+(«Múltiplos de 4… / Múltiplos de 6… / El menor en común…»). El subtítulo sigue en
+la letra limpia del sistema.
+
+Y lo anotado sobre Concepto: la proyección enseñaba sólo la última línea, así
+que cada frase nueva borraba la anterior («habla mucho pero muestra poco»).
+Ahora en Concepto y Reglas se proyecta **todo lo escrito en la fase**, con la
+línea que se está contando resaltada; en Concepto, el diagrama a un lado y las
+notas al otro. «Fracción: numerador / denominador» se compone como fracción de
+verdad, con su raya, como lo dibujó el cliente. En Reglas de fracciones, lo que
+se dice ya coincide con lo que se escribe: se escriben y se cuentan las tres
+propiedades del catálogo (equivalentes, igual denominador, distinto
+denominador) —antes la pizarra ponía «Fracciones equivalentes» mientras el
+tutor explicaba cómo se suman—. En ecuaciones, la frase de Reglas nombra la
+propiedad que está escrita.
+
+### 5. La tarjeta no adelanta el resultado de la distributiva
+
+La tarjeta se componía con la misma escena que anima el panel, y esa escena
+lleva dentro lo que la animación destapa al final; fuera del panel se veía todo.
+Además la escena escribía una **cadena falsa**: `2(x + 4) = 3x − 1 = 2x + 8`.
+Ahora:
+
+- La tarjeta de EJERCICIO compone el enunciado **tal cual está escrito**.
+- En una ecuación, lo repartido va en su **propio renglón**, alineado por el
+  igual: `2x + 8 = 3x − 1` debajo de `2(x + 4) = 3x − 1`.
+- La animación reparte **los dos términos** con su frase cada uno («El 2
+  multiplica a x: da 2x», «Y el 2 multiplica a 4: da 8») hasta destapar la
+  ecuación repartida. De paso se corrigió el signo de esas frases cuando hay un
+  término negativo dentro («multiplica a −3: da −6»).
+- **El enunciado de la práctica ya no se anima.** La captura mostraba la pizarra
+  repartiendo el 2 del ejercicio que el alumno tenía que resolver: la propia
+  pregunta del tutor compartía cifras con el primer paso y lo encendía. Tampoco
+  cae ya en el desarrollo tras «Más difícil»: se lleva la tarjeta, aunque no
+  termine en «= ?».
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **533 comprobaciones**, con un bloque nuevo que **simula la
+pizarra siguiendo a la voz** con las funciones reales sobre las lecciones de
+fracciones de los tres niveles: cada paso animado se escribe antes de contarse,
+cada foco se ve mientras suena su frase, tras cada frase hay al menos 1 s de
+pausa y al cerrar la pizarra se queda en el resultado. Comprueba también el
+desglose del mismo ejercicio en todos los temas (sin revelar la respuesta en la
+práctica), la vuelta a la clase, el servidor respondiendo al botón sin IA, las
+notas proyectadas y la distributiva. `qa/navegador.mjs` sube a **73** y lo mide
+en Chrome de verdad: mientras el tutor dice «…el número de ABAJO es el
+denominador» ya está escrito; las notas se acumulan; la fracción de palabras
+lleva su raya; el rótulo proyectado mide entre 26 px (Concepto, junto al
+diagrama) y 33 px (Reglas) en letra de pizarra, nunca menos de 24; el recuadro
+de los numeradores se sostiene más de un segundo; «No entendí este paso» no
+cambia el ejercicio y la clase llega a la práctica con su pregunta; la tarjeta
+no enseña el reparto mientras se anima, y el enunciado de la práctica no se
+anima. La batería de Chrome se ejecutó completa, 73 de 73, contra la
+**compilación de producción** (`npm run build` + `npm run start`). Las 13
+baterías restantes, con el servidor local levantado —incluido el barrido de 200
+sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` limpio.
+
+Queda anotado, por transparencia: en esta máquina la clave de Gemini del `.env`
+local no es válida, así que toda consulta a la IA cae en su respaldo —que es
+justo el camino que esta revisión deja coherente—; y durante una de las
+ejecuciones largas contra el servidor de desarrollo la base de datos remota
+cortó la conexión (`ConnectionReset`) tras cientos de sesiones de prueba, lo que
+detuvo esa ejecución a mitad. Repetida contra el servidor de producción,
+terminó completa y limpia.

@@ -187,6 +187,111 @@ export function conPreguntaPendiente<T extends LSGConModulos>(
 }
 
 /**
+ * LO QUE QUEDABA DE LA LECCIÓN cuando el alumno pidió ayuda.
+ *
+ * El reproductor aplana la lección en una línea de tiempo con un marcador
+ * `{ tipo: "modulo", id }` al empezar cada fase. A partir de la posición en la
+ * que se pulsó el botón se separan dos cosas:
+ *
+ *   · `mismaFase`: lo que venía DESPUÉS de la posición actual sin salir de la
+ *     fase. Sólo se usa cuando el alumno estaba ante una pregunta —se le
+ *     devuelve la pregunta y luego sigue lo que hubiera detrás—; si estaba en
+ *     mitad de un ejemplo, el desglose ya lo cuenta entero y no se repite.
+ *   · `siguientes`: las fases que aún no se habían abierto, enteras.
+ */
+export function restoDeLeccion(
+  timeline: ReadonlyArray<{ tipo?: string; id?: string } & Record<string, unknown>>,
+  indice: number,
+): { mismaFase: unknown[]; siguientes: Modulo[] } {
+  const lista = Array.isArray(timeline) ? timeline : [];
+  const desde = Math.max(0, Math.min(Math.round(Number(indice) || 0), lista.length));
+  const mismaFase: unknown[] = [];
+  const siguientes: Modulo[] = [];
+  let k = desde + 1;
+  for (; k < lista.length && lista[k]?.tipo !== "modulo"; k++) mismaFase.push(lista[k]);
+  for (; k < lista.length; k++) {
+    const d = lista[k];
+    if (d?.tipo === "modulo") siguientes.push({ id: String(d.id ?? ""), directivas: [] });
+    else siguientes[siguientes.length - 1]?.directivas?.push(d);
+  }
+  return { mismaFase, siguientes: siguientes.filter((m) => m.id && (m.directivas?.length ?? 0) > 0) };
+}
+
+/**
+ * «NO ENTENDÍ ESTE PASO» Y DESPUÉS, DE VUELTA AL EJERCICIO.
+ *
+ * El cliente lo pidió con estas palabras: el botón debe "ofrecer un andamiaje
+ * auxiliar o explicación desglosada del paso exacto donde el alumno tuvo la
+ * duda, y luego retomar el ejercicio original, no reiniciar la sesión con otra
+ * cuenta sin permitirle terminar la que estaba trabajando". Antes la explicación
+ * SUSTITUÍA a la lección: al acabar decía "¡Lección completada!" aunque faltara
+ * la práctica entera.
+ *
+ * Aquí la explicación ocupa la fase en la que está el alumno y detrás se vuelve
+ * a poner lo que quedaba: la pregunta que tenía delante —si la había— con lo que
+ * viniera después en esa fase, y las fases que aún no se habían abierto. La
+ * aclaración pierde su propia estructura de módulos: es una explicación dentro
+ * de la fase, no una lección nueva que abra otras.
+ */
+export function reanudarTrasAclaracion<T extends LSGConModulos>(
+  aclaracion: T,
+  opciones: {
+    faseActual: string;
+    pregunta?: { tipo?: string; texto?: string } | null;
+    mismaFase?: unknown[];
+    siguientes?: Modulo[];
+  },
+): T {
+  const propias = [
+    ...(Array.isArray(aclaracion?.directivas) ? aclaracion.directivas : []),
+    ...(Array.isArray(aclaracion?.modulos) ? aclaracion.modulos.flatMap((m) => m?.directivas ?? []) : []),
+  ].filter((d) => (d as { tipo?: string })?.tipo !== "preguntar");
+  const siguientes = (opciones.siguientes ?? []).filter((m) => (m?.directivas?.length ?? 0) > 0);
+  const vuelta: unknown[] = opciones.pregunta?.texto
+    ? [
+        { tipo: "hablar", texto: "Ahora inténtalo tú." },
+        { ...opciones.pregunta, tipo: "preguntar" },
+        ...(opciones.mismaFase ?? []),
+      ]
+    : siguientes.length > 0
+      ? [{ tipo: "hablar", texto: "Ahora que lo tienes claro, seguimos con la clase." }]
+      : [];
+  const copia: LSGConModulos = { ...(aclaracion ?? {}) };
+  delete copia.directivas;
+  copia.modulos = [
+    { id: opciones.faseActual || "leccion", directivas: [...propias, ...vuelta] },
+    ...siguientes,
+  ];
+  return copia as T;
+}
+
+/**
+ * LOS ENUNCIADOS QUE SE LE PIDEN AL ALUMNO: la última línea escrita antes de
+ * cada pregunta de la lección.
+ *
+ * Sirven para no animarlos. La pizarra animada deduce el gesto de cualquier
+ * línea, y el enunciado de la práctica —"2(x + 4) = 3x − 1"— se dejaba repartir
+ * solo: la propia pregunta del tutor ("¿cuánto vale x en 2(x + 4) = 3x − 1?")
+ * comparte cifras con el primer foco y lo encendía, así que la pizarra hacía el
+ * primer paso del ejercicio que tenía que resolver el alumno —y la tarjeta de
+ * arriba ya enseñaba "= 2x + 8"—. El cliente lo fotografió en Ecuaciones.
+ */
+export function enunciadosParaResolver(lsg: LSGConModulos | null | undefined): Set<string> {
+  const conjunto = new Set<string>();
+  const listas = Array.isArray(lsg?.modulos)
+    ? lsg.modulos.map((m) => (Array.isArray(m?.directivas) ? m.directivas : []))
+    : [Array.isArray(lsg?.directivas) ? lsg.directivas : []];
+  for (const lista of listas) {
+    let ultima: string | null = null;
+    for (const d of lista as Array<{ tipo?: string; contenido?: string }>) {
+      if (d?.tipo === "pizarra" && String(d.contenido ?? "").trim()) ultima = String(d.contenido).trim();
+      else if (d?.tipo === "preguntar" && ultima) conjunto.add(ultima);
+    }
+  }
+  return conjunto;
+}
+
+/**
  * Quita las preguntas de una ACLARACIÓN.
  *
  * El alumno está resolviendo un ejercicio y pulsa "Explicar regla": quiere que

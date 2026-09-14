@@ -22,7 +22,7 @@
 import { classifyIntent } from "./classifier.js";
 import { generateLSG } from "./geminiClient.js";
 import { processLSG, processStepByStep } from "./preLight.js";
-import { mockLSG, leccionBotonLSG } from "./lsgPrompt.js";
+import { mockLSG, leccionBotonLSG, desgloseDelEjercicioLSG, reexplicacionDeConceptoLSG } from "./lsgPrompt.js";
 
 // ── Salud del servicio ────────────────────────────────────────────────────────
 // Informa de si hay API key configurada, SIN revelarla.
@@ -232,6 +232,12 @@ export async function manejarConsulta(body, ip = "desconocida") {
           : null,
         ejercicio: texto(body.aclaracion.ejercicio, 120),
         tema: texto(body.aclaracion.tema, 80),
+        // La línea que el alumno tenía delante al pulsar: el paso EXACTO en el que se atascó.
+        paso: texto(body.aclaracion.paso, 160),
+        // En la práctica, con la pregunta sin contestar, el desglose se detiene antes del resultado.
+        conResultado: body.aclaracion.conResultado !== false,
+        // Cuántas veces seguidas lleva diciendo que no entiende: la escalera de simplificación.
+        insistencia: Number.isInteger(body.aclaracion.insistencia) ? Math.max(0, Math.min(2, body.aclaracion.insistencia)) : 0,
       }
     : null;
 
@@ -308,6 +314,42 @@ export async function manejarConsulta(body, ip = "desconocida") {
     //       la práctica le REVELARÍA la respuesta que debe hallar él. Si el alumno está viendo el
     //       CONCEPTO (no un problema), "no entendí" NO debe re-resolverle una ecuación.
     const parte = body?.parte === "concepto" ? "concepto" : "resolucion";
+
+    // 0.04) «NO ENTENDÍ ESTE PASO»: EL MISMO EJERCICIO, DESGLOSADO, SIN IA.
+    //
+    // Este botón pedía la explicación al modelo en vivo, y cuando el modelo no respondía —cuota
+    // agotada— la consulta caía en la lección de demostración genérica del tema: otra cuenta ("1/4 +
+    // 1/4 = 2/4") debajo del enunciado que el alumno estaba resolviendo ("1/2 + 1/3"), una pizza que no
+    // se veía por ningún lado y la lección dada por terminada. El cliente lo reportó con dos capturas.
+    // Ahora el desglose es determinista y del ejercicio de la TARJETA: el paso en el que estaba, con su
+    // andamiaje, y el resto más despacio. Sin ejercicio en la tarjeta (concepto, reglas), la misma idea
+    // contada con otras palabras. La lección la reanuda el aula.
+    if (explicacionDinamica && parte === "resolucion" && aclaracion) {
+      const temaAcl = `${aclaracion.tema} ${contexto} ${currentTopic}`;
+      const raw = aclaracion.ejercicio
+        ? desgloseDelEjercicioLSG({ ejercicio: aclaracion.ejercicio, tema: temaAcl, paso: aclaracion.paso, conResultado: aclaracion.conResultado })
+        : reexplicacionDeConceptoLSG(temaAcl, aclaracion.insistencia);
+      if (raw) {
+        const des = processLSG(raw, "explicar", query);
+        return {
+          status: 200,
+          json: {
+            query,
+            reexplicacion: true,
+            intencion: "explicar",
+            confianza: 1,
+            fuente_ia: "local",
+            modelo: "desglose",
+            lsg: des.lsg,
+            pasos: des.pasos,
+            advertencias: des.warnings,
+            tokens: null,
+            cache_activo: false,
+          },
+        };
+      }
+    }
+
     if (seguimiento === "reexplicar" && !explicacionDinamica && parte !== "concepto" && (ejercicio || contexto)) {
       // Una expresión SUELTA no dice qué hay que hacer con ella: "3x⁴ - 2x²" puede derivarse o
       // factorizarse. El TEMA ACTIVO decide la lectura, y esa lectura es EXCLUSIVA, no sólo
@@ -462,6 +504,25 @@ export async function manejarConsulta(body, ip = "desconocida") {
     });
     let { lsg: rawLsg, source, model } = gen;
     const { usage, cached } = gen;
+    // UNA ACLARACIÓN NUNCA CAE EN LA LECCIÓN DE DEMOSTRACIÓN DEL TEMA. "Explicar regla" sigue
+    // redactándolo el modelo en vivo; pero si el modelo no responde, la demostración genérica traería
+    // OTRO ejercicio —es exactamente lo que el cliente fotografió con «No entendí este paso»—. En su
+    // lugar, el desglose determinista del ejercicio de la tarjeta, presentado por la regla que se pidió.
+    if (explicacionDinamica && source === "mock" && aclaracion) {
+      const temaAcl = `${aclaracion.tema} ${contexto} ${currentTopic}`;
+      const mismo = aclaracion.ejercicio
+        ? desgloseDelEjercicioLSG({ ejercicio: aclaracion.ejercicio, tema: temaAcl, paso: aclaracion.paso, conResultado: aclaracion.conResultado })
+        : reexplicacionDeConceptoLSG(temaAcl, aclaracion.insistencia);
+      if (mismo) {
+        // Se abre con la regla que se pidió, en lugar del "sin problema" de quien dice que no entiende.
+        if (aclaracion.regla?.nombre && mismo.directivas[1]?.tipo === "hablar") {
+          mismo.directivas[1] = { tipo: "hablar", texto: `La regla que estamos aplicando es «${aclaracion.regla.nombre}». Mira cómo funciona en tu ejercicio.` };
+        }
+        rawLsg = mismo;
+        source = "local";
+        model = "desglose";
+      }
+    }
     // Solo cuenta contra la cuota si la lección vino REALMENTE del modelo.
     if (source === "gemini" && !cached) permiso.consumir();
 

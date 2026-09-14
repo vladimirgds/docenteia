@@ -441,7 +441,9 @@ export class PSELight {
 
       case "esperar": {
         const secs = Math.min(4, Math.max(1, Number(d.segundos) || 2));
-        this.avatar.setState("pensando");
+        // Una pausa de LECTURA deja el paso recién contado a la vista para leerlo: el tutor no se pone
+        // a "pensar" en mitad de una explicación, se queda como estaba.
+        if (!d.lectura) this.avatar.setState("pensando");
         await sleep(secs * 1000, signal);
         break;
       }

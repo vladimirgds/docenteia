@@ -7,7 +7,9 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
+import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
 import { conceptoDeFraccion } from "@/lib/leccion/diagramas";
+import { partirNota } from "@/lib/leccion/notas";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
 import {
   columnaDeCuentaDibujada,
@@ -509,6 +511,7 @@ export function Pizarra({
                       <LineaRenderizada
                         linea={cuenta ? { ...ejercicio, texto: cuenta.texto } : ejercicio}
                         columna="planteamiento"
+                        soloEnunciado
                         destacarTerminos={esFaseDeEjemplo(actual.id)}
                         resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
                         reglas={[]}
@@ -780,10 +783,21 @@ function LineaRenderizada({
   resaltada,
   columna,
   destacarTerminos = false,
+  soloEnunciado = false,
   reglas = [],
 }: {
   linea: LineaPizarra;
   resaltada: boolean;
+  /**
+   * La línea es el ENUNCIADO de la tarjeta: se compone tal cual está escrito.
+   *
+   * Sin esto, la tarjeta se componía con la misma escena que anima el panel de
+   * abajo, y esa escena lleva ya dentro lo que la animación destapa al final
+   * —aquí, fuera del panel, todo se ve—. El cliente lo fotografió en
+   * Ecuaciones: la tarjeta decía "2(x + 4) = 3x − 1 = 2x + 8" mientras abajo el
+   * 2 apenas empezaba a repartirse. Un enunciado no enseña su resultado.
+   */
+  soloEnunciado?: boolean;
   /**
    * Compone la línea como una cuenta en columna. Sólo tiene efecto si la
    * línea es de verdad una suma o una resta de dos naturales.
@@ -853,7 +867,7 @@ function LineaRenderizada({
       // usa la notación formal por dentro, así que la fórmula es la misma; lo
       // que añade son las marcas. Y una línea sin etiqueta que la subrutina no
       // reconoce sigue su camino de siempre.
-      ?? latexDeLaSubrutina(linea)
+      ?? (soloEnunciado ? null : latexDeLaSubrutina(linea))
       ?? notacionFormal(texto)
       ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
     if (!latex) return null;
@@ -874,7 +888,7 @@ function LineaRenderizada({
     } catch {
       return null;
     }
-  }, [linea.texto, linea.clase, columna, destacarTerminos]);
+  }, [linea.texto, linea.clase, columna, destacarTerminos, soloEnunciado]);
 
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.
@@ -909,6 +923,24 @@ function LineaRenderizada({
   // que no se ha dejado componer como fórmula sigue siendo algo ESCRITO en la
   // pizarra —una nota, un rótulo que el motor no supo convertir a LaTeX—, y
   // ahí sí va la fuente de tiza: es la pizarra, no el habla.
+  //
+  // Y una fracción escrita CON PALABRAS —"Fracción: numerador / denominador"—
+  // se compone como fracción, con su raya: el cliente la dibujó así sobre la
+  // captura. Escrita con una barra se leía como dos palabras sueltas.
+  if (linea.clase !== "explicacion" && partirNota(linea.texto).some((t) => t.fraccion)) {
+    return (
+      <div>
+        {etiqueta}
+        <NotaDePizarra
+          texto={linea.texto}
+          className={cn(
+            "rounded-md px-3 py-1.5 transition-colors",
+            resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
+          )}
+        />
+      </div>
+    );
+  }
   return (
     <div>
       {etiqueta}

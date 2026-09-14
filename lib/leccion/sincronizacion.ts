@@ -131,10 +131,12 @@ export function duracionEstimada(texto: string): number {
  * Pausa didáctica entre un paso y el siguiente, en milisegundos.
  *
  * Sin ella, la locución de una columna empalma con la de la siguiente y el
- * alumno no llega a ver la cifra que se acaba de escribir. Con algo más de medio
- * segundo, cada columna se cierra antes de abrir la de al lado.
+ * alumno no llega a ver la cifra que se acaba de escribir. Era de 0,6 s; el
+ * cliente pidió "una pausa de lectura de al menos 1 segundo antes de cualquier
+ * transición automática", y es el mismo segundo que el motor deja tras cada paso
+ * narrado cuando la lección la conduce el tutor.
  */
-export const PAUSA_ENTRE_PASOS = 600;
+export const PAUSA_ENTRE_PASOS = 1000;
 
 /** Los textos que se dicen en una escena: la entrada y luego cada foco. */
 function segmentosDe(escena: Escena | undefined): string[] {

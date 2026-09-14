@@ -52,11 +52,14 @@ import { conceptoDeFraccion, tieneDiagrama } from "@/lib/leccion/diagramas";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
+  enunciadosParaResolver,
   enunciadoTrasPeticion,
   conPreguntaPendiente,
   esEnunciadoParaResolver,
   presentacionDe,
+  reanudarTrasAclaracion,
   recortarParaSeguimiento,
+  restoDeLeccion,
   sinPreguntas,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
@@ -213,6 +216,32 @@ export function Aula({
   const ejercicioRef = useRef<LineaPizarra | null>(null);
   /** Todo lo escrito en la pizarra durante la lección, para detectar la regla. */
   const escrito = useRef<string[]>([]);
+
+  /**
+   * «NO ENTENDÍ ESTE PASO» Y DE VUELTA A LA CLASE.
+   *
+   * Tras el desglose, la lección se reanuda por donde iba (ver
+   * `reanudarTrasAclaracion`). Una ayuda no abre fases —es lo que evita que la
+   * pizarra vuelva a Concepto—, pero las fases que se reanudan SÍ tienen que
+   * abrirse: son la continuación de la clase, y al llegar la primera la ayuda
+   * se da por terminada.
+   */
+  const fasesAReanudar = useRef<Set<string>>(new Set());
+  /** El paso que la pizarra animada tiene delante ahora mismo: "el paso" del botón. */
+  const pasoEnPantalla = useRef<string | null>(null);
+  /** La práctica ya se contestó bien: a partir de ahí, desglosarla no le resuelve nada. */
+  const practicaResuelta = useRef(false);
+  /** Cuántos «no entendí» seguidos: la escalera de simplificación del concepto. */
+  const insistencia = useRef(0);
+  /**
+   * Los enunciados que se le PIDEN al alumno en la lección en curso.
+   *
+   * No se animan: animarlos era hacerle a la pizarra el ejercicio que tiene que
+   * resolver él (ver `enunciadosParaResolver`).
+   */
+  const [paraResolver, setParaResolver] = useState<Set<string>>(() => new Set());
+  /** Su espejo, para leerlo desde los callbacks sin esperar al render. */
+  const paraResolverRef = useRef<Set<string>>(new Set());
 
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
@@ -387,10 +416,15 @@ export function Aula({
       // 2000 + 1800 arriba y "¿Cuánto es 2411 + 2457?" abajo. Ahora el
       // ejercicio que se pregunta es el que se ve, y el desarrollo del ejemplo,
       // que era de otra cuenta, se retira con él.
+      // No sólo "… = ?": el de ecuaciones se escribe sin interrogación
+      // ("2(x + 4) = 3x − 1"), y la lección ya dice cuáles se le PIDEN al
+      // alumno —la línea que precede a cada pregunta—. Sin esto, tras "Más
+      // difícil" el enunciado de la práctica caía en el desarrollo, bajo la
+      // tarjeta del ejemplo, y la pizarra animada se ponía a resolverlo.
       if (
         !esAclaracion.current &&
         faseConEjercicio() &&
-        esEnunciadoParaResolver(limpio) &&
+        (esEnunciadoParaResolver(limpio) || paraResolverRef.current.has(limpio)) &&
         ejercicioRef.current != null &&
         ejercicioRef.current.texto !== limpio
       ) {
@@ -541,8 +575,16 @@ export function Aula({
       // Durante una ayuda no se abre fase nueva ni se borra la pizarra: la
       // respuesta se añade a la escena en la que está el alumno.
       setModule: (etiqueta) => {
-        if (esAyuda.current) return;
-        abrirEscena(String(etiqueta ?? ""));
+        const id = String(etiqueta ?? "");
+        if (esAyuda.current) {
+          // La ayuda ha terminado y la clase sigue: la primera fase que se
+          // reanuda se abre como cualquier otra y, desde ahí, ya no es ayuda.
+          if (!fasesAReanudar.current.has(id)) return;
+          esAyuda.current = false;
+          esAclaracion.current = false;
+          fasesAReanudar.current = new Set();
+        }
+        abrirEscena(id);
       },
       // A la pizarra sólo suben IDEAS FUERZA: el título de la regla, las
       // fórmulas y el ejercicio. Un párrafo explicativo va al subtítulo, aunque
@@ -606,6 +648,11 @@ export function Aula({
         setPregunta(null);
         setEstadoAvatar("sonriendo");
         setTerminoLaLeccion(true);
+        // Una ayuda que llega hasta el final de la lección también se da por
+        // terminada: la siguiente petición empieza limpia.
+        esAyuda.current = false;
+        fasesAReanudar.current = new Set();
+        if (acerto) practicaResuelta.current = true;
 
         // EL EJERCICIO ACERTADO SE CIERRA EN LA PIZARRA.
         //
@@ -695,6 +742,31 @@ export function Aula({
         ? (pseRef.current?.preguntaPendiente?.() ?? null)
         : null;
 
+      // LO QUE QUEDABA DE LA LECCIÓN, leído antes de que la ayuda la sustituya:
+      // al terminar de explicar, la clase se reanuda desde ahí.
+      const reproductor = pseRef.current;
+      const faseAlPedir = fasesRef.current[fasesRef.current.length - 1]?.id ?? "";
+      const resto =
+        opciones.soloExplicacion && reproductor
+          ? restoDeLeccion(
+              reproductor.timeline as unknown as Parameters<typeof restoDeLeccion>[0],
+              reproductor.index,
+            )
+          : null;
+
+      // ¿El ejercicio de la tarjeta lo está resolviendo el TUTOR (un ejemplo) o
+      // se le pide al ALUMNO? Decide si el desglose llega al resultado y si sus
+      // pasos se animan como los del ejemplo.
+      const enTarjeta = ejercicioRef.current?.texto ?? null;
+      const tarjetaParaResolver =
+        enTarjeta != null && (paraResolverRef.current.has(enTarjeta) || esEnunciadoParaResolver(enTarjeta));
+      const desgloseDelEjemplo =
+        Boolean(opciones.soloExplicacion) &&
+        opciones.parte === "resolucion" &&
+        enTarjeta != null &&
+        faseConEjercicio() &&
+        !tarjetaParaResolver;
+
       setCargando(true);
       setError(null);
       setFeedback(null);
@@ -702,7 +774,11 @@ export function Aula({
       setPregunta(null);
       setTerminoLaLeccion(false);
 
-      esAclaracion.current = Boolean(opciones.soloExplicacion);
+      // En el EJEMPLO, el desglose vuelve a resolver el mismo ejercicio: sus
+      // pasos son el desarrollo de la tarjeta y se animan como tales. Como
+      // aclaración aparte sólo queda la de la práctica, que se detiene antes del
+      // resultado y se retira cuando llega la siguiente.
+      esAclaracion.current = Boolean(opciones.soloExplicacion) && !desgloseDelEjemplo;
 
       // TODA petición que vaya a escribir en la pizarra vacía antes el
       // desarrollo. Si no, el procedimiento del ejercicio anterior se queda
@@ -744,10 +820,27 @@ export function Aula({
           const activa = reglaEnCursoRef.current;
           cuerpo.aclaracion = {
             regla: activa ? { nombre: activa.nombre, formula: activa.enunciado } : null,
-            ejercicio: conversacion.current.ejercicio,
+            // EL EJERCICIO DE LA TARJETA, no el "activo" de la conversación. El
+            // activo es la última línea escrita de la lección —el enunciado de
+            // la práctica—, así que en el ejemplo se desglosaba un ejercicio que
+            // el alumno todavía no había visto. Sin tarjeta (Concepto, Reglas)
+            // no hay ejercicio: se explica la idea con otras palabras.
+            ejercicio: faseConEjercicio() ? (enTarjeta ?? conversacion.current.ejercicio) : "",
             tema: conversacion.current.temaActivo || conversacion.current.claveTema,
+            // El paso EXACTO que tenía delante: el que enseña la pizarra animada
+            // o, si no anima nada, la última línea escrita.
+            paso: pasoEnPantalla.current ?? escrito.current[escrito.current.length - 1] ?? "",
+            // Con la pregunta de la práctica sin contestar, sin resultado.
+            conResultado: !tarjetaParaResolver || practicaResuelta.current,
+            insistencia: insistencia.current,
           };
         }
+        // Cada «no entendí» seguido baja un escalón; cualquier otra petición
+        // devuelve la escalera al principio.
+        insistencia.current =
+          opciones.soloExplicacion && opciones.parte === "resolucion"
+            ? Math.min(2, insistencia.current + 1)
+            : 0;
         const r = await fetch("/api/query", {
           method: "POST",
           headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -823,15 +916,44 @@ export function Aula({
         // Y después de explicar, se le devuelve el ejercicio que estaba
         // resolviendo: sin esto la explicación terminaba en "¡Lección
         // completada!" con la pregunta sin contestar.
+        //
+        // Y ADEMÁS, LA CLASE SIGUE. Tras la explicación vuelve lo que quedaba de
+        // la lección —la pregunta pendiente y las fases que aún no se habían
+        // abierto—: el cliente vio que tras «No entendí este paso» la lección se
+        // daba por completada sin llegar a la práctica.
         const lsg = (
           opciones.soloExplicacion
-            ? conPreguntaPendiente(sinPreguntas(recortada), preguntaPendiente)
+            ? resto && faseAlPedir
+              ? reanudarTrasAclaracion(recortada, {
+                  faseActual: faseAlPedir,
+                  pregunta: preguntaPendiente,
+                  mismaFase: preguntaPendiente ? resto.mismaFase : [],
+                  siguientes: resto.siguientes,
+                })
+              : conPreguntaPendiente(sinPreguntas(recortada), preguntaPendiente)
             : recortada
         ) as LSG;
+        fasesAReanudar.current = new Set(
+          opciones.soloExplicacion && resto
+            ? resto.siguientes.map((m) => String(m.id ?? "")).filter((id) => id && id !== faseAlPedir)
+            : [],
+        );
 
         // Se anota el enunciado de cada fase antes de reproducir nada, para
         // poder mostrarlo en cuanto se entra en ella.
         enunciadoPorFase.current = enunciadosDeLeccion(lsg);
+        // Y qué enunciados se le piden al alumno: esos no se animan. Una ayuda
+        // añade los suyos a los de la lección que continúa; una lección nueva
+        // empieza de cero.
+        const piden = enunciadosParaResolver(lsg);
+        paraResolverRef.current = opciones.soloExplicacion
+          ? new Set([...paraResolverRef.current, ...piden])
+          : piden;
+        setParaResolver(paraResolverRef.current);
+        if (!opciones.soloExplicacion) {
+          practicaResuelta.current = false;
+          pasoEnPantalla.current = null;
+        }
 
         // El servidor no guarda sesión: el contexto se mantiene aquí y viaja en
         // cada petición. Los cursores de rotación tienen que dar la vuelta
@@ -1071,16 +1193,20 @@ export function Aula({
     // Empujarla igualmente la quitaría de arriba sin ponerla en ninguna parte.
     if (cuentaDeLaRegla) pasos.push({ latex: cuentaDeLaRegla });
 
-    if (ejercicio?.texto) pasos.push(pasoDeLinea(ejercicio));
+    // EL EJERCICIO QUE SE LE PIDE AL ALUMNO NO SE ANIMA. Animarlo es que la
+    // pizarra le haga el primer paso —el cliente lo fotografió repartiendo el 2
+    // de "2(x + 4) = 3x − 1" mientras el tutor preguntaba cuánto vale x—. El
+    // ejemplo que resuelve el tutor sí se anima, como siempre.
+    if (ejercicio?.texto && !paraResolver.has(ejercicio.texto)) pasos.push(pasoDeLinea(ejercicio));
     for (const linea of desarrollo) {
-      if (linea.aclaracion) continue;
+      if (linea.aclaracion || paraResolver.has(linea.texto)) continue;
       pasos.push(pasoDeLinea(linea));
     }
     return pasos;
     // `cuentaDeLaRegla` entra en la lista: sin ella el guion no se rehacía al
     // detectarse la regla —la fase de Reglas no cambia el ejercicio ni el
     // desarrollo—, y la cuenta no llegaba nunca a la pizarra animada.
-  }, [ejercicio, desarrollo, cuentaDeLaRegla]);
+  }, [ejercicio, desarrollo, cuentaDeLaRegla, paraResolver]);
 
   /**
    * LO QUE SE PROYECTA CUANDO NO HAY NADA QUE ANIMAR.
@@ -1123,8 +1249,18 @@ export function Aula({
           })()
         : null;
 
-    if (ultima?.texto) return { texto: ultima.texto, diagrama };
-    if (propio && ejercicio?.texto) return { texto: ejercicio.texto, diagrama };
+    // En Concepto y Reglas —las fases sin ejercicio— se proyecta TODO lo escrito
+    // en la fase, no sólo la última línea: "el avatar habla mucho pero muestra
+    // poco", anotó el cliente. Las líneas de una aclaración no cuentan: esas
+    // responden a una duda y no son notas de la clase.
+    const sinEjercicio = !esFaseDeEjemplo(faseAbierta) && !esFaseDePractica(faseAbierta);
+    const notas =
+      propio && sinEjercicio
+        ? desarrollo.filter((l) => !l.aclaracion && l.clase !== "explicacion").map((l) => l.texto)
+        : null;
+
+    if (ultima?.texto) return { texto: ultima.texto, diagrama, notas };
+    if (propio && ejercicio?.texto) return { texto: ejercicio.texto, diagrama, notas };
     if (reglaEnCurso?.enunciado) return { texto: reglaEnCurso.nombre, latex: reglaEnCurso.enunciado };
     return null;
   }, [faseDelContenido, faseAbierta, desarrollo, ejercicio, reglaEnCurso, tema]);
@@ -1143,7 +1279,12 @@ export function Aula({
    */
   const [animacionCompleta, setAnimacionCompleta] = useState(true);
   const alProgresarAnimacion = useCallback(
-    ({ terminado }: { terminado: boolean }) => setAnimacionCompleta(terminado),
+    ({ terminado, texto }: { terminado: boolean; texto?: string | null }) => {
+      setAnimacionCompleta(terminado);
+      // "Este paso", para el botón «No entendí este paso»: el que la pizarra
+      // animada tiene delante.
+      pasoEnPantalla.current = texto ?? null;
+    },
     [],
   );
 

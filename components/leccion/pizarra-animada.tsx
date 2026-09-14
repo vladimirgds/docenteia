@@ -22,7 +22,7 @@ import {
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { TextoMatematico } from "@/components/math";
+import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
 import { Button } from "@/components/ui/button";
 import {
   useGuionEstable,
@@ -227,9 +227,10 @@ export function PizarraAnimada({
           <span className="pz-formula" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           // Escena de prosa —o fórmula que KaTeX no supo componer—: se pinta
-          // como texto, con las fórmulas sueltas que lleve dentro resueltas por
-          // el mismo camino que el resto de la lección.
-          <TextoMatematico texto={escena.texto} className="text-base leading-relaxed" />
+          // como NOTA DE PIZARRA, con el rótulo en letra de pizarra y a tamaño
+          // de aula y sus fórmulas compuestas por KaTeX. Antes era un párrafo a
+          // tamaño de texto junto a una fórmula a tamaño de proyección.
+          <NotaDePizarra texto={escena.texto} />
         )}
 
         {/*
@@ -470,6 +471,29 @@ function ConectorReparto({ factor, termino }: { factor: Caja; termino: Caja }) {
 }
 
 /**
+ * Las notas escritas en una fase sin ejercicio, en orden y todas a la vista.
+ *
+ * La última escrita —la que el tutor está explicando— va resaltada: es la que
+ * corresponde a lo que se oye, y las anteriores se quedan como lo que son en una
+ * pizarra de verdad, lo ya escrito.
+ */
+function NotasDeLaFase({ notas }: { notas: readonly string[] }) {
+  const visibles = notas.filter((n) => String(n ?? "").trim());
+  if (visibles.length === 0) return null;
+  return (
+    <div className="pz-notas mt-4 flex flex-col items-center gap-3">
+      {visibles.map((nota, i) => (
+        <NotaDePizarra
+          key={`${i}-${nota}`}
+          texto={nota}
+          className={cn(i === visibles.length - 1 ? "pz-nota-actual" : "pz-nota-anterior")}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
  * LA PIZARRA ANIMADA EN FUNCIONAMIENTO: guion, voz y mandos.
  *
  * Recibe las líneas de la lección tal como las escribe el motor, las convierte
@@ -520,8 +544,12 @@ export function PanelAnimado({
    * y el seguimiento se aparta.
    */
   narracion?: string | null;
-  /** Avisa de por dónde va la animación y de si ya ha terminado. */
-  alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean }) => void;
+  /**
+   * Avisa de por dónde va la animación y de si ya ha terminado. `texto` es la
+   * línea de la escena en pantalla: el paso que el alumno tiene delante cuando
+   * pulsa «No entendí este paso».
+   */
+  alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean; texto?: string | null }) => void;
   /**
    * Clave de la fase y el tema en curso: al cambiar, la pizarra vuelve a cero.
    *
@@ -570,6 +598,13 @@ export function PanelAnimado({
   reposo?: {
     texto: string;
     latex?: string | null;
+    /**
+     * TODO lo escrito en la fase, en orden, cuando la fase no plantea
+     * ejercicio (Concepto, Reglas). "El avatar habla mucho pero muestra poco",
+     * anotó el cliente sobre la proyección: se veía sólo la última línea, y cada
+     * frase nueva borraba la anterior. Con todas, lo dicho sigue a la vista.
+     */
+    notas?: string[] | null;
     diagrama?: {
       tema: string;
       numerador?: number;
@@ -679,9 +714,10 @@ export function PanelAnimado({
     estado.estado === "final" ||
     (estado.escena === escenas.length - 1 && estado.foco >= estado.segmentos - 2);
 
+  const textoEnPantalla = escenas[estado.escena]?.texto ?? null;
   useEffect(() => {
-    alProgresar?.({ escena: estado.escena, foco: estado.foco, terminado });
-  }, [alProgresar, estado.escena, estado.foco, terminado]);
+    alProgresar?.({ escena: estado.escena, foco: estado.foco, terminado, texto: textoEnPantalla });
+  }, [alProgresar, estado.escena, estado.foco, terminado, textoEnPantalla]);
 
   // La tecla Escape y el botón del navegador también salen de pantalla
   // completa: el estado se lee del documento, no de lo que pulsamos nosotros.
@@ -806,9 +842,13 @@ export function PanelAnimado({
                 vistoNumerador={reposo.diagrama.vistoNumerador}
                 vistoDenominador={reposo.diagrama.vistoDenominador}
               />
-              <p className="pz-pie mt-4 min-h-[1.5rem] text-sm text-muted-foreground">
-                {reposo.texto}
-              </p>
+              {/* Debajo del dibujo, lo ESCRITO en la fase —no lo dicho: eso va en
+                  el subtítulo—, como notas de pizarra y todas a la vez. */}
+              <NotasDeLaFase notas={reposo.notas?.length ? reposo.notas : [reposo.texto]} />
+            </div>
+          ) : sinAnimacion && (reposo?.notas?.length ?? 0) > 1 ? (
+            <div className="pz-notas-proyectadas mx-auto w-full max-w-4xl">
+              <NotasDeLaFase notas={reposo?.notas ?? []} />
             </div>
           ) : (
             <PizarraAnimada

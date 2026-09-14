@@ -1257,30 +1257,245 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
       return arco ? { hayArco: true, tieneMarcador: Boolean(marcador), d: arco.getAttribute("d") } : { hayArco: false };
     });
 
+  // Se llega primero a la práctica: desde ahí "Más difícil" trae otro ejemplo
+  // DENTRO de la misma fase, con su tarjeta de EJERCICIO —en Concepto no hay
+  // tarjeta que vigilar—. Y se espera a que la tarjeta cambie antes de mirar
+  // qué gesto anima el panel: mirando antes se leía la escena del ejemplo
+  // anterior y el intento se daba por perdido.
+  //
+  // Cada "Más difícil" trae una lección entera —ejemplo y después su práctica—;
+  // el arco se busca mientras dura su EJEMPLO, y la siguiente pulsación espera
+  // a la pregunta de esa práctica. Sin esa espera, la pulsación caía a mitad de
+  // la lección y se miraba la tarjeta de la práctica, que —con razón— ya no se
+  // anima.
+  await esperar(pagina, (e) => Boolean(e.pregunta), 120_000);
   let vista = null;
-  for (let intento = 0; intento < 8 && !vista?.hayArco; intento++) {
+  for (let intento = 0; intento < 6 && !vista?.hayArco; intento++) {
     const masDificil = pagina.getByRole("button", { name: /Más difícil/ }).first();
-    if (await masDificil.count()) await masDificil.click();
-    for (let k = 0; k < 40; k++) {
-      await pagina.waitForTimeout(300);
+    if (!(await masDificil.count())) break;
+    await masDificil.click();
+    await pagina.waitForTimeout(800);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 60_000) {
       vista = await buscarArco();
-      if (vista) break;
-      const gesto = await pagina.evaluate(() => document.querySelector(".pz-animada")?.getAttribute("data-gesto"));
-      if (gesto && gesto !== "distributiva") break;
+      if (vista?.hayArco) break;
+      if ((await estadoVisible(pagina)).pregunta) break;
+      await pagina.waitForTimeout(250);
     }
   }
   if (!vista?.hayArco) {
-    // Con ocho intentos la probabilidad de fallar por puro azar es
-    // (6/8)^8 ≈ 10 %; se deja constancia en vez de forzar el fallo, porque no
+    // Con seis lecciones seguidas la probabilidad de fallar por puro azar es
+    // pequeña (el nivel difícil abre con uno); se deja constancia en vez de forzar el fallo, porque no
     // es un defecto del código sino mala suerte del sorteo.
-    console.log("  · no salió ningún ejemplo con paréntesis a la izquierda en 8 intentos (puede pasar por azar)");
+    console.log("  · no salió ningún ejemplo con paréntesis a la izquierda en 6 intentos (puede pasar por azar)");
   } else {
     console.log(`  · arco: ${vista.d}`);
     check("aparece el brazo curvo entre el factor y el sumando", vista.hayArco);
     check("con su punta de flecha definida", vista.tieneMarcador);
     // El arco va de un punto a otro con una curva (comando "Q"), no una recta.
     check("es una curva, no una línea recta", /^M [\d.-]+ [\d.-]+ Q /.test(vista.d ?? ""));
+
+    // REVISIÓN daa127d, PUNTO 5: la tarjeta de arriba no adelanta lo que la
+    // animación de abajo todavía está repartiendo. Se vigila mientras dura el
+    // ejemplo: en ninguna muestra puede leerse en la tarjeta el resultado del
+    // reparto ("2x + 6") que el enunciado no dice.
+    const muestras = [];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 12000) {
+      muestras.push(
+        await pagina.evaluate(() => {
+          const rotulo = [...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Ejercicio");
+          const tarjeta = rotulo?.parentElement?.querySelector("annotation")?.textContent ?? "";
+          const panel = document.querySelector(".pz-animada");
+          const fila = panel?.querySelector(".pz-rev-2.pz-resultado");
+          return {
+            tarjeta,
+            gesto: panel?.getAttribute("data-gesto") ?? null,
+            repartido: fila ? Number(getComputedStyle(fila).opacity) > 0.5 : false,
+            etiqueta: panel?.querySelector(".pz-etiqueta")?.textContent ?? null,
+            pie: panel?.querySelector(".pz-pie")?.textContent ?? "",
+          };
+        }),
+      );
+      await pagina.waitForTimeout(200);
+    }
+    const conDistributiva = muestras.filter((m) => /\d\s*\\left\(|\d\s*\(/.test(m.tarjeta));
+    const spoiler = conDistributiva.filter((m) => {
+      // Lo que saldría de repartir: "2x + 6" para "2(x + 3) = 16".
+      const r = m.tarjeta.replace(/\\left|\\right|\s/g, "").match(/^(-?\d+)\(x([+-])(\d+)\)=/);
+      if (!r) return false;
+      const [, f, s, c] = r;
+      const expandido = `${f}x${s}${Number(f) * Number(c)}`;
+      return m.tarjeta.replace(/\\left|\\right|\s/g, "").includes(`=${expandido}`) || m.tarjeta.replace(/\s/g, "").includes(expandido);
+    });
+    console.log(`  · tarjeta durante el reparto: ${conDistributiva[0]?.tarjeta?.replace(/\s+/g, " ").slice(0, 60) ?? "(sin paréntesis)"}`);
+    check(
+      "la tarjeta de EJERCICIO no enseña el resultado del reparto mientras la animación lo cuenta",
+      spoiler.length === 0,
+      `${spoiler.length} muestras con el spoiler`,
+    );
+    check(
+      "y la animación de abajo reparte los dos términos hasta destapar la ecuación repartida",
+      muestras.some((m) => m.gesto === "distributiva" && m.repartido) &&
+        muestras.some((m) => /multiplica a x/.test(m.pie)) && muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie)),
+    );
+
+    // Y la PRÁCTICA: su enunciado se le pide al alumno, así que la pizarra no
+    // lo anima —antes le repartía el 2 mientras le preguntaba cuánto vale x—.
+    const enPractica = await esperar(pagina, (e) => Boolean(e.pregunta), 90_000);
+    const panel = await pagina.evaluate(() => ({
+      panel: document.querySelector("[data-panel]")?.getAttribute("data-panel") ?? null,
+      recuadros: document.querySelectorAll(".pz-animada .pz-resaltado").length,
+    }));
+    console.log(`  · práctica: ${enPractica.tarjetaLatex ?? "?"} · panel: ${panel.panel} · recuadros: ${panel.recuadros}`);
+    if (enPractica.pregunta) {
+      check(
+        "el enunciado de la práctica no se anima: la pizarra no le hace el primer paso al alumno",
+        panel.panel === "reposo" && panel.recuadros === 0,
+      );
+    }
   }
+  check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
+  await pagina.context().close();
+}
+
+// ── Revisión daa127d: lo que dice = lo que muestra, «No entendí», tipografía ──
+console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí este paso», rótulos ──");
+
+{
+  const { pagina, errores } = await sesionRapida("revision.c", "PRIMARIA", 6);
+  await abrirTema(pagina, /fracci/i);
+  await pagina.waitForTimeout(600);
+  const proyectar = pagina.getByRole("button", { name: /Modo proyección/ }).first();
+  if (await proyectar.count()) await proyectar.click();
+  await pagina.waitForTimeout(300);
+
+  // Se muestrea TODO a la vez —lo que se oye (subtítulo) y lo que se ve (notas
+  // proyectadas, paso animado)— cada ~120 ms, hasta llegar al ejemplo.
+  const foto = () =>
+    pagina.evaluate(() => {
+      const fase = [...document.querySelectorAll("h2")].map((h) => h.textContent?.trim()).find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "";
+      const subtitulo = document.querySelector('p[class*="bg-muted/60"]')?.textContent ?? "";
+      const notas = [...document.querySelectorAll(".modo-proyeccion .pz-nota")].map((n) => (n.textContent ?? "").replace(/\s+/g, " ").trim());
+      const rotulo = document.querySelector(".modo-proyeccion .pz-nota-rotulo");
+      const formula = document.querySelector(".modo-proyeccion .pz-nota .katex");
+      return {
+        t: performance.now(),
+        fase,
+        subtitulo,
+        notas,
+        fraccionDePalabras: Boolean(document.querySelector(".modo-proyeccion .pz-nota-fraccion .mfrac")),
+        rotulo: rotulo ? { px: parseFloat(getComputedStyle(rotulo).fontSize), fuente: getComputedStyle(rotulo).fontFamily } : null,
+        formulaPx: formula ? parseFloat(getComputedStyle(formula).fontSize) : null,
+        etiqueta: document.querySelector(".pz-animada .pz-etiqueta")?.textContent ?? null,
+      };
+    });
+  const fotos = [];
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60_000) {
+    const f = await foto();
+    fotos.push(f);
+    // Se sigue hasta que el paso de los numeradores se haya visto y apagado.
+    const vistoNum = fotos.some((x) => x.etiqueta === "numeradores");
+    if (vistoNum && f.etiqueta !== "numeradores" && /Ejemplo/.test(f.fase)) break;
+    await pagina.waitForTimeout(120);
+  }
+  const fasesVistas = [...new Set(fotos.map((f) => f.fase).filter(Boolean))];
+  console.log(`  · fases: ${fasesVistas.join(" → ")} · ${fotos.length} muestras`);
+
+  // CONCEPTO: lo que se dice está escrito mientras se dice.
+  const diciendoDenominador = fotos.filter((f) => /n[uú]mero de ABAJO es el denominador/.test(f.subtitulo));
+  if (diciendoDenominador.length) {
+    check(
+      'mientras el tutor dice "…el número de ABAJO es el denominador", la pizarra ya lo tiene escrito',
+      diciendoDenominador.every((f) => f.notas.some((n) => /^Denominador:/.test(n))),
+      `${diciendoDenominador.filter((f) => !f.notas.some((n) => /^Denominador:/.test(n))).length} muestras sin él`,
+    );
+  } else {
+    console.log("  · (salió la redacción que no nombra numerador/denominador: no aplica)");
+  }
+  check(
+    "en Concepto las notas se acumulan: lo ya dicho sigue a la vista (varias a la vez)",
+    fotos.some((f) => /Concepto/.test(f.fase) && f.notas.length >= 3),
+    `máximo ${Math.max(0, ...fotos.filter((f) => /Concepto/.test(f.fase)).map((f) => f.notas.length))}`,
+  );
+  if (diciendoDenominador.length) {
+    check(
+      '"Fracción: numerador / denominador" se proyecta como fracción de verdad, con su raya',
+      fotos.some((f) => f.fraccionDePalabras),
+    );
+  }
+  // REGLAS: cada propiedad, escrita mientras se cuenta.
+  const diciendoEquivalentes = fotos.filter((f) => /EQUIVALENTES/.test(f.subtitulo));
+  const diciendoIgual = fotos.filter((f) => /SUMAR fracciones con el mismo denominador/.test(f.subtitulo));
+  check(
+    'en Reglas, al oír "…son EQUIVALENTES…" está escrito "Fracciones equivalentes"',
+    diciendoEquivalentes.length > 0 && diciendoEquivalentes.every((f) => f.notas.some((n) => /^Fracciones equivalentes/.test(n))),
+  );
+  check(
+    'y al oír cómo se SUMAN con el mismo denominador, está escrita esa propiedad',
+    diciendoIgual.length > 0 && diciendoIgual.every((f) => f.notas.some((n) => /^Igual denominador/.test(n))),
+  );
+  // TIPOGRAFÍA: el rótulo a tamaño de aula y en letra de pizarra.
+  const conRotulo = fotos.find((f) => f.rotulo);
+  console.log(`  · rótulo proyectado: ${conRotulo ? `${conRotulo.rotulo.px}px · ${conRotulo.rotulo.fuente.slice(0, 40)}` : "—"} · fórmula: ${conRotulo?.formulaPx ?? "—"}px`);
+  check(
+    "en proyección el rótulo mide al menos text-2xl (24 px) y va en letra de pizarra",
+    Boolean(conRotulo) && conRotulo.rotulo.px >= 24 && /Chalkboard SE|Segoe Print/.test(conRotulo.rotulo.fuente),
+  );
+  check(
+    "y la fórmula de la nota va un escalón por encima del rótulo",
+    fotos.some((f) => f.rotulo && f.formulaPx && f.formulaPx > f.rotulo.px),
+  );
+  // EL FOTOGRAMA DE LOS NUMERADORES: ¿cuánto se queda a la vista?
+  let mejor = 0;
+  for (let i = 0; i < fotos.length; i++) {
+    if (fotos[i].etiqueta !== "numeradores") continue;
+    let j = i;
+    while (j + 1 < fotos.length && fotos[j + 1].etiqueta === "numeradores") j++;
+    mejor = Math.max(mejor, fotos[j].t - fotos[i].t);
+    i = j;
+  }
+  console.log(`  · el recuadro "numeradores" estuvo a la vista ${Math.round(mejor)} ms seguidos (locución de prueba: 450 ms)`);
+  check(
+    // Medido por muestras cada ~170 ms, así que la cifra se queda CORTA por los dos
+    // extremos: si lo medido pasa de 1 s, lo real también. Antes duraba lo que la
+    // pausa de escritura, 0,7 s —y sin locución a la vista—.
+    "el paso de los numeradores se sostiene: al menos un segundo a la vista, además de su locución",
+    mejor >= 1000,
+    `${Math.round(mejor)} ms`,
+  );
+
+  // «NO ENTENDÍ ESTE PASO» EN EL EJEMPLO: el mismo ejercicio, desglosado, y la
+  // clase sigue hasta la práctica.
+  const salir = pagina.getByRole("button", { name: /Salir de proyección/ }).first();
+  if (await salir.count()) await salir.click();
+  await pagina.waitForTimeout(300);
+  const antes = await estadoVisible(pagina);
+  const faseAntes = (await foto()).fase;
+  await pagina.getByRole("button", { name: /No entendí este paso/ }).first().click();
+  const tras = [];
+  const t1 = Date.now();
+  while (Date.now() - t1 < 90_000) {
+    const e = await estadoVisible(pagina);
+    const f = await foto();
+    tras.push({ ...e, fase: f.fase });
+    if (e.pregunta || e.completada) break;
+    await pagina.waitForTimeout(250);
+  }
+  const ultimo = tras.at(-1) ?? {};
+  const cuentaAjena = tras.some((e) => e.desarrollo.some((l) => /\\frac\{1\}\{4\}\s*\+\s*\\frac\{1\}\{4\}/.test(l)) && !/\\frac\{1\}\{4\}\s*\+\s*\\frac\{1\}\{4\}/.test(antes.tarjetaLatex ?? ""));
+  console.log(`  · antes: ${faseAntes} · "${(antes.tarjetaLatex ?? "").slice(0, 40)}" → después: ${ultimo.fase} · pregunta: ${ultimo.pregunta ? "sí" : "no"} · completada: ${ultimo.completada}`);
+  check(
+    "«No entendí este paso» en el ejemplo no cambia el ejercicio de la tarjeta",
+    Boolean(antes.tarjetaLatex) && tras.filter((e) => /Ejemplo/.test(e.fase)).every((e) => e.tarjetaLatex === antes.tarjetaLatex),
+  );
+  check("ni escribe otra cuenta en el desarrollo (la «1/4 + 1/4» de la captura)", !cuentaAjena);
+  check(
+    "y después retoma la clase: llega a la práctica con su pregunta, sin darse por «completada» antes",
+    Boolean(ultimo.pregunta) && !ultimo.completada && /Práctica/.test(ultimo.fase ?? ""),
+    `fase ${ultimo.fase}`,
+  );
   check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
   await pagina.context().close();
 }

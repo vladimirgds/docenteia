@@ -880,10 +880,20 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     })
     .join("");
 
-  const resto = m[3] ? ` = ${planoALatex(m[3])}` : "";
-  const latex =
-    `${marcado(0, String(factor))}\\left(${dentro}\\right)${resto}` +
-    ` ${marcar(`pz-rev-${interior.length}`, `= ${marcar("pz-resultado", expandido)}`)}`;
+  const cabeza = `${marcado(0, String(factor))}\\left(${dentro}\\right)`;
+  const final = `pz-rev-${interior.length}`;
+  // EN UNA ECUACIÓN, LO REPARTIDO VA EN SU PROPIA LÍNEA.
+  //
+  // Antes el resultado se colgaba al final de la línea entera: "2(x + 4) = 3x − 1
+  // = 2x + 8". Es notación falsa —encadena "3x − 1 = 2x + 8", que no es lo que
+  // se ha hecho— y fue lo que el cliente vio en la tarjeta de arriba. Repartir
+  // cambia el LADO IZQUIERDO: la línea siguiente es la misma ecuación con el
+  // paréntesis ya quitado, "2x + 8 = 3x − 1", alineada por el igual. Sin igual
+  // (una expresión suelta, "2(x + 4)"), "= 2x + 8" sí es lo correcto.
+  const latex = m[3]
+    ? `\\begin{aligned} ${cabeza} &= ${planoALatex(m[3])} \\\\ ` +
+      `${marcar(`${final} pz-resultado`, expandido)} &${marcar(`${final} pz-resultado`, `{}= ${planoALatex(m[3])}`)} \\end{aligned}`
+    : `${cabeza} ${marcar(final, `= ${marcar("pz-resultado", expandido)}`)}`;
 
   const focos: Foco[] = interior.map((t, i) => ({
     clase: "pz-reparte",
@@ -891,23 +901,30 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     // enseña que el de fuera entra en los dos, y no sólo en el primero.
     piezas: ["pz-reparte-0", `pz-reparte-${i + 1}`],
     tipo: "caja",
-    narracion: `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${
+    // Con SU signo: en "2(x − 3)" el 2 multiplica a −3 y da −6. Sin el signo la
+    // frase decía "multiplica a 3: da 6" mientras debajo aparecía "2x − 6".
+    narracion: `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${t.signo === -1 ? "-" : ""}${
       t.variable ? `${t.coeficiente === 1 ? "" : t.coeficiente}${t.variable}` : t.coeficiente
-    }: da ${escribirTermino(t, factor)}.`,
+    }: da ${escribirTermino(t, factor * t.signo)}.`,
     etiqueta: `× ${factor}`,
   }));
 
+  const derecho = String(texto ?? "").split("=").slice(1).join("=").trim();
   focos.push({
     clase: "pz-resultado",
     tipo: "resultado",
-    narracion: `Queda ${expandido.replace(/\s+/g, " ").trim()}.`,
+    narracion: `Queda ${expandido.replace(/\s+/g, " ").trim().replace(/^-\s+/, "-")}${m[3] && derecho ? ` = ${derecho}` : ""}.`,
   });
 
   return {
     id,
     texto,
     latex,
-    narracion: `Repartimos el ${factor} dentro del paréntesis.`,
+    // La entrada nombra la línea entera: así la frase con la que el tutor
+    // presenta el ejercicio ("Vamos a resolver 2(x + 3) = 16…") cae en la
+    // entrada y no en el primer foco, que enmarcaba el 2 y la x antes de que
+    // nadie hubiera dicho nada de repartir.
+    narracion: `Vamos a repartir el ${factor} en ${String(texto ?? "").trim()}.`,
     clase: "distributiva",
     focos,
   };
@@ -1162,6 +1179,14 @@ export function situacionParaNarracion(
 
     for (const candidato of candidatos) {
       let puntos = solapamiento(candidato.texto, palabras);
+      // UN EMPATE EXACTO LO GANA EL FOCO MÁS CONCRETO: el que ha acertado más
+      // piezas. "El 2 multiplica a x" y "Y el 2 multiplica a 3" sólo se
+      // distinguen por la x —de una letra, no cuenta como pieza—, así que al
+      // oír la segunda frase las dos puntuaban 1 y ganaba la primera por orden:
+      // la animación se quedaba en el primer término. La que acierta además el
+      // 3 y el 6 es la que se está diciendo. Una milésima por pieza no alcanza
+      // para cambiar ninguna diferencia real entre candidatos.
+      puntos += aciertos(candidato.texto, palabras) * 0.001;
       if (!enumera && candidato.claves.some((clave) => dicho.includes(clave))) puntos += 0.5;
       // Un empate se resuelve a favor de donde ya está la pizarra: saltar de
       // escena por un decimal es peor que quedarse.
@@ -1353,8 +1378,13 @@ function clavesDeFoco(foco: Foco): string[] {
 function solapamiento(narracion: string, palabras: Set<string>): number {
   const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
   if (piezas.length === 0) return 0;
-  const aciertos = piezas.filter((pieza) => palabras.has(pieza)).length;
-  return aciertos / piezas.length;
+  return aciertos(narracion, palabras) / piezas.length;
+}
+
+/** Cuántas piezas de la narración de un foco aparecen en lo dicho. */
+function aciertos(narracion: string, palabras: Set<string>): number {
+  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
+  return piezas.filter((pieza) => palabras.has(pieza)).length;
 }
 
 /** Las palabras de lo dicho, enteras. */

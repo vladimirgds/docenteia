@@ -1087,7 +1087,26 @@ console.log("\n · Contexto y estilo de la aclaración");
   });
 
   check("la aclaración con contexto responde", Boolean(datos.lsg), datos.error ?? "");
-  check("no cae en el guion determinista", datos.fuente_ia !== "local", `fuente_ia=${datos.fuente_ia}`);
+  // La explicación la redacta el modelo en vivo. Si el modelo no responde
+  // (cuota), NUNCA cae en la lección de demostración genérica del tema —traía
+  // OTRO ejercicio; el cliente lo fotografió con «No entendí este paso»—: cae
+  // en el desglose determinista del MISMO término, presentado por la regla.
+  const delModelo = datos.fuente_ia === "gemini";
+  const desgloseDelMismo = datos.fuente_ia === "local" && datos.modelo === "desglose";
+  check(
+    "no cae en la lección de demostración del tema: la redacta el modelo o, sin él, desglosa el MISMO término",
+    delModelo || desgloseDelMismo,
+    `fuente_ia=${datos.fuente_ia} modelo=${datos.modelo}`,
+  );
+  if (desgloseDelMismo) {
+    const escritas = flattenLSG(datos.lsg || {}).filter((p) => p.tipo === "pizarra").map((p) => p.contenido);
+    check(
+      "sin modelo, la explicación es de 5x² y nombra la regla que se pidió",
+      escritas.some((c) => c.includes("5x²")) &&
+        flattenLSG(datos.lsg || {}).some((p) => p.tipo === "hablar" && potencia && p.texto.includes(potencia.nombre)),
+      JSON.stringify(escritas),
+    );
+  }
 
   const pasos = flattenLSG(datos.lsg || {});
   const hablado = pasos
@@ -1103,11 +1122,14 @@ console.log("\n · Contexto y estilo de la aclaración");
     hablado.slice(0, 90),
   );
 
-  // Concisión: la queja era el formato de chat, con párrafos largos.
+  // Concisión: la queja era el formato de CHAT del modelo, con párrafos largos.
+  // Es una regla de estilo de lo que redacta el modelo; el desglose determinista
+  // va por pasos cortos, uno por renglón de pizarra, y ahí lo que se exige es
+  // que ninguna intervención sea un párrafo.
   const frases = pasos.filter((p) => p.tipo === "hablar");
   check(
-    "la aclaración es breve (3 intervenciones como mucho)",
-    frases.length <= 3,
+    delModelo ? "la aclaración es breve (3 intervenciones como mucho)" : "la aclaración va en frases cortas, ninguna es un párrafo",
+    delModelo ? frases.length <= 3 : frases.every((f) => f.texto.length <= 260),
     `${frases.length} intervenciones`,
   );
 
@@ -2530,9 +2552,12 @@ console.log("\n · Una aclaración no ocupa la caja de respuesta");
   // Sólo de las aclaraciones —y, desde la revisión f515a57, devolviendo al
   // final la pregunta que el alumno tenía pendiente: la explicación no puede
   // dejarle sin el ejercicio que estaba resolviendo—.
+  // Desde la revisión daa127d, además, la lección se REANUDA tras la ayuda
+  // (`reanudarTrasAclaracion`, que también quita las preguntas de la ayuda); el
+  // camino antiguo queda para cuando no hay lección que reanudar.
   check(
     "el aula quita las preguntas SÓLO de las aclaraciones",
-    /opciones\.soloExplicacion\s*\?\s*conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)\s*:\s*recortada/.test(fuenteAuF),
+    /opciones\.soloExplicacion\s*\?\s*resto && faseAlPedir\s*\?\s*reanudarTrasAclaracion\(recortada, \{[\s\S]{0,260}\}\)\s*:\s*conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)\s*:\s*recortada/.test(fuenteAuF),
   );
 }
 

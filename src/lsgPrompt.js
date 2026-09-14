@@ -2,7 +2,7 @@
 // devolverlo. El LSG es la salida estructurada que el PRE Light valida y que en
 // la Fase 2 el PSE Light reproducirá sincronizando voz + revelación visual.
 
-import { solveLinearSteps, computeDerivative, computeFactorization, factorizacionPasos, monomioLimpio, normDashes } from "./preLight.js";
+import { solveLinearSteps, computeDerivative, computeFactorization, factorizacionPasos, monomioLimpio, normDashes, buildStepByStepLSG } from "./preLight.js";
 //
 // Dos formas según la intención:
 //   - resolver / explicar → escena SECUENCIAL con `directivas: [...]`
@@ -58,6 +58,64 @@ function amplifica(n, d, nuevoN, nuevoD) {
     foco("amplificacion", [`${n}/${d}`, `${nuevoN}/${nuevoD}`], `× ${k}`),
     `Multiplicamos ${n}/${d} arriba y abajo por ${k}: queda ${nuevoN}/${nuevoD}.`,
   );
+}
+
+// LA PAUSA DE LECTURA.
+//
+// El cliente lo midió en la proyección: el paso de los numeradores agrupados —"3/6 + 2/6 = (3 + 2)/6"—
+// duraba "unos milisegundos". La causa era el ORDEN: el motor narraba primero y escribía después, así
+// que el paso aparecía cuando su locución ya había terminado y, 0,7 s más tarde, la frase siguiente se
+// lo llevaba. Ahora un paso animado se escribe ANTES de contarlo, cada foco tiene su propia frase y
+// detrás de cada una va esta pausa: el fotograma sigue a la vista al menos un segundo después de que
+// el tutor termine, antes de cualquier transición. `lectura` le dice al reproductor que es una pausa
+// para leer, no para "pensar": el avatar no cambia de gesto.
+const PAUSA_LECTURA = { tipo: "esperar", segundos: 1, lectura: true };
+
+// UN PASO QUE SE VE MIENTRAS SE CUENTA: se escribe, se narra foco a foco y se sostiene. Las frases
+// llevan las palabras de los focos de la escena —las que el panel pone en su pie—, y así la pizarra,
+// que sigue a la voz comparando lo dicho con cada foco, está en cada momento donde dice el tutor.
+function pasoNarrado(contenido, operacion, locuciones) {
+  const dichas = locuciones.filter(Boolean);
+  const out = [escribePaso(contenido, operacion, dichas[0])];
+  for (const texto of dichas) out.push({ tipo: "hablar", texto }, { ...PAUSA_LECTURA });
+  return out;
+}
+
+// 1/2 → 3/6, contado en dos tiempos: el factor que multiplica arriba y abajo, y lo que queda.
+//
+// La frase nombra la fracción por su ORDEN ("la primera", "la segunda") y no por sus cifras, a
+// propósito: con denominadores coprimos el factor de la primera ES el denominador de la segunda
+// (1/2 → ×3, 1/3 → ×2), así que "para pasar 1/3…" llevaba dentro el 3 de la conversión anterior y la
+// pizarra, que sigue a la voz por las palabras dichas, se quedaba en ella en vez de pasar a esta.
+function amplificaNarrada(n, d, nuevoN, nuevoD, cual = "") {
+  const k = nuevoD / d;
+  const paso = amplifica(n, d, nuevoN, nuevoD);
+  if (!paso.operacion) {
+    return [paso, { tipo: "hablar", texto: `${n}/${d} ya tiene denominador ${nuevoD}: se queda igual.` }, { ...PAUSA_LECTURA }];
+  }
+  return pasoNarrado(paso.contenido, paso.operacion, [
+    `${cual ? `${cual}: p` : "P"}ara pasar a denominador ${nuevoD}, multiplicamos arriba y abajo por ${k}.`,
+    `Queda ${nuevoN}/${nuevoD}.`,
+  ]);
+}
+
+// La suma con el mismo denominador en sus tres gestos: arriba se suma, abajo NO se toca, y lo que queda.
+// `contenido` es la línea tal cual se escribe (con o sin el paso intermedio a la vista).
+function sumaNarrada(contenido, n1, n2, d, entrada) {
+  const s = n1 + n2;
+  return pasoNarrado(contenido, foco("suma-fracciones", [n1, n2]), [
+    `${entrada} Sumamos los numeradores: ${n1} + ${n2} = ${s}.`,
+    `El denominador ${d} no cambia: se queda en ${d}.`,
+    `Queda ${s}/${d}.`,
+  ]);
+}
+
+// La simplificación final: lo que se tacha arriba y abajo, y la fracción reducida.
+function simplificaNarrada(suma, d, g, simp) {
+  return pasoNarrado(`${suma}/${d} = ${simp}`, foco("cancelacion", [`${suma}/${d}`], `÷ ${g}`), [
+    `Y todavía se puede simplificar: dividimos arriba y abajo entre ${g}.`,
+    `Queda ${simp}.`,
+  ]);
 }
 
 // Esquema de respuesta para Gemini (structured output). Campos por-directiva
@@ -528,49 +586,107 @@ const FRACCIONES = {
   experto: [[3, 4, 5, 6], [5, 6, 7, 8], [7, 8, 5, 12], [5, 12, 7, 18], [9, 10, 7, 15], [11, 12, 5, 18]],
 };
 const textoFrac = (e) => (e.length === 3 ? `${e[0]}/${e[2]} + ${e[1]}/${e[2]}` : `${e[0]}/${e[1]} + ${e[2]}/${e[3]}`);
+const gcdFrac = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a || 1; };
+const fmtFrac = (n, d) => (d === 1 ? String(n) : `${n}/${d}`);
+// Mismo denominador: se suman numeradores y se simplifica.
+function mismoDen(e) {
+  const [n1, n2, d] = e, s = n1 + n2, g = gcdFrac(s, d);
+  return { texto: textoFrac(e), n1, n2, d, suma: s, g, final: fmtFrac(s / g, d / g), simp: g > 1 ? fmtFrac(s / g, d / g) : null };
+}
+// Distinto denominador: mínimo común múltiplo, se convierte cada fracción y se suma.
+function distintoDen(e) {
+  const [n1, d1, n2, d2] = e;
+  const L = (d1 * d2) / gcdFrac(d1, d2);
+  const a = n1 * (L / d1), b = n2 * (L / d2), s = a + b, g = gcdFrac(s, L);
+  return { texto: textoFrac(e), n1, d1, n2, d2, L, a, b, suma: s, g, final: fmtFrac(s / g, L / g), simp: g > 1 ? fmtFrac(s / g, L / g) : null };
+}
+// EL PASO INTERMEDIO DEL MCM, ESCRITO, NO SÓLO DICHO.
+//
+// El cliente lo señaló mirando la proyección: "no puede decir que el común denominador es 6 sin
+// escribirlo", y dio su propio ejemplo —"2×3=6"— como una de las dos formas válidas, "o múltiplos
+// comunes" como la otra. Hacen falta las DOS: multiplicar los denominadores sólo da el MÍNIMO común
+// múltiplo cuando son coprimos (`gcd === 1`) —la mayoría de los pares de "difícil"/"experto" no lo son,
+// y "4×6=24" enseñaría un común denominador que no es el mínimo (12)—, así que si no son coprimos se
+// listan los múltiplos de cada uno hasta el primero que compartan.
+function pasoMCM(d1, d2, L) {
+  if (gcdFrac(d1, d2) === 1) {
+    return {
+      contenido: `MCM(${d1}, ${d2}): ${d1} × ${d2} = ${L}`,
+      dice: `Como ${d1} y ${d2} no comparten ningún factor, el mínimo común múltiplo sale de multiplicarlos directamente: ${d1} × ${d2} = ${L}.`,
+    };
+  }
+  const multiplos = (d) => { const xs = []; for (let k = d; k <= L; k += d) xs.push(k); return xs; };
+  const [m1, m2] = [multiplos(d1), multiplos(d2)];
+  return {
+    contenido: `Múltiplos de ${d1}: ${m1.join(", ")}. Múltiplos de ${d2}: ${m2.join(", ")}. El menor en común: ${L}.`,
+    dice: `Escribimos los múltiplos de ${d1} y de ${d2} hasta encontrar uno que esté en las dos listas: el menor que comparten es ${L}, y ese es el mínimo común denominador.`,
+  };
+}
+// LA RESOLUCIÓN DE UNA SUMA DE FRACCIONES, después del enunciado. La usan el ejemplo guiado y el botón
+// "No entendí este paso", que re-explica EL MISMO ejercicio: una sola resolución, así las dos no pueden
+// contar la misma cuenta de dos maneras.
+//   · Cada paso se escribe ANTES de narrarlo y se sostiene con la pausa de lectura (ver PAUSA_LECTURA).
+//   · `explica`: frases de apoyo que el desglose intercala antes de un paso ({ mcm, amplificacion, suma,
+//     simplificacion }) — el andamiaje del paso exacto en el que el alumno se atascó.
+//   · `conResultado: false` se detiene ANTES de sumar: en la práctica, dar la suma sería resolverle el
+//     ejercicio que tiene que contestar él.
+//   · Con resultado, se cierra con la RESPUESTA FINAL CONSOLIDADA —el enunciado igualado a su
+//     resultado—, que el cliente pidió explícitamente: "1/2 + 1/3 = (3+2)/6 = 5/6".
+function pasosDeFraccion(A, { explica = {}, conResultado = true } = {}) {
+  const out = [];
+  const apoyo = (clave) => (explica[clave] ? [{ tipo: "hablar", texto: explica[clave] }, { ...PAUSA_LECTURA }] : []);
+  if (A.L) {
+    const mcm = pasoMCM(A.d1, A.d2, A.L);
+    out.push(
+      ...apoyo("mcm"),
+      { tipo: "pizarra", accion: "escribir", contenido: mcm.contenido },
+      { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}. ${mcm.dice}` },
+      { ...PAUSA_LECTURA },
+      ...apoyo("amplificacion"),
+      { tipo: "hablar", texto: `Es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
+      ...amplificaNarrada(A.n1, A.d1, A.a, A.L, "La primera"),
+      ...amplificaNarrada(A.n2, A.d2, A.b, A.L, "La segunda"),
+    );
+    if (!conResultado) {
+      out.push(
+        { tipo: "pizarra", accion: "escribir", contenido: `${A.a}/${A.L} + ${A.b}/${A.L} = ?` },
+        { tipo: "hablar", texto: `Ya tienen el mismo denominador, ${A.L}. Ahora te toca a ti: suma los numeradores, deja el ${A.L} abajo y, si se puede, simplifica.` },
+      );
+      return out;
+    }
+    out.push(
+      ...apoyo("suma"),
+      ...sumaNarrada(`${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}`, A.a, A.b, A.L, `Ahora las dos tienen denominador ${A.L}.`),
+    );
+    if (A.simp) out.push(...apoyo("simplificacion"), ...simplificaNarrada(A.suma, A.L, A.g, A.simp));
+    out.push({
+      tipo: "pizarra", accion: "escribir",
+      contenido: `${A.texto} = ${A.a}/${A.L} + ${A.b}/${A.L} = (${A.a} + ${A.b})/${A.L} = ${A.suma}/${A.L}${A.simp ? ` = ${A.simp}` : ""}`,
+    });
+    return out;
+  }
+  if (!conResultado) {
+    out.push({ tipo: "hablar", texto: `Fíjate: las dos tienen el mismo denominador, ${A.d}, así que los trozos son del mismo tamaño. Solo tienes que sumar los numeradores y dejar el ${A.d} abajo. ¡Inténtalo!` });
+    return out;
+  }
+  out.push(
+    ...apoyo("suma"),
+    ...sumaNarrada(`${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}`, A.n1, A.n2, A.d, `Las dos tienen el mismo denominador, ${A.d}.`),
+  );
+  if (A.simp) {
+    out.push(
+      ...apoyo("simplificacion"),
+      ...simplificaNarrada(A.suma, A.d, A.g, A.simp),
+      { tipo: "pizarra", accion: "escribir", contenido: `${A.texto} = ${A.suma}/${A.d} = ${A.simp}` },
+    );
+  }
+  return out;
+}
 // Acepta un string (compatibilidad: `fraccionResueltaLSG(evitar)`) o { evitar, nivel }.
 export function fraccionResueltaLSG(opts) {
   const o = typeof opts === "string" ? { evitar: opts } : (opts || {});
   const nivel = NIVELES.includes(o.nivel) ? o.nivel : "normal";
   const evitar = typeof o.evitar === "string" ? o.evitar : "";
-  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a || 1; };
-  const fmt = (n, d) => (d === 1 ? String(n) : `${n}/${d}`);
-  // Mismo denominador: se suman numeradores y se simplifica.
-  const mismoDen = (e) => {
-    const [n1, n2, d] = e, s = n1 + n2, g = gcd(s, d);
-    return { texto: textoFrac(e), n1, n2, d, suma: s, g, final: fmt(s / g, d / g), simp: g > 1 ? fmt(s / g, d / g) : null };
-  };
-  // Distinto denominador: mínimo común múltiplo, se convierte cada fracción y se suma.
-  const distintoDen = (e) => {
-    const [n1, d1, n2, d2] = e;
-    const L = (d1 * d2) / gcd(d1, d2);
-    const a = n1 * (L / d1), b = n2 * (L / d2), s = a + b, g = gcd(s, L);
-    return { texto: textoFrac(e), n1, d1, n2, d2, L, a, b, suma: s, g, final: fmt(s / g, L / g), simp: g > 1 ? fmt(s / g, L / g) : null };
-  };
-  // EL PASO INTERMEDIO DEL MCM, ESCRITO, NO SÓLO DICHO.
-  //
-  // El cliente lo señaló mirando la proyección: "no puede decir que el común
-  // denominador es 6 sin escribirlo", y dio su propio ejemplo —"2×3=6"— como
-  // una de las dos formas válidas, "o múltiplos comunes" como la otra. Hacen
-  // falta las DOS: multiplicar los denominadores sólo da el MÍNIMO común
-  // múltiplo cuando son coprimos (`gcd === 1`) —la mayoría de los pares de
-  // "difícil"/"experto" no lo son, y "4×6=24" enseñaría un común denominador
-  // que no es el mínimo (12)—, así que si no son coprimos se listan los
-  // múltiplos de cada uno hasta el primero que compartan.
-  const pasoMCM = (d1, d2, L) => {
-    if (gcd(d1, d2) === 1) {
-      return {
-        contenido: `MCM(${d1}, ${d2}): ${d1} × ${d2} = ${L}`,
-        dice: `Como ${d1} y ${d2} no comparten ningún factor, el mínimo común múltiplo sale de multiplicarlos directamente: ${d1} × ${d2} = ${L}.`,
-      };
-    }
-    const multiplos = (d) => { const xs = []; for (let k = d; k <= L; k += d) xs.push(k); return xs; };
-    const [m1, m2] = [multiplos(d1), multiplos(d2)];
-    return {
-      contenido: `Múltiplos de ${d1}: ${m1.join(", ")}. Múltiplos de ${d2}: ${m2.join(", ")}. El menor en común: ${L}.`,
-      dice: `Escribimos los múltiplos de ${d1} y de ${d2} hasta encontrar uno que esté en las dos listas: el menor que comparten es ${L}, y ese es el mínimo común denominador.`,
-    };
-  };
   const lista = FRACCIONES[nivel];
   // INSTANCIA concreta: si el alumno escribió una suma ("5/8 + 2/8" → [5,2,8], o "1/2 + 1/3" → [1,2,1,3]),
   // se resuelve ESA como ejemplo (paridad con los otros 3 temas, que sí resuelven lo que el alumno escribe);
@@ -623,56 +739,40 @@ export function fraccionResueltaLSG(opts) {
     // concepto y siempre salía la misma redacción.
     for (const d of dirsConcepto(varianteConcepto(o.previoTexto || o.evitar, CONCEPTO_FRACCION))) dir.push(d);
     // (El QUÉ ES —numerador, denominador, la pizza en partes, 2/4 = 1/2— va en las redacciones de
-    // CONCEPTO_FRACCION, que rotan. Aquí solo queda el puente hacia OPERAR con ellas.)
-    dir.push({ _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Fracciones equivalentes: 2/4 = 1/2" });
-    dir.push({ tipo: "hablar", texto: "Con la idea clara, veamos cómo se OPERA con fracciones: para SUMARLAS con el mismo denominador, se suman los numeradores y se mantiene el denominador; si son distintos, primero se igualan. Veámoslo con un ejemplo." });
-  }
-  if (!dificil) {
+    // CONCEPTO_FRACCION, que rotan. Aquí van las PROPIEDADES para operar con ellas.)
+    //
+    // LO QUE SE DICE ES LO QUE SE ESCRIBE. El cliente lo fotografió en proyección: la pizarra ponía
+    // "Fracciones equivalentes: 2/4 = 1/2" mientras el tutor explicaba cómo se SUMAN fracciones con el
+    // mismo denominador —de la equivalencia no decía una palabra—. Ahora cada propiedad se escribe y se
+    // cuenta a la vez, una detrás de otra, y son las tres del catálogo de la tarjeta de reglas.
     dir.push(
-      { tipo: "hablar", texto: `Vamos a resolver juntos esta suma de fracciones: ${A.texto}. Fíjate que las dos tienen el mismo número de abajo, el denominador ${A.d}.`, _mod: o.concepto ? "ejemplo_guiado" : undefined },
-      { tipo: "pizarra", accion: "escribir", contenido: A.texto },
-      { tipo: "esperar", segundos: 1 },
-      { tipo: "hablar", texto: `Con el mismo denominador, solo se suman los números de arriba (los numeradores): ${A.n1} + ${A.n2} = ${A.suma}. El denominador ${A.d} se queda igual.` },
-      escribePaso(
-        `${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}`,
-        foco("suma-fracciones", [A.n1, A.n2]),
-        `Con el mismo denominador, solo se suman los números de arriba (los numeradores): ${A.n1} + ${A.n2} = ${A.suma}. El denominador ${A.d} se queda igual.`,
-      ),
-      { tipo: "esperar", segundos: 1 },
+      { _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Fracciones equivalentes: 2/4 = 1/2" },
+      { tipo: "hablar", texto: "Primera propiedad: dos fracciones son EQUIVALENTES cuando valen lo mismo. 2/4 es igual que 1/2: si multiplicas arriba y abajo de 1/2 por 2, sale 2/4. Es la misma mitad, cortada en más trozos." },
+      { ...PAUSA_LECTURA },
+      { tipo: "pizarra", accion: "escribir", contenido: "Igual denominador: 2/5 + 1/5 = 3/5" },
+      { tipo: "hablar", texto: "Para SUMAR fracciones con el mismo denominador, se suman los numeradores y el denominador se mantiene: 2/5 + 1/5 = 3/5." },
+      { ...PAUSA_LECTURA },
+      { tipo: "pizarra", accion: "escribir", contenido: "Distinto denominador: primero se igualan con el MCM" },
+      { tipo: "hablar", texto: "Y si los denominadores son distintos, primero se igualan: buscamos el mínimo común denominador y convertimos cada fracción. Veámoslo con un ejemplo." },
     );
-    if (A.simp) {
-      const dice = `Y se puede simplificar: ${A.suma} y ${A.d} se dividen entre ${A.g}, así que ${A.suma}/${A.d} = ${A.simp}.`;
-      dir.push({ tipo: "hablar", texto: dice });
-      dir.push(escribePaso(`${A.suma}/${A.d} = ${A.simp}`, foco("cancelacion", [`${A.suma}/${A.d}`], `÷ ${A.g}`), dice));
-    }
-  } else {
-    const mcm = pasoMCM(A.d1, A.d2, A.L);
-    dir.push(
-      { tipo: "hablar", texto: `Vamos a resolver ${A.texto}. Aquí los denominadores son DISTINTOS (${A.d1} y ${A.d2}), así que no podemos sumar todavía: primero hay que igualarlos.`, _mod: o.concepto ? "ejemplo_guiado" : undefined },
-      { tipo: "pizarra", accion: "escribir", contenido: A.texto },
-      { tipo: "esperar", segundos: 1 },
-      { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}.` },
-      escribePaso(mcm.contenido, null, mcm.dice),
-      { tipo: "hablar", texto: mcm.dice },
-      { tipo: "esperar", segundos: 1 },
-      { tipo: "hablar", texto: `Es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
-      amplifica(A.n1, A.d1, A.a, A.L),
-      amplifica(A.n2, A.d2, A.b, A.L),
-      { tipo: "esperar", segundos: 1 },
-      { tipo: "hablar", texto: `Ahora que las dos tienen el mismo denominador, sumamos los numeradores: ${A.a} + ${A.b} = ${A.suma}.` },
-      escribePaso(
-        `${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}`,
-        foco("suma-fracciones", [A.a, A.b]),
-        `Ahora que las dos tienen el mismo denominador, sumamos los numeradores: ${A.a} + ${A.b} = ${A.suma}.`,
-      ),
-    );
-    if (A.simp) {
-      const dice = `Y se simplifica: ${A.suma} y ${A.L} se dividen entre ${A.g}, así que ${A.suma}/${A.L} = ${A.simp}.`;
-      dir.push({ tipo: "hablar", texto: dice });
-      dir.push(escribePaso(`${A.suma}/${A.L} = ${A.simp}`, foco("cancelacion", [`${A.suma}/${A.L}`], `÷ ${A.g}`), dice));
-    }
   }
-  dir.push({ tipo: "hablar", texto: `¡Y listo! ${A.texto} = ${A.final}. Ahora te toca a ti con otra suma parecida.` });
+  dir.push(
+    !dificil
+      ? { tipo: "hablar", texto: `Vamos a resolver juntos esta suma de fracciones: ${A.texto}. Fíjate que las dos tienen el mismo número de abajo, el denominador ${A.d}.`, _mod: o.concepto ? "ejemplo_guiado" : undefined }
+      : { tipo: "hablar", texto: `Vamos a resolver ${A.texto}. Aquí los denominadores son DISTINTOS (${A.d1} y ${A.d2}), así que no podemos sumar todavía: primero hay que igualarlos.`, _mod: o.concepto ? "ejemplo_guiado" : undefined },
+    { tipo: "pizarra", accion: "escribir", contenido: A.texto },
+    { tipo: "esperar", segundos: 1 },
+    ...pasosDeFraccion(A),
+  );
+  // El cierre dice lo que QUEDA y no repite las fracciones de partida: "¡Y listo! 1/2 + 1/3 = 5/6" lleva
+  // las cifras de la entrada de la última escena, y la pizarra, que sigue a la voz, volvía a su principio
+  // —con el resultado otra vez oculto— justo cuando el tutor lo anunciaba. Tampoco dice "resultado": esa
+  // palabra la reconocen como suya los resultados de CADA conversión, y el recuadro saltaba a la
+  // primera. "Nos queda…" es la frase del último paso. El enunciado igualado a su resultado ya está
+  // escrito en la línea consolidada que se acaba de pintar.
+  dir.push({ tipo: "hablar", texto: `¡Y listo! Nos queda ${A.final}: esa es la respuesta final. Ahora te toca a ti con otra suma parecida.` });
+  // El resultado final se sostiene un segundo antes de pasar a la práctica: también ésa es una transición.
+  dir.push({ ...PAUSA_LECTURA });
   // PRÁCTICA: otra fracción DISTINTA que resuelve el alumno (calificable).
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${B.texto} = ?` });
   dir.push({ tipo: "preguntar", texto: `¿Cuánto es ${B.texto}? Escríbelo en su forma más simple.`, respuesta: B.final, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
@@ -683,6 +783,168 @@ export function fraccionResueltaLSG(opts) {
   if (o.seguimiento && !o.practica) aperturaEjemplo(dir, `Vamos con otra suma de fracciones: ${A.texto}.`, A.texto);
   if (o.mantener) aperturaReexplicacion(dir, SIMPLE_FRACCION, o.simplificacion);
   return conModulos({ escena: "fraccion_resuelta", intencion: o.concepto ? "aprender" : "resolver", duracion_estimada: 60, _mock: true }, dir);
+}
+
+// ════════ «NO ENTENDÍ ESTE PASO»: EL MISMO EJERCICIO, DESGLOSADO ════════
+//
+// Queja del cliente, con dos capturas: el alumno resuelve "1/2 + 1/3", pulsa «No entendí este paso» y
+// el sistema se SALE del ejercicio. Le cuenta otro ejemplo "como una pizza" —sin enseñar ninguna—,
+// escribe "1/4 + 1/4 = 2/4" bajo el enunciado "1/2 + 1/3" y da la lección por terminada. La causa: el
+// botón pedía la explicación al modelo en vivo y, cuando el modelo no respondía (cuota agotada), el
+// servidor caía en una lección de demostración genérica del TEMA, con su propio ejemplo.
+//
+// Aquí se desglosa EL MISMO ejercicio que hay en la tarjeta, sin IA: el paso exacto en el que estaba el
+// alumno —si se sabe cuál— lleva un andamiaje propio, y el resto se cuenta más despacio. En el ejemplo
+// guiado se llega hasta la respuesta final consolidada; en la práctica se detiene antes, porque darla
+// sería resolverle lo que tiene que contestar él. Volver al ejercicio —reanudar la lección donde iba—
+// lo hace el aula, que es quien sabe por dónde iba.
+const ANDAMIAJE_FRACCION = {
+  mcm: (A) => `Antes de nada, por qué hace falta: ${A.d1} y ${A.d2} son denominadores distintos, así que los trozos son de tamaños distintos y no se pueden juntar tal cual. Buscamos un número que esté a la vez en la tabla del ${A.d1} y en la del ${A.d2}: el más pequeño es el mínimo común denominador.`,
+  amplificacion: () => "La clave de este paso: multiplicar ARRIBA y ABAJO por el mismo número no cambia lo que vale la fracción. 1/2 y 2/4 son la misma mitad, sólo que cortada en más trozos.",
+  suma: () => "La clave de este paso: con el mismo denominador los trozos son del mismo tamaño, así que se cuentan los de arriba y el de abajo se queda igual, porque el tamaño del trozo no cambia.",
+  simplificacion: () => "La clave de este paso: simplificar es dividir arriba y abajo entre el mismo número. La fracción vale lo mismo, pero escrita con números más pequeños.",
+};
+const NOMBRE_PASO_FRACCION = {
+  mcm: "cómo se busca el denominador común",
+  amplificacion: "cómo se convierte cada fracción",
+  suma: "cómo se suman los numeradores",
+  simplificacion: "cómo se simplifica el resultado",
+};
+const compacto = (s) => normDashes(String(s ?? "")).toLowerCase().replace(/[¿?\s]/g, "").replace(/=$/, "");
+// ¿En qué paso de la suma de fracciones estaba el alumno? Se lee la línea que tenía delante.
+function pasoDeFraccionEnDuda(A, paso) {
+  const p = compacto(paso);
+  if (!p) return null;
+  if (/mcm|m[uú]ltiplos/.test(p)) return "mcm";
+  if (p === compacto(A.texto)) return A.L ? "mcm" : "suma";
+  const f = p.match(/^(\d+)\/(\d+)=(\d+)\/(\d+)$/);
+  if (f) return Number(f[1]) === A.suma ? "simplificacion" : "amplificacion";
+  if (/\+/.test(p) && /=/.test(p)) return "suma";
+  return null;
+}
+// El andamiaje de un paso de ecuación lineal, según la operación que se hace en él.
+function andamiajeLineal(explica) {
+  const e = String(explica ?? "").toLowerCase();
+  if (/par[eé]ntesis|distributiva/.test(e)) return "La clave de este paso: el número de fuera multiplica a CADA término de dentro del paréntesis, no sólo al primero. Así el paréntesis desaparece sin cambiar lo que vale.";
+  if (/divid/.test(e)) return "La clave de este paso: si la x está multiplicada por un número, para dejarla sola dividimos LOS DOS lados entre ese número. Dividir deshace lo que hacía multiplicar.";
+  // Va antes que "juntar": "juntamos los términos con x: restamos 3x en ambos lados" mueve un término
+  // de un lado al otro, y eso es la balanza, no sumar términos semejantes.
+  if (/ambos lados|los dos lados|restamos|sumamos/.test(e)) return "La clave de este paso es la balanza: si quitas o pones lo mismo en los dos platillos, sigue equilibrada. Por eso lo que hacemos a un lado del igual lo hacemos también al otro.";
+  if (/junt|agrup|semejante/.test(e)) return "La clave de este paso: los términos con x se pueden juntar entre sí, como manzanas con manzanas: 3x + 2x son 5x.";
+  return "La clave de este paso es la balanza: si quitas o pones lo mismo en los dos platillos, sigue equilibrada. Por eso lo que hacemos a un lado del igual lo hacemos también al otro.";
+}
+const ANDAMIAJE_ARITMETICA = {
+  suma: "La clave de este paso: en cada columna sumamos las cifras de arriba y de abajo. Si pasa de 9, escribimos sólo la cifra de las unidades y la decena que sobra se lleva a la columna de la izquierda: eso es «llevar 1».",
+  resta: "La clave de este paso: en cada columna restamos la cifra de abajo a la de arriba. Si arriba hay menos, pedimos prestada una unidad a la columna de la izquierda, que aquí vale 10.",
+  multiplicacion: "La clave de este paso: partimos el número en decenas y unidades, multiplicamos cada parte por separado y al final sumamos lo que sale.",
+  division: "La clave de este paso: dividir es buscar qué número, multiplicado por el divisor, da el total. Si sabes multiplicar, ya sabes dividir.",
+};
+export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conResultado = true } = {}) {
+  const ej = String(ejercicio ?? "").replace(/^\s*¿?\s*cu[aá]nto\s+(es|vale)\s+/i, "").trim();
+  if (!ej) return null;
+  const base = { escena: "desglose_ejercicio", intencion: "explicar", duracion_estimada: 60, _mock: true };
+  const abre = (que) => ({ tipo: "hablar", texto: que });
+
+  // 1) SUMA DE FRACCIONES (el caso de la captura).
+  const inst = extraerFraccionSuma(ej);
+  if (inst) {
+    const A = inst.length === 4 ? distintoDen(inst) : mismoDen(inst);
+    const clave = pasoDeFraccionEnDuda(A, paso);
+    // Con el paso identificado, su andamiaje; sin él, el de TODOS los pasos: desglosado de principio a fin.
+    const claves = clave ? [clave] : (A.L ? ["mcm", "amplificacion", "suma", "simplificacion"] : ["suma", "simplificacion"]);
+    const explica = Object.fromEntries(claves.map((k) => [k, ANDAMIAJE_FRACCION[k](A)]));
+    const dir = [
+      { tipo: "avatar", accion: "sonreir" },
+      abre(clave
+        ? `Sin problema. Vamos a mirar con calma ${NOMBRE_PASO_FRACCION[clave]} en ${A.texto}, el mismo ejercicio, sin cambiarlo.`
+        : `Sin problema. Vamos con el MISMO ejercicio, ${A.texto}, más despacio y sin saltarnos nada.`),
+      { tipo: "pizarra", accion: "escribir", contenido: conResultado ? A.texto : `${A.texto} = ?` },
+      ...pasosDeFraccion(A, { explica, conResultado }),
+    ];
+    if (conResultado) dir.push(abre(`Nos queda ${A.final}: esa es la respuesta final de ${A.texto}.`));
+    return { ...base, directivas: dir };
+  }
+
+  // 2) ECUACIÓN LINEAL: el despeje del propio ejercicio, con el reparto del paréntesis foco a foco.
+  const lin = solveLinearSteps(ej);
+  if (lin) {
+    const lineas = [lin.original, ...lin.steps.map((s) => s.escribe)].map(compacto);
+    const enDuda = paso ? lineas.indexOf(compacto(paso)) : -1;
+    const reparto = locucionesDistributiva(lin.original);
+    const pasos = conResultado ? lin.steps : lin.steps.slice(0, -1);
+    const dir = [
+      { tipo: "avatar", accion: "sonreir" },
+      abre(`Sin problema. Vamos con la MISMA ecuación, ${lin.original}, paso a paso y más despacio.`),
+      escribePaso(lin.original, lin.steps[0]?.accion ?? null, lin.steps[0]?.explica),
+      { tipo: "esperar", segundos: 1 },
+    ];
+    pasos.forEach((s, k) => {
+      // Sin saber el paso, todos llevan su andamiaje; sabiéndolo, sólo ése.
+      if (enDuda < 0 || enDuda === k) dir.push(abre(andamiajeLineal(s.explica)), { ...PAUSA_LECTURA });
+      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+      if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
+    });
+    dir.push(abre(conResultado
+      ? `Así llegamos a la solución: ${lin.varName} = ${lin.answer}.`
+      : `Te queda el último paso: deja la ${lin.varName} sola y escribe cuánto vale.`));
+    return { ...base, directivas: dir };
+  }
+
+  // 3) ARITMÉTICA: la misma cuenta, columna a columna (o por partes, en × y ÷).
+  const op = extraerOperacion(ej);
+  const cfg = op && ARIT[op.op];
+  if (cfg && !/[a-z]\s*[²³⁴⁵⁶⁷⁸⁹^]|\bx\b/i.test(ej)) {
+    const E = cfg.pasos(op.a, op.b);
+    const enColumna = op.op === "suma" || op.op === "resta";
+    const col = String(paso ?? "").toLowerCase().match(/unidades|decenas|centenas|millar/)?.[0] ?? "";
+    const enDuda = col ? E.steps.findIndex((s) => s.explica.toLowerCase().includes(col)) : -1;
+    const pasos = conResultado ? E.steps : E.steps.slice(0, 1);
+    const dir = [
+      { tipo: "avatar", accion: "sonreir" },
+      abre(`Sin problema. Vamos con la MISMA cuenta, ${E.texto}, más despacio.`),
+      escribePaso(E.texto, enColumna ? foco("columna", [op.a, op.b]) : null, `Vamos a ${cfg.verbo} ${E.texto} paso a paso.`),
+      { tipo: "esperar", segundos: 1 },
+    ];
+    pasos.forEach((s, k) => {
+      if (enDuda === k || (enDuda < 0 && k === 0)) dir.push(abre(ANDAMIAJE_ARITMETICA[op.op]), { ...PAUSA_LECTURA });
+      dir.push(escribePaso(s.escribe, s.foco ?? null, s.explica), { tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+    });
+    dir.push(abre(conResultado
+      ? `Así, ${E.texto} ${E.aproximado ? "≈" : "="} ${E.answer}.`
+      : "Sigue tú con el resto, de la misma manera, y escribe el resultado."));
+    return { ...base, directivas: dir };
+  }
+
+  // 4) DERIVADAS Y FACTORIZACIÓN: el desglose de siempre, sin su cierre de "otro ejemplo".
+  const desglose = buildStepByStepLSG(ej, "", tema, { conResultado, cierre: false });
+  if (desglose && desglose.directivas.filter((d) => d.tipo === "pizarra").length >= 2) {
+    const [, , ...resto] = desglose.directivas;
+    return { ...base, directivas: [{ tipo: "avatar", accion: "sonreir" }, abre(`Sin problema. Vamos con el MISMO ejercicio, ${ej}, paso a paso y más despacio.`), ...resto] };
+  }
+  return null;
+}
+
+// «No entendí este paso» mientras se explica el CONCEPTO o las REGLAS: no hay ejercicio en la tarjeta,
+// así que no hay nada que desglosar ni ningún ejemplo nuevo que traer. Se cuenta la misma idea con
+// otras palabras —la escalera de simplificación del tema, un escalón por cada vez que insiste—, sin
+// escribir nada nuevo en la pizarra, que ya enseña el diagrama y las notas de la fase. Después la
+// lección sigue por donde iba.
+export function reexplicacionDeConceptoLSG(temaTexto, nivel = 0) {
+  const t = temaNucleo(temaTexto);
+  const escalera = { fraccion: SIMPLE_FRACCION, lineal: SIMPLE_LINEAL, derivada: SIMPLE_DERIVADA, factorizacion: SIMPLE_FACTORIZ }[t]
+    ?? ARIT[t]?.simple;
+  if (!escalera?.length) return null;
+  const texto = escalera[Math.max(0, Math.min(escalera.length - 1, Number(nivel) || 0))];
+  return {
+    escena: "desglose_ejercicio", intencion: "explicar", duracion_estimada: 20, _mock: true,
+    directivas: [
+      { tipo: "avatar", accion: "sonreir" },
+      { tipo: "hablar", texto: "Sin problema, te lo cuento de otra forma." },
+      { tipo: "hablar", texto },
+      { ...PAUSA_LECTURA },
+    ],
+  };
 }
 
 // ════════ LECCIONES DE BOTÓN DETERMINISTAS (los 4 chips de "Tu consulta") ════════
@@ -772,8 +1034,12 @@ const dirsConcepto = (v) => {
     // pantalla anterior; en realidad era contenido colocado en el módulo que no
     // le tocaba.
     const modulo = par[2] || MODULO_BLOQUE[i] || "regla";
-    out.push({ tipo: "hablar", texto: par[0], _mod: modulo });
+    // PRIMERO SE ESCRIBE, LUEGO SE CUENTA. Al revés —como estaba— la pizarra iba siempre una frase por
+    // detrás de la voz: mientras el tutor decía "Y el número de ABAJO es el denominador…", en pantalla
+    // seguía sólo el numerador, y el denominador aparecía cuando ya hablaba de otra cosa. El cliente lo
+    // anotó sobre la proyección: "no sincroniza lo que dice con lo que muestra en pantalla".
     if (par[1]) out.push({ tipo: "pizarra", accion: "escribir", contenido: par[1], _mod: modulo });
+    out.push({ tipo: "hablar", texto: par[0], ...(par[1] ? {} : { _mod: modulo }) });
   });
   return out;
 };
@@ -1332,8 +1598,9 @@ function aritmeticaLSG(opts, cfg) {
   });
   const dir = [{ tipo: "avatar", accion: "sonreir" }];
   if (opts.concepto) {
-    dir.push({ tipo: "hablar", texto: cfg.concepto[0], _mod: "concepto" });
-    dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.concepto[1] });
+    // Cada línea se escribe cuando EMPIEZA la frase que la explica, no cuando termina (ver dirsConcepto).
+    dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.concepto[1], _mod: "concepto" });
+    dir.push({ tipo: "hablar", texto: cfg.concepto[0] });
     // CÓMO SE LLAMA CADA NÚMERO. Petición del cliente: "debe enseñar las partes de una resta
     // (minuendo, sustraendo y diferencia)". Es vocabulario básico del tema y no se enseñaba en
     // ninguna de las cuatro operaciones. Se dice sobre el ejemplo concreto que se va a resolver,
@@ -1345,12 +1612,13 @@ function aritmeticaLSG(opts, cfg) {
       dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes(...parseAB(E.texto), E.answer) });
     }
     if (cfg.partes) dir.push({ tipo: "hablar", texto: cfg.partes(...parseAB(E.texto), E.answer) });
-    dir.push({ tipo: "hablar", texto: cfg.concepto[2], _mod: "regla" });
     // La fase de Reglas ESCRIBE la regla que está explicando, como ya hacen
     // derivadas y factorización. Sin esta línea la pizarra no tenía nada del
     // tema y componía la primera tarjeta del catálogo: el tutor explicaba la
     // suma llevando y en pantalla aparecía "Jerarquía de operaciones".
+    // Y la escribe ANTES de explicarla, para que se vea mientras se oye.
     if (cfg.regla) dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.regla, _mod: "regla" });
+    dir.push({ tipo: "hablar", texto: cfg.concepto[2], ...(cfg.regla ? {} : { _mod: "regla" }) });
   }
   // En suma y resta, el enunciado ES la cuenta en columna: toda la animación ocurre sobre él, con
   // un recuadro por columna. En multiplicar y dividir, lo que se anima son los pasos.
@@ -1364,8 +1632,10 @@ function aritmeticaLSG(opts, cfg) {
   for (const s of E.steps) {
     dir.push({ tipo: "hablar", texto: s.explica });
     dir.push(escribePaso(s.escribe, s.foco ?? null, s.explica));
+    // La columna recién contada se queda a la vista un segundo más antes de pasar a la siguiente.
+    dir.push({ ...PAUSA_LECTURA });
   }
-  dir.push({ tipo: "hablar", texto: `Así, ${E.texto} ${eq} ${E.answer}. Ahora te toca a ti.` });
+  dir.push({ tipo: "hablar", texto: `Así, ${E.texto} ${eq} ${E.answer}. Ahora te toca a ti.` }, { ...PAUSA_LECTURA });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: `${P.texto} = ?` });
   dir.push({ tipo: "preguntar", texto: pregArit(P), respuesta: String(P.answer), esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
   if (opts.seguimiento && !opts.practica) aperturaEjemplo(dir, `Vamos con otro: ${E.texto}.`, E.texto);
@@ -1401,6 +1671,52 @@ const LINEALES = {
 // "el problema dado y el ejemplo de práctica son de tipo distinto". Mismo pool que altEquationFrom (PRE Light).
 const LINEALES_DOS_LADOS = ["4x - 3 = 2x + 5", "3x + 1 = x + 7", "5x - 2 = 3x + 6", "6x - 5 = 2x + 7", "4x + 1 = x + 10", "5x - 4 = 2x + 5", "3x + 2 = x + 8", "7x - 6 = 3x + 6"];
 const esDosLados = (eq) => /x[^=]*=[^=]*x/.test(canonExpr(eq || ""));
+// EL REPARTO DE UN PARÉNTESIS, CONTADO FOCO A FOCO.
+//
+// "2(x + 4) = 3x - 1": el cliente pidió que la animación complete la distribución de LOS DOS términos
+// —2 × x y 2 × 4— antes de dar el resultado. La pizarra sigue a la voz, así que cada foco necesita su
+// frase: estas son LAS MISMAS que pone en su pie `escenaDeDistributiva` (lib/leccion/animacion.ts). Se
+// repiten aquí porque este motor no importa la librería de la interfaz —igual que TIPOS_OPERACION en
+// preLight—, y la suite comprueba que ambas digan exactamente lo mismo para todo el catálogo.
+function terminosDelParentesis(s) {
+  const out = [];
+  const re = /([+-]?)(\d*)([a-zA-Z]?)/g;
+  let consumido = 0, m;
+  while ((m = re.exec(s)) !== null) {
+    if (m[0] === "") { re.lastIndex++; continue; }
+    if (m.index !== consumido) return null;
+    consumido = m.index + m[0].length;
+    if (!m[2] && !m[3]) return null;
+    out.push({ signo: m[1] === "-" ? -1 : 1, coef: m[2] === "" ? 1 : Number(m[2]), v: m[3] || "" });
+  }
+  if (consumido !== s.length || out.length < 2 || out.length > 3) return null;
+  if (new Set(out.map((t) => t.v).filter(Boolean)).size > 1) return null;
+  return out;
+}
+const terminoPor = (t, f) => {
+  const v = t.coef * f;
+  if (!t.v) return String(v);
+  if (v === 1) return t.v;
+  if (v === -1) return `-${t.v}`;
+  return `${v}${t.v}`;
+};
+export function locucionesDistributiva(texto) {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  const m = limpio.match(/^(-?\d+)\(([^()]+)\)(?:=(.+))?$/);
+  if (!m) return null;
+  const factor = Number(m[1]);
+  const ts = terminosDelParentesis(m[2]);
+  if (!Number.isFinite(factor) || factor === 0 || !ts) return null;
+  const frases = ts.map((t, i) => `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${t.signo === -1 ? "-" : ""}${
+    t.v ? `${t.coef === 1 ? "" : t.coef}${t.v}` : t.coef}: da ${terminoPor(t, factor * t.signo)}.`);
+  const expandido = ts.map((t, i) => {
+    const val = terminoPor(t, factor * t.signo);
+    return `${val.startsWith("-") ? " - " : i > 0 ? " + " : ""}${val.replace(/^-/, "")}`;
+  }).join("").replace(/\s+/g, " ").trim().replace(/^-\s+/, "-");
+  const derecho = String(texto ?? "").split("=").slice(1).join("=").trim();
+  frases.push(`Queda ${expandido}${m[3] && derecho ? ` = ${derecho}` : ""}.`);
+  return frases;
+}
 export function linealResueltaLSG(opts = {}) {
   let { ejemplo, practica } = elegirBoton(LINEALES, opts, "lineal", formaLineal);
   // Si el EJEMPLO tiene x en AMBOS lados, la práctica debe ser del MISMO tipo (dos lados), elegida de forma
@@ -1428,13 +1744,16 @@ export function linealResueltaLSG(opts = {}) {
   // ENSEÑAR el tema ("enséñame ecuaciones lineales"): primero el CONCEPTO y la REGLA, no saltar directo
   // a resolver un ejercicio (queja del cliente: "pido que me enseñe y de frente va a los ejercicios").
   if (opts.concepto) {
-    dir.push({ tipo: "hablar", texto: "Una ecuación lineal, o de primer grado, es una igualdad donde la incógnita (la x) está elevada solo a la 1: no tiene x² ni raíces. Resolverla significa encontrar el valor de x que hace verdadera la igualdad.", _mod: "concepto" });
-    dir.push({ tipo: "pizarra", accion: "escribir", contenido: "Ecuación lineal:  a·x + b = c" });
+    // Primero se escribe y luego se cuenta, para que la línea esté a la vista mientras se oye.
+    dir.push({ tipo: "pizarra", accion: "escribir", contenido: "Ecuación lineal:  a·x + b = c", _mod: "concepto" });
+    dir.push({ tipo: "hablar", texto: "Una ecuación lineal, o de primer grado, es una igualdad donde la incógnita (la x) está elevada solo a la 1: no tiene x² ni raíces. Resolverla significa encontrar el valor de x que hace verdadera la igualdad." });
     // Y la ESCRIBE, nombrando la propiedad del catálogo que se está aplicando:
     // sin esta línea la pizarra componía la primera tarjeta del tema, que no
-    // era la que el tutor estaba explicando.
+    // era la que el tutor estaba explicando. La frase NOMBRA esa misma
+    // propiedad: antes hablaba de "despejar" sin decir su nombre, y lo escrito
+    // y lo dicho no se reconocían como la misma cosa.
     dir.push({ _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Propiedad uniforme de la suma: lo mismo a los dos lados" });
-    dir.push({ _mod: "regla", tipo: "hablar", texto: "La regla para hallar la x es despejarla: los números que la acompañan pasan al otro lado con la operación inversa (lo que suma, resta; lo que resta, suma; lo que multiplica, divide), hasta dejar la x sola. Veámoslo con un ejemplo." });
+    dir.push({ tipo: "hablar", texto: "La regla para despejar la x es la PROPIEDAD UNIFORME: lo que hagas a un lado del igual, hazlo también al otro. Por eso lo que suma pasa restando, lo que resta pasa sumando y lo que multiplica pasa dividiendo, hasta dejar la x sola. Veámoslo con un ejemplo." });
   }
   // Cada línea se etiqueta con el gesto que el paso SIGUIENTE hace sobre ella: sobre "2x + 5 = 15"
   // se cancela el 5, sobre "2x = 10" se divide entre 2. La última —"x = 5"— es el resultado y no se
@@ -1445,11 +1764,18 @@ export function linealResueltaLSG(opts = {}) {
     escribePaso(sol.original, gestoSobre(0), sol.steps[0]?.explica),
     { tipo: "esperar", segundos: 1 },
   );
+  // Si la ecuación empieza repartiendo un paréntesis, el reparto se cuenta foco a foco —2 × x, 2 × 4 y lo
+  // que queda— con su pausa de lectura: es lo que hace que la animación de abajo termine de repartir los
+  // dos términos, en vez de quedarse en el primero mientras el tutor ya habla del paso siguiente.
+  const reparto = locucionesDistributiva(sol.original);
   sol.steps.forEach((s, k) => {
-    dir.push({ tipo: "hablar", texto: s.explica });
+    // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
+    // antes de escribir la siguiente.
+    dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+    if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
     dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
   });
-  dir.push({ tipo: "hablar", texto: `Comprobado: ${sol.varName} = ${sol.answer}. Ahora te toca a ti con otra ecuación parecida.` });
+  dir.push({ tipo: "hablar", texto: `Comprobado: ${sol.varName} = ${sol.answer}. Ahora te toca a ti con otra ecuación parecida.` }, { ...PAUSA_LECTURA });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: solP.original });
   dir.push({ tipo: "preguntar", texto: `¿Cuánto vale ${solP.varName} en ${solP.original}? Escribe solo el número.`, respuesta: solP.answer, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });
   if (opts.seguimiento && !opts.practica) aperturaEjemplo(dir, `Vamos con otra ecuación: ${sol.original}.`, sol.original);
@@ -1543,6 +1869,7 @@ export function derivadaResueltaLSG(opts = {}) {
     // bajar, así que va sin etiqueta y la pizarra hace lo que ya hacía.
     escribePaso(`derivada de ${ejemplo} = ${derE}`, focoDePotencia(pm), explica),
     { tipo: "hablar", texto: `Así, la derivada de ${ejemplo} es ${derE}. Ahora te toca a ti.` },
+    { ...PAUSA_LECTURA },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cuál es la derivada de ${practica}?`, respuesta: derP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
   );
@@ -1936,6 +2263,7 @@ export function factorizacionResueltaLSG(opts = {}) {
     { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo) },
     escribePaso(`${ejemplo} = ${facE}`, focoDiferenciaDeCuadrados(ejemplo, facE), explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo)),
     { tipo: "hablar", texto: `Así, ${ejemplo} se factoriza como ${facE}. Ahora te toca a ti con otra parecida.` },
+    { ...PAUSA_LECTURA },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
     { tipo: "preguntar", texto: `¿Cómo se factoriza ${practica}? ${comoEscribirla(practica)}`, respuesta: facP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
   );

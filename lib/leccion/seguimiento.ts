@@ -132,8 +132,15 @@ export interface PeticionQuery {
    */
   aclaracion?: {
     regla?: { nombre: string; formula: string } | null;
+    /** El ejercicio de la TARJETA; vacío en Concepto y Reglas. */
     ejercicio?: string;
     tema?: string;
+    /** La línea que el alumno tenía delante: el paso en el que se atascó. */
+    paso?: string;
+    /** false con la pregunta de la práctica sin contestar: el desglose no da el resultado. */
+    conResultado?: boolean;
+    /** Cuántos «no entendí» seguidos: la escalera de simplificación. */
+    insistencia?: number;
   };
 }
 

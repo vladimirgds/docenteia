@@ -37,7 +37,10 @@ const ESCENAS_CONFIABLES = new Set(["lineal_resuelta", "derivada_resuelta", "fac
   // Lección de VOCABULARIO ("las partes de una derivada"): su pregunta se contesta con una PALABRA
   // ("exponente"), no con un número. Sin marcarla confiable, los reparadores de práctica intentarían
   // recalcular la respuesta y la dejarían sin calificar.
-  "partes_tema"]);
+  "partes_tema",
+  // «No entendí este paso»: desglosa el ejercicio que el alumno YA tiene. No lleva pregunta propia —la
+  // lección se reanuda y le devuelve la suya—, así que no se le añade una de cierre ni otra práctica.
+  "desglose_ejercicio"]);
 
 // Etiquetas de control válidas para si_correcto / si_incorrecto.
 const CONTROL_LABELS = new Set(["continuar", "felicitar", "mostrar_otro_ejemplo"]);
@@ -1041,9 +1044,18 @@ function metodoDe(ejercicio, tema = "") {
 // Construye un LSG (secuencial) que NARRA la solución del ejercicio dado, paso a paso.
 // `respuesta` (opcional) es la respuesta ya calculada por el PRE Light para ese ejercicio.
 // Devuelve un LSG crudo o null si no hay ejercicio.
-export function buildStepByStepLSG(ejercicio, respuesta, tema = "") {
+// Opciones del desglose (las usa el botón «No entendí este paso»):
+//   · conResultado: false → se detiene ANTES del resultado. En la práctica, dárselo sería resolverle al
+//     alumno el ejercicio que tiene que contestar él: se explica el método y el primer paso, y el resto
+//     lo termina él.
+//   · cierre: false → sin la frase final "¿lo intentamos con otro ejemplo?": tras el desglose la clase
+//     se REANUDA donde estaba, no se propone otra cosa.
+// Cada paso se escribe ANTES de contarlo y se sostiene con una pausa de lectura, como en las lecciones.
+const LECTURA = { tipo: "esperar", segundos: 1, lectura: true };
+export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResultado = true, cierre = true } = {}) {
   const ej = str(ejercicio);
   if (!ej) return null;
+  const CIERRE = cierre ? [{ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." }] : [];
   // QUÉ hay que hacer con la expresión. La misma "4x³ - 3x² + 2x" se puede derivar o factorizar, y el
   // texto del ejercicio no siempre lo dice ("Ejercicio 1: 4x³ - 3x² + 2x", tal cual sale de la pizarra
   // de práctica). Manda, por este orden: lo que pida el enunciado y, si calla, el TEMA ACTIVO de la
@@ -1068,13 +1080,18 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "") {
   if (der) {
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: der.expr });
     directivas.push({ tipo: "hablar", texto: "Derivamos con la regla de la potencia: el exponente baja a multiplicar al coeficiente y al exponente le restamos 1. Si hay varios términos, se hace uno a uno." });
-    for (const paso of der.pasos) {
-      directivas.push({ tipo: "hablar", texto: paso.explica });
+    // Sin resultado, sólo el PRIMER término hecho, como muestra: los demás los termina el alumno.
+    for (const paso of conResultado ? der.pasos : der.pasos.slice(0, 1)) {
       directivas.push({ tipo: "pizarra", accion: "escribir", contenido: paso.escribe });
+      directivas.push({ tipo: "hablar", texto: paso.explica }, { ...LECTURA });
+    }
+    if (!conResultado) {
+      directivas.push({ tipo: "hablar", texto: der.pasos.length > 1 ? "Ahora haz lo mismo con los demás términos, uno a uno, y junta lo que salga." : "Ahora compruébalo tú y escribe la derivada." });
+      return { escena: "desglose_pasos", intencion: "explicar", directivas };
     }
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: `derivada de ${der.expr} = ${der.resultado}` });
     directivas.push({ tipo: "hablar", texto: `Juntando lo que salió de cada término, la derivada de ${der.expr} es ${der.resultado}.` });
-    directivas.push({ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." });
+    directivas.push(...CIERRE);
     return { escena: "desglose_pasos", intencion: "explicar", directivas };
   }
   const fac = quiereDerivar ? null : factorizacionPasos(ej);
@@ -1082,25 +1099,33 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "") {
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: fac.expr });
     directivas.push({ tipo: "hablar", texto: `Primero identificamos los dos cuadrados: ${fac.izq} y ${fac.der}.` });
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: fac.reescrito });
-    directivas.push({ tipo: "hablar", texto: "La regla de la diferencia de cuadrados dice que a² - b² se escribe como (a - b)(a + b)." });
+    directivas.push({ tipo: "hablar", texto: "La regla de la diferencia de cuadrados dice que a² - b² se escribe como (a - b)(a + b)." }, { ...LECTURA });
+    if (!conResultado) {
+      directivas.push({ tipo: "hablar", texto: "Ahora te toca a ti: escribe las dos raíces en (a - b)(a + b)." });
+      return { escena: "desglose_pasos", intencion: "explicar", directivas };
+    }
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: `${fac.expr} = ${fac.factor}` });
     // COMPROBACIÓN con matemática distinta de la que produjo el resultado: se multiplica de vuelta.
     directivas.push({ tipo: "hablar", texto: `Y se comprueba multiplicando: al desarrollar ${fac.factor} los términos del medio se cancelan y vuelve a quedar ${fac.expr}.` });
-    directivas.push({ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." });
+    directivas.push(...CIERRE);
     return { escena: "desglose_pasos", intencion: "explicar", directivas };
   }
   const lin = solveLinearSteps(ej);
   if (lin) {
     // Ecuación lineal: mostramos el enunciado y CADA paso del despeje (los mismos que valida el sistema).
+    // Sin resultado, todos menos el último: el último despeje lo hace el alumno.
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: lin.original });
-    for (const p of lin.steps) {
-      directivas.push({ tipo: "hablar", texto: p.explica });
+    const pasos = conResultado ? lin.steps : lin.steps.slice(0, -1);
+    for (const p of pasos) {
+      directivas.push({ tipo: "hablar", texto: p.explica }, { ...LECTURA });
       directivas.push({ tipo: "pizarra", accion: "escribir", contenido: p.escribe });
     }
-    directivas.push({ tipo: "hablar", texto: `Y así llegamos a la solución: ${lin.varName} = ${lin.answer}.` });
+    directivas.push({ tipo: "hablar", texto: conResultado
+      ? `Y así llegamos a la solución: ${lin.varName} = ${lin.answer}.`
+      : `Te queda un último paso: deja la ${lin.varName} sola y escribe cuánto vale.` });
   } else {
     // Aritmética / fórmula / problema verbal: enunciado + método + resultado exacto.
-    const ans = str(respuesta) || computeAnswer(ej) || "";
+    const ans = conResultado ? (str(respuesta) || computeAnswer(ej) || "") : "";
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: ej.length <= 80 ? ej : "Repasemos el ejercicio" });
     directivas.push({ tipo: "hablar", texto: metodoDe(ej, tema) });
     if (ans) {
@@ -1108,8 +1133,48 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "") {
       directivas.push({ tipo: "hablar", texto: `Siguiendo esos pasos, el resultado es ${ans}.` });
     }
   }
-  directivas.push({ tipo: "hablar", texto: "Ese es el procedimiento. Si quieres, lo intentamos ahora con otro ejemplo parecido." });
+  directivas.push(...CIERRE);
   return { escena: "desglose_pasos", intencion: "explicar", directivas };
+}
+
+// LO QUE SE CUENTA SE VE, Y SE SOSTIENE.
+//
+// Un paso etiquetado lleva su locución (`narracion`): es la frase con la que la pizarra animada lo
+// reconoce y lo recorre. Dos reglas, para cualquier lección —las del motor y las que redacte el modelo—:
+//
+//   1. Si la locución de un paso SE DICE justo antes de escribirlo, se escribe primero. En ese orden el
+//      paso aparecía cuando su frase ya había terminado y la siguiente se lo llevaba enseguida: el
+//      cliente midió el fotograma de los numeradores en "unos milisegundos".
+//   2. Tras narrar un paso que está a la vista, una pausa de lectura de un segundo antes de lo que venga
+//      —"manteniendo el frame visible con una pausa de lectura de al menos 1 segundo antes de cualquier
+//      transición automática", en palabras del cliente—, salvo que ya haya una espera.
+//
+// Se aplica sobre las directivas CRUDAS, antes de numerarlas, para que ids y `pasos` salgan ya en el
+// orden en que se reproducen.
+const fraseComparable = (s) => String(s ?? "")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const narraElPaso = (hablar, pizarra) =>
+  hablar?.tipo === "hablar" && pizarra?.tipo === "pizarra" && pizarra.operacion && pizarra.narracion &&
+  fraseComparable(pizarra.narracion) === fraseComparable(hablar.texto);
+export function sincronizarPasosConVoz(directivas) {
+  if (!Array.isArray(directivas)) return directivas;
+  const out = [...directivas];
+  for (let i = 0; i < out.length - 1; i++) {
+    if (narraElPaso(out[i], out[i + 1])) {
+      [out[i], out[i + 1]] = [out[i + 1], out[i]];
+      i++;
+    }
+  }
+  const esRelleno = (d) => d?.tipo === "esperar" || d?.tipo === "avatar" || d?.tipo === "puntero";
+  for (let i = 0; i < out.length; i++) {
+    if (out[i]?.tipo !== "hablar") continue;
+    let j = i - 1;
+    while (j >= 0 && esRelleno(out[j])) j--;
+    if (!narraElPaso(out[i], out[j]) || out[i + 1]?.tipo === "esperar") continue;
+    out.splice(i + 1, 0, { tipo: "esperar", segundos: 1, lectura: true });
+  }
+  return out;
 }
 
 // Finaliza el LSG de desglose SIN la maquinaria de práctica (no añade preguntas ni "otro ejemplo"):
@@ -1121,7 +1186,7 @@ export function processStepByStep(ejercicio, respuesta, tema = "") {
   const warnings = [];
   const counter = { n: 0 };
   const pasos = [];
-  const directivas = normalizeDirectivas(raw.directivas, counter, warnings, pasos, "desglose");
+  const directivas = normalizeDirectivas(sincronizarPasosConVoz(raw.directivas), counter, warnings, pasos, "desglose");
   if (!directivas.length) return null;
   const lsg = { escena: "desglose_pasos", intencion: "explicar", duracion_estimada: estimateDuration(pasos), directivas };
   return { lsg, pasos, warnings };
@@ -1182,7 +1247,7 @@ export function processLSG(rawLsg, intent, mensaje = "") {
     lsg.modulos = rawLsg.modulos
       .map((mod, i) => {
         const directivas = normalizeDirectivas(
-          mod?.directivas, counter, warnings, pasos, `modulo[${i}]`
+          sincronizarPasosConVoz(mod?.directivas), counter, warnings, pasos, `modulo[${i}]`
         );
         return {
           id: typeof mod?.id === "string" && mod.id.trim()
@@ -1198,7 +1263,7 @@ export function processLSG(rawLsg, intent, mensaje = "") {
     }
   } else {
     lsg.directivas = normalizeDirectivas(
-      rawLsg.directivas, counter, warnings, pasos, "escena"
+      sincronizarPasosConVoz(rawLsg.directivas), counter, warnings, pasos, "escena"
     );
 
     if (lsg.directivas.length === 0) {
@@ -1454,6 +1519,8 @@ function sanitizeDirectiva(raw, warnings, context) {
     }
     case "esperar":
       d.segundos = clampNumber(raw.segundos, 1, 10, 2);
+      // Pausa para LEER lo que se acaba de contar, no para "pensar": el reproductor no cambia el gesto.
+      if (raw.lectura === true) d.lectura = true;
       break;
     case "pizarra":
       d.accion = str(raw.accion) || "escribir";

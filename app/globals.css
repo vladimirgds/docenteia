@@ -33,6 +33,30 @@
   font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
 }
 
+/* ── NOTAS DE PIZARRA ──────────────────────────────────────────────────────────
+   Una línea escrita, con su jerarquía: el rótulo en letra de pizarra, lo que
+   dice con sus fórmulas compuestas por KaTeX, y cada idea en su renglón (ver
+   `NotaDePizarra`). Fuera de proyección se lee a tamaño normal; los tamaños de
+   aula están más abajo, en el tema de proyección. */
+.pz-nota {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3em;
+  text-align: center;
+  font-size: 1.125rem;
+  line-height: 1.4;
+}
+
+.pz-nota-rotulo {
+  font-weight: 700;
+  color: hsl(25 95% 38%);
+}
+
+.pz-nota-anterior {
+  opacity: 0.7;
+}
+
 /* Tokens de shadcn/ui. Se declara la paleta clara completa en :root y sólo se
    redefinen los tokens en modo oscuro, de modo que ningún color tenga su única
    definición dentro de un media query. */
@@ -540,6 +564,66 @@
      defecto —`stretch`— es el que faltaba: con el hijo estirado al ancho
      completo, `w-full` del SVG por fin tiene contra qué resolverse, y el
      centrado horizontal lo sigue dando el `mx-auto` del propio contenedor. */
+  min-height: min(58vh, 34rem);
+}
+
+/* LAS NOTAS, A TAMAÑO DE AULA.
+   El cliente, sobre tres capturas: "las etiquetas textuales (como Fracciones
+   equivalentes:, MCM(2, 3): o Propiedad uniforme de la suma:) se renderizan en
+   una fuente diminuta (text-xs / text-sm) pegada al centro oscuro, mientras los
+   números son gigantes", y pidió "tamaño visible para aula (text-xl o
+   text-2xl)" en letra de pizarra. El rótulo nunca baja de text-2xl (1.5rem) y
+   crece con la pantalla; la fórmula de la nota va un escalón por encima del
+   rótulo —manda la matemática— pero por debajo de la de un paso animado, que no
+   comparte renglón con nada. */
+.modo-proyeccion .pz-nota {
+  font-size: clamp(1.5rem, 2.6vw, 2.5rem);
+  color: hsl(0 0% 100%);
+}
+
+.modo-proyeccion .pz-nota-rotulo {
+  color: hsl(45 96% 62%);
+}
+
+.modo-proyeccion .pz-nota .katex {
+  font-size: 1.35em;
+}
+
+/* Las notas ya escritas se quedan a la vista un punto por debajo de la que se
+   está contando, sin apagarse: siguen siendo pizarra que el aula tiene que leer. */
+.modo-proyeccion .pz-nota-anterior {
+  opacity: 0.78;
+}
+
+/* CONCEPTO PROYECTADO: el dibujo a un lado y lo escrito al otro. Uno debajo del
+   otro no cabían en una pantalla —el diagrama grande más cinco notas—, y la
+   última se salía por abajo justo cuando era la que se estaba explicando. En
+   pantallas estrechas (una tablet en vertical) se vuelven a apilar. */
+@media (min-width: 1024px) {
+  .modo-proyeccion .pz-diagrama-proyectado {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: center;
+    column-gap: clamp(1rem, 3vw, 3rem);
+    max-width: none;
+  }
+
+  .modo-proyeccion .pz-diagrama-proyectado .pz-notas {
+    margin-top: 0;
+  }
+
+  /* El dibujo manda en esta fase —el cliente lo pidió "escalado en grande"—:
+     las notas de al lado van un punto por debajo, sin bajar de text-2xl. */
+  .modo-proyeccion .pz-diagrama-proyectado .pz-nota {
+    font-size: clamp(1.5rem, 2.05vw, 2.1rem);
+  }
+}
+
+/* Las notas de Reglas, sin diagrama, centradas en su lienzo como la fórmula. */
+.modo-proyeccion .pz-notas-proyectadas {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-height: min(58vh, 34rem);
 }
 
