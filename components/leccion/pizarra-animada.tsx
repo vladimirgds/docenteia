@@ -18,33 +18,34 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
-import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { FraccionFormal, NotaDePizarra } from "@/components/leccion/nota-pizarra";
+import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
+import { TextoTutor } from "@/components/leccion/texto-tutor";
 import { Button } from "@/components/ui/button";
 import {
   useGuionEstable,
   useSincronizadorLeccion,
 } from "@/components/leccion/sincronizador-leccion";
 import {
-  escenaEstatica,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
   type Escena,
   type Foco,
 } from "@/lib/leccion/animacion";
+import { colocarEtiqueta, MARGEN_ANOTACION, type Rect } from "@/lib/leccion/etiquetas";
 import type { EstadoAvatar } from "@/public/pseLight";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
-import { notacionFormal, pareceMatematica, planoALatex } from "@/lib/matematicas";
+import { ROL, rol } from "@/lib/leccion/roles";
 import { cn } from "@/lib/utils";
 import type { PasoSemantico } from "@/lib/leccion/marcado";
 import type { VozUtilizable } from "@/lib/leccion/voz";
 
 /**
- * PIZARRA ANIMADA.
+ * PIZARRA ANIMADA: UN PASO DEL DESARROLLO, CON SUS RESALTADOS.
  *
  * Compone la escena UNA vez con KaTeX y dibuja los resaltados en una capa SVG
  * por encima. Encender un foco cambia la opacidad de un rectángulo: no vuelve a
@@ -55,39 +56,102 @@ import type { VozUtilizable } from "@/lib/leccion/voz";
  * El guion marca cada pieza resaltable con `\htmlClass`, que KaTeX conserva en
  * el HTML. Al montar la escena se buscan esas clases, se mide su caja con
  * `getBoundingClientRect` y se guardan las coordenadas relativas al contenedor.
- * Varias piezas con la misma clase —las tres cifras de una columna— dan UNA
- * caja que las abarca a todas: así sale el recuadro vertical sobre la columna.
+ * Se miden también TODAS las cifras de la fórmula: son los obstáculos que ningún
+ * rótulo puede pisar (ver `lib/leccion/etiquetas.ts`).
  *
- * Las medidas se rehacen cuando cambia la escena y cuando cambia el tamaño
- * (girar la tablet, entrar en modo proyección). No se rehacen al cambiar de
- * foco, que es lo que ocurre veinte veces por lección.
+ * UNA PIZARRA CON VARIOS PASOS A LA VEZ
+ * Cada línea del desarrollo es una de estas, y la pizarra de la clase las
+ * enseña todas (en sus dos ambientes). Cada una está en uno de tres estados:
+ *
+ *   · "activa": la que la voz del tutor está recorriendo; enciende su foco.
+ *   · "completada": ya recorrida; se ve entera, destapada, y conserva lo que
+ *     cuenta como procedimiento —lo tachado y la respuesta enmarcada—. Las cajas
+ *     y subrayados de paso se apagan: dejarlos todos encendidos era ruido.
+ *   · "pendiente": escrita pero aún no contada; se ve su planteamiento, con lo
+ *     que la animación destapará todavía oculto.
  */
 
 /** Una caja medida en el sistema de coordenadas del contenedor. */
-interface Caja {
-  x: number;
-  y: number;
-  ancho: number;
-  alto: number;
-}
+type Caja = Rect;
 
 /** Aire alrededor de la pieza resaltada, para que el trazo no la pise. */
 const HOLGURA = 4;
 
+export type EstadoEscena = "activa" | "completada" | "pendiente";
+
+interface Medidas {
+  cajas: Record<string, Caja>;
+  /** Las cifras y signos de la fórmula: lo que ninguna anotación puede tapar. */
+  glifos: Caja[];
+  /**
+   * La letra de los rótulos, para saber cuánto ocupa cada uno: su tamaño y la
+   * caja REAL que ocupa un renglón —alto y desfase respecto a la línea de
+   * colgar—, medida en el navegador. La letra de pizarra de Windows (Comic
+   * Sans) tiene ascendentes y descendentes muy largos: estimando la caja en
+   * 1,15 veces el tamaño, "llevo 1" quedaba a 6 px de su llevada y no a 8.
+   */
+  fuente: { css: string; alto: number; cajaAlto: number; cajaY: number } | null;
+  /** Entre qué x caben los rótulos: el ancho del paso en su ambiente. */
+  limites: { x0: number; x1: number } | null;
+}
+
+/** Dónde va un rótulo: su caja, y la `y` en la que se escribe para que la ocupe. */
+type RectDeRotulo = Rect & { yTexto: number };
+
+const SIN_MEDIDAS: Medidas = { cajas: {}, glifos: [], fuente: null, limites: null };
+
+/**
+ * ¿La hoja lleva texto que SE VE? KaTeX mete en sus columnas y fracciones
+ * espacios de anchura cero (U+200B, los `vlist-s`): cajas de 2 px de ancho y
+ * tan altas como la columna entera, invisibles. Contadas como cifras, apartaban
+ * los rótulos de nada —"llevo 1" quedaba a 8 px de un hueco vacío y a más de 12
+ * de su llevada—.
+ */
+function tieneTexto(el: Element): boolean {
+  return /[^\s\u200b-\u200d\ufeff]/.test(el.textContent ?? "");
+}
+
+let lienzoDeMedida: HTMLCanvasElement | null = null;
+/** Lo que ocupa un texto con una letra dada, sin pintarlo. */
+function anchoDeTexto(texto: string, fuente: string, altoLetra: number): number {
+  if (typeof document === "undefined") return texto.length * altoLetra * 0.6;
+  lienzoDeMedida ??= document.createElement("canvas");
+  const ctx = lienzoDeMedida.getContext("2d");
+  if (!ctx) return texto.length * altoLetra * 0.6;
+  ctx.font = fuente;
+  return ctx.measureText(texto).width;
+}
+
 export function PizarraAnimada({
   escena,
   foco,
+  estado = "activa",
   proyeccion = false,
+  conPie = true,
+  marcoFinal = true,
   className,
 }: {
   escena: Escena | null;
   /** Foco encendido; -1 mientras se lee la entrada de la escena. */
   foco: number;
+  estado?: EstadoEscena;
   proyeccion?: boolean;
+  /** La frase del tutor bajo el paso, cuando es el paso activo. */
+  conPie?: boolean;
+  /**
+   * Si su respuesta final va en cápsula con visto. `false` cuando detrás viene
+   * el cierre del ejercicio, que es quien la enmarca: aquí queda subrayada.
+   */
+  marcoFinal?: boolean;
   className?: string;
 }) {
   const contenedor = useRef<HTMLDivElement | null>(null);
-  const [cajas, setCajas] = useState<Record<string, Caja>>({});
+  const sonda = useRef<SVGTextElement | null>(null);
+  const [medidas, setMedidas] = useState<Medidas>(SIN_MEDIDAS);
+  // El aire que necesitan las marcas que salen de la fórmula —la cápsula de la
+  // respuesta, un rótulo por debajo del denominador, el conector de la
+  // distributiva— para no montarse sobre el paso de al lado ni recortarse.
+  const [aire, setAire] = useState({ arriba: 0, abajo: 0 });
   // `useId` trae dos puntos, que en un selector CSS significan otra cosa.
   const idPizarra = `pz-${useId().replace(/:/g, "")}`;
 
@@ -109,19 +173,27 @@ export function PizarraAnimada({
     }
   }, [escena]);
 
-  /** Mide todas las clases del guion de la escena en curso. */
+  /** Mide las piezas del guion, las cifras de la fórmula y la letra de los rótulos. */
   const medir = useCallback(() => {
     const raiz = contenedor.current;
     if (!raiz || !escena) return;
 
     const base = raiz.getBoundingClientRect();
-    const medidas: Record<string, Caja> = {};
+    const relativa = (r: DOMRect): Caja => ({
+      x: r.left - base.left,
+      y: r.top - base.top,
+      ancho: r.width,
+      alto: r.height,
+    });
 
+    const cajas: Record<string, Caja> = {};
     // Un foco puede enmarcar varias piezas por separado —los dos términos que se
     // cancelan a uno y otro lado del igual—, y entonces se mide cada una.
-    const aMedir = new Set(escena.focos.flatMap((f) => f.piezas ?? [f.clase]));
+    const aMedir = new Set(
+      escena.focos.flatMap((f) => [...(f.piezas ?? [f.clase]), ...(f.anclaEtiqueta ? [f.anclaEtiqueta] : [])]),
+    );
     for (const clase of aMedir) {
-      const piezas = raiz.querySelectorAll(`.${CSS.escape(clase)}`);
+      const piezas = raiz.querySelectorAll(`.katex-html .${CSS.escape(clase)}`);
       if (piezas.length === 0) continue;
 
       let x1 = Infinity;
@@ -129,17 +201,13 @@ export function PizarraAnimada({
       let x2 = -Infinity;
       let y2 = -Infinity;
       for (const pieza of piezas) {
-        // SE MIDEN LOS GLIFOS, NO LA CAJA DEL SPAN.
-        //
-        // En una fracción, KaTeX sube el numerador y baja el denominador con
-        // desplazamientos dentro de la línea, y la caja del span que los
-        // envuelve no los contiene: medía la altura de la línea. La doble raya
-        // del resultado caía entonces encima del denominador —"6/7" con el 7
-        // tachado—. Midiendo cada glifo, y la raya de la fracción, la marca
-        // abarca la fracción entera.
+        // SE MIDEN LOS GLIFOS, NO LA CAJA DEL SPAN. En una fracción, KaTeX sube
+        // el numerador y baja el denominador con desplazamientos dentro de la
+        // línea, y la caja del span que los envuelve no los contiene. Midiendo
+        // cada glifo, y la raya de la fracción, la marca abarca la fracción entera.
         const hojas = [pieza, ...pieza.querySelectorAll("*")].filter(
           (el) =>
-            (el.childElementCount === 0 && (el.textContent ?? "").trim() !== "") ||
+            (el.childElementCount === 0 && tieneTexto(el)) ||
             el.classList.contains("frac-line"),
         );
         for (const el of hojas.length > 0 ? hojas : [pieza]) {
@@ -154,24 +222,73 @@ export function PizarraAnimada({
         }
       }
       if (!Number.isFinite(x1) || !Number.isFinite(y1)) continue;
-
-      medidas[clase] = {
-        x: x1 - HOLGURA,
-        y: y1 - HOLGURA,
-        ancho: x2 - x1 + HOLGURA * 2,
-        alto: y2 - y1 + HOLGURA * 2,
-      };
+      cajas[clase] = { x: x1 - HOLGURA, y: y1 - HOLGURA, ancho: x2 - x1 + HOLGURA * 2, alto: y2 - y1 + HOLGURA * 2 };
     }
 
-    setCajas(medidas);
+    // Todas las cifras y signos visibles o por destapar —y las rayas: la de la
+    // cuenta en columna y las de las fracciones—: los rótulos no pisan ninguno,
+    // tampoco los que aparecerán después.
+    const glifos = [...raiz.querySelectorAll(".katex-html *")]
+      .filter(
+        (el) =>
+          (el.childElementCount === 0 && tieneTexto(el)) ||
+          el.classList.contains("hline") ||
+          el.classList.contains("frac-line"),
+      )
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map(relativa);
+
+    let fuente: Medidas["fuente"] = null;
+    if (sonda.current) {
+      const cs = getComputedStyle(sonda.current);
+      const alto = parseFloat(cs.fontSize) || 12;
+      let cajaAlto = alto * 1.15;
+      let cajaY = 0;
+      try {
+        const bb = sonda.current.getBBox();
+        if (bb.height > 0) {
+          cajaAlto = bb.height;
+          cajaY = bb.y;
+        }
+      } catch {
+        // Sin geometría (un navegador sin SVG completo): la estimación.
+      }
+      fuente = { css: `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, alto, cajaAlto, cajaY };
+    }
+
+    const exterior = raiz.parentElement?.getBoundingClientRect();
+    const limites = exterior ? { x0: exterior.left - base.left, x1: exterior.right - base.left } : null;
+
+    setMedidas({ cajas, glifos, fuente, limites });
   }, [escena]);
 
   // Medir tras pintar, no después: entre el pintado y un `useEffect` normal
   // cabe un fotograma, y el alumno vería el recuadro llegar tarde.
   useLayoutEffect(() => {
-    setCajas({});
+    setMedidas(SIN_MEDIDAS);
     medir();
-  }, [medir, html]);
+  }, [medir, html, proyeccion]);
+
+  // Tras cada pintado se mide lo que ocupan las marcas dibujadas y se reserva
+  // ese aire encima y debajo de la fórmula. Sólo cambia si cambia la medida,
+  // así que no hay bucle: las coordenadas de las marcas son relativas a la
+  // fórmula, y el aire se pone por fuera de ella.
+  useLayoutEffect(() => {
+    const raiz = contenedor.current;
+    const svg = raiz?.querySelector("svg");
+    if (!raiz || !svg) return;
+    let minY = 0;
+    let maxY = raiz.offsetHeight;
+    for (const g of svg.querySelectorAll<SVGGraphicsElement>(".pz-resaltado")) {
+      const b = g.getBBox();
+      if (b.width === 0 && b.height === 0) continue;
+      minY = Math.min(minY, b.y - 6);
+      maxY = Math.max(maxY, b.y + b.height + 6);
+    }
+    const nuevo = { arriba: Math.ceil(-minY), abajo: Math.ceil(maxY - raiz.offsetHeight) };
+    setAire((a) => (a.arriba === nuevo.arriba && a.abajo === nuevo.abajo ? a : nuevo));
+  });
 
   useEffect(() => {
     const raiz = contenedor.current;
@@ -193,10 +310,51 @@ export function PizarraAnimada({
 
   if (!escena) return null;
 
+  // Hasta dónde está destapada la escena y qué marcas se dibujan.
+  const focoVisible =
+    estado === "completada" ? escena.focos.length - 1 : estado === "pendiente" ? -1 : foco;
+  const aDibujar = escena.focos
+    .map((f, i) => ({ f, i }))
+    .filter(({ f, i }) =>
+      estado === "activa" ? i === foco : estado === "completada" ? Boolean(f.final) || f.tipo === "tachado" : false,
+    );
+
+  // El factor y el término que se reparten, destacados en color mientras el
+  // conector los une (sin recuadros: ver `Foco.conector`).
+  const enfasis = aDibujar
+    .filter(({ f }) => f.conector && estado === "activa")
+    .flatMap(({ f }) => f.piezas ?? [])
+    .map((p) => `#${idPizarra} .${p}{color:var(--pz-color-enfasis)}`)
+    .join("");
+
+  /** Dónde va el rótulo de una caja: el primer lado que no pisa ninguna cifra. */
+  const rotulo = (
+    texto: string,
+    caja: Caja,
+    preferidos?: ("arriba" | "abajo" | "derecha" | "izquierda")[],
+  ): RectDeRotulo => {
+    const altoLetra = medidas.fuente?.alto ?? 12;
+    const ancho = anchoDeTexto(texto, medidas.fuente?.css ?? "12px sans-serif", altoLetra) + 2;
+    const alto = medidas.fuente?.cajaAlto ?? altoLetra * 1.15;
+    const rect = colocarEtiqueta({
+      caja,
+      ancho,
+      alto,
+      obstaculos: medidas.glifos,
+      preferidos,
+      limites: medidas.limites ?? undefined,
+    }).rect;
+    return { ...rect, yTexto: rect.y - (medidas.fuente?.cajaY ?? 0) };
+  };
+
+  const narracionActiva = foco >= 0 ? (escena.focos[foco]?.narracion ?? "") : escena.narracion;
+
   return (
     <div
       className={cn(
-        "pz-animada relative w-full overflow-x-auto px-2 py-6 text-center",
+        // Sin recortar: las marcas salen de la fórmula (la cápsula y su visto,
+        // un rótulo, el conector) y el aire que necesitan se reserva abajo.
+        "pz-animada relative w-full px-1 py-1 text-left",
         proyeccion && "pz-proyeccion",
         className,
       )}
@@ -205,115 +363,98 @@ export function PizarraAnimada({
       // etiquetado por el motor se pinta con su etiqueta.
       data-origen={escena.origen}
       data-gesto={escena.clase}
+      data-estado={estado}
     >
-      <div ref={contenedor} id={idPizarra} className="relative inline-block min-w-full">
-        {/*
-          LO QUE SE VA DESTAPANDO.
-
-          La cuenta empieza con los dos sumandos y nada más; cada columna suelta
-          su cifra del resultado y su llevada cuando le toca. El guion marca cada
-          pieza con `pz-rev-N` y la hoja de estilos las arranca invisibles; aquí
-          se declaran visibles las que ya han salido.
-
-          Va como REGLA CSS y no tocando el DOM a mano. Una versión anterior
-          recorría los nodos poniéndoles `style.opacity`, y en el navegador del
-          cliente las cifras no aparecían nunca: cualquier repintado del bloque
-          se llevaba por delante los estilos escritos a mano. Una regla, en
-          cambio, la vuelve a aplicar el navegador siempre, y sigue sin
-          recomponer la fórmula: no hay parpadeo.
-        */}
-        <style>{reglasDeRevelado(idPizarra, foco)}</style>
+      <div
+        ref={contenedor}
+        id={idPizarra}
+        className="pz-animada-formula relative inline-block max-w-full"
+        style={{ marginTop: aire.arriba, marginBottom: aire.abajo }}
+      >
+        {/* LO QUE SE VA DESTAPANDO, declarado como REGLA CSS y no tocando el
+            DOM a mano: una regla la vuelve a aplicar el navegador siempre, y
+            sigue sin recomponer la fórmula. */}
+        <style>{reglasDeRevelado(idPizarra, focoVisible) + enfasis}</style>
 
         {html ? (
-          <span className="pz-formula" dangerouslySetInnerHTML={{ __html: html }} />
+          <span className="pz-formula" {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           // Escena de prosa —o fórmula que KaTeX no supo componer—: se pinta
-          // como NOTA DE PIZARRA, con el rótulo en letra de pizarra y a tamaño
-          // de aula y sus fórmulas compuestas por KaTeX. Antes era un párrafo a
-          // tamaño de texto junto a una fórmula a tamaño de proyección.
+          // como NOTA DE PIZARRA, con su rótulo y sus fórmulas.
           <NotaDePizarra texto={escena.texto} />
         )}
 
-        {/*
-          La capa de resaltados. `pointer-events: none` para que no se coma la
-          selección de texto de la fórmula que tiene debajo, y `aria-hidden`
-          porque lo que dice ya se está diciendo en voz alta y en el pie.
-        */}
+        {/* La capa de resaltados. `pointer-events: none` para que no se coma la
+            selección de texto de la fórmula que tiene debajo, y `aria-hidden`
+            porque lo que dice ya se está diciendo en voz alta y en el pie. */}
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
           aria-hidden="true"
         >
-          <defs>
-            {/* La punta de flecha del brazo de la distributiva. `orient="auto"`
-                la gira sola para que siempre apunte en la dirección del trazo
-                al que se engancha, así que no hay que calcular el ángulo aquí. */}
-            <marker
-              id="pz-flecha-reparto"
-              viewBox="0 0 10 10"
-              refX="8"
-              refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto"
-            >
-              <path d="M0,0 L10,5 L0,10 Z" className="pz-flecha-reparto" />
-            </marker>
-          </defs>
+          {/* La sonda de la letra de los rótulos: invisible, sólo para medir. */}
+          <text
+            ref={sonda}
+            x={0}
+            y={0}
+            visibility="hidden"
+            dominantBaseline="hanging"
+            className="pz-etiqueta"
+            {...rol(ROL.PIZARRA)}
+          >
+            M
+          </text>
 
-          {/*
-            UN solo resaltado encendido: el de la columna que se está operando.
-            Dejar tenues los anteriores parecía buena idea —el camino recorrido—
-            pero en pantalla se leía como si todas las columnas estuvieran
-            marcadas a la vez, y los rótulos de llevada se pisaban unos a otros.
-            Lo que queda de los pasos anteriores son las cifras ya escritas, que
-            es como se ve una cuenta hecha a mano.
-          */}
-          {escena.focos.flatMap((f, i) => {
-            if (i !== foco) return [];
-            // Una caja POR PIEZA. Con una sola caja para las dos, la del
-            // despeje abarcaba desde el 6 de la izquierda hasta el de la
-            // derecha —tragándose el "= 16"— y la tachadura cruzaba el signo
-            // igual, que no se cancela con nada.
+          {aDibujar.flatMap(({ f, i }) => {
+            if (f.conector) {
+              const [a, b] = f.piezas ?? [];
+              const factor = a ? medidas.cajas[a] : undefined;
+              const termino = b ? medidas.cajas[b] : undefined;
+              if (!factor || !termino) return [];
+              return [
+                <ConectorReparto
+                  key={`conector-${i}`}
+                  factor={factor}
+                  termino={termino}
+                  glifos={medidas.glifos}
+                  etiqueta={f.etiqueta}
+                  marcador={`${idPizarra}-flecha`}
+                  rotulo={rotulo}
+                />,
+              ];
+            }
+            // Una caja POR PIEZA: la cancelación a los dos lados del igual no se
+            // encierra en una sola caja que se trague el "= 16".
             return (f.piezas ?? [f.clase]).flatMap((pieza, j) => {
-              const caja = cajas[pieza];
+              const caja = medidas.cajas[pieza];
               if (!caja) return [];
               return [
                 <Resaltado
                   key={`${pieza}-${i}-${j}`}
-                  foco={f}
+                  foco={f.final && !marcoFinal ? { ...f, final: false } : f}
                   caja={caja}
-                  // El rótulo se escribe una sola vez, sobre la primera pieza.
-                  conEtiqueta={j === 0}
+                  ancla={f.anclaEtiqueta ? medidas.cajas[f.anclaEtiqueta] : undefined}
+                  glifos={medidas.glifos}
+                  // El rótulo se escribe una sola vez, sobre la primera pieza, y
+                  // sólo en el paso activo.
+                  conEtiqueta={j === 0 && estado === "activa"}
+                  rotulo={rotulo}
                 />,
               ];
             });
           })}
-
-          {/*
-            EL BRAZO DE LA DISTRIBUTIVA.
-            El cliente lo dibujó a mano sobre la captura: un arco que sale del
-            factor y entra en el término al que multiplica, para que se vea
-            que el de fuera "viaja hasta" cada sumando y no sólo que los dos
-            quedan recuadrados al mismo tiempo. Sólo tiene sentido cuando el
-            foco encendido enmarca EXACTAMENTE dos piezas —el factor y un
-            sumando—, que es como `escenaDeDistributiva` arma sus focos.
-          */}
-          {(() => {
-            if (escena.clase !== "distributiva") return null;
-            const f = escena.focos[foco];
-            if (!f?.piezas || f.piezas.length !== 2) return null;
-            const cajaFactor = cajas[f.piezas[0]];
-            const cajaTermino = cajas[f.piezas[1]];
-            if (!cajaFactor || !cajaTermino) return null;
-            return <ConectorReparto factor={cajaFactor} termino={cajaTermino} />;
-          })()}
         </svg>
       </div>
 
-      {/* El texto del foco en curso, para quien no puede oírlo. */}
-      <p className="pz-pie mt-4 min-h-[1.5rem] text-sm text-muted-foreground" aria-live="polite">
-        {foco >= 0 ? (escena.focos[foco]?.narracion ?? "") : escena.narracion}
-      </p>
+      {/* Lo que el tutor está contando de ESTE paso, para quien no puede oírlo.
+          Es voz del tutor: TUTOR_DIALOG, con sus fórmulas compuestas por KaTeX. */}
+      {conPie && estado === "activa" && (
+        <TextoTutor
+          como="p"
+          className="pz-pie mt-3 min-h-[1.5rem] text-sm text-muted-foreground"
+          aria-live="polite"
+          texto={narracionActiva}
+        />
+      )}
     </div>
   );
 }
@@ -324,32 +465,83 @@ export function PizarraAnimada({
 function Resaltado({
   foco,
   caja,
+  ancla,
+  glifos,
   conEtiqueta = true,
+  rotulo,
 }: {
   foco: Foco;
   caja: Caja;
+  /** La pieza sobre la que va el rótulo, si no es la caja ("llevo 1" sobre su llevada). */
+  ancla?: Caja;
+  glifos: readonly Caja[];
   conEtiqueta?: boolean;
+  rotulo: (texto: string, caja: Caja, preferidos?: ("arriba" | "abajo" | "derecha" | "izquierda")[]) => RectDeRotulo;
 }) {
-  // EL RESULTADO NO SE RODEA CON UN ÓVALO.
-  //
-  // Era un óvalo, y el cliente lo fotografió sobre el 3800: el contorno pasaba
-  // por encima de las cifras y las cruzaba. Una marca que tapa el número que
-  // quiere destacar no destaca nada. Ahora nada toca las cifras.
-  //
-  // Y EL VISTO VERDE ES SÓLO PARA LA RESPUESTA FINAL. El cliente lo fotografió
-  // flotando junto a la x de "2x + 6 = 16 − 6", en un paso en el que no se
-  // resolvía nada: "solo genera ruido visual y confunde al alumno haciéndole
-  // creer que la x ya está resuelta". Un resultado INTERMEDIO —lo que queda al
-  // amplificar, al repartir, al sumar los numeradores— lleva dos rayas debajo y
-  // nada más. La RESPUESTA FINAL se enmarca —un rectángulo con aire, que no roza
-  // ninguna cifra— y se confirma con el visto a su derecha.
+  const etiqueta = foco.etiqueta && conEtiqueta ? foco.etiqueta : null;
+  // EL RÓTULO NO PUEDE TAPAR NINGUNA CIFRA. Se coloca en el primer lado de su
+  // caja que, con 8 px de aire, no pisa ningún glifo de la fórmula: "entre 6"
+  // iba encima del denominador —es decir, encima del numerador— y el cliente lo
+  // fotografió tapando el 3. Ahora baja por debajo del 6. Con ancla, siempre
+  // ENCIMA de ella: la llevada está en la fila de arriba y no tiene nada encima.
+  const rect = etiqueta ? (ancla ? rotulo(etiqueta, ancla, ["arriba"]) : rotulo(etiqueta, caja)) : null;
+  const textoEtiqueta = rect ? (
+    <text
+      x={rect.x + rect.ancho / 2}
+      y={rect.yTexto}
+      dominantBaseline="hanging"
+      textAnchor="middle"
+      className="pz-etiqueta"
+      {...rol(ROL.PIZARRA)}
+      data-etiqueta={etiqueta ?? undefined}
+    >
+      {etiqueta}
+    </text>
+  ) : null;
+
+  // EL RESULTADO NO SE RODEA CON UN ÓVALO: el cliente lo fotografió cruzando el
+  // 3800. Un resultado INTERMEDIO lleva dos rayas debajo y nada más; la
+  // RESPUESTA FINAL va en una cápsula de esquinas redondeadas —borde verde,
+  // fondo verde muy suave— con el visto a su derecha, sin rozar ninguna cifra.
   if (foco.tipo === "resultado") {
     // Todo proporcional al tamaño del número: en proyección la fórmula se
-    // multiplica y el trazo engorda, y con huecos fijos de 5 px las dos rayas
-    // se fundían en una sola barra.
-    const aire = Math.max(6, caja.alto * 0.14);
-    const izquierda = caja.x - (foco.final ? aire : 3);
-    const derecha = caja.x + caja.ancho + (foco.final ? aire : 3);
+    // multiplica y el trazo engorda.
+    const aire = Math.max(MARGEN_ANOTACION, caja.alto * 0.14);
+    // LA CÁPSULA NO CRUZA NADA DE LO QUE TIENE AL LADO. Su aire se recorta hasta
+    // lo que haya a cada lado —el "=" de delante, la cifra de arriba, la raya de
+    // la cuenta, el renglón siguiente—, dejando siempre un hueco.
+    const fuera = glifos.filter((g) => {
+      const cx = g.x + g.ancho / 2;
+      const cy = g.y + g.alto / 2;
+      return !(cx >= caja.x && cx <= caja.x + caja.ancho && cy >= caja.y && cy <= caja.y + caja.alto);
+    });
+    // Cada vecino se clasifica por dónde cae su CENTRO respecto al de la caja,
+    // no por sus bordes: las cajas de los glifos de KaTeX son más altas que el
+    // trazo, y la raya de una cuenta puede solaparse con la del total que tiene
+    // debajo sin dejar de estar encima. El borde de la cápsula se queda siempre
+    // a 4 px (el medio trazo al proyectar) de lo que tenga al lado.
+    const centroX = caja.x + caja.ancho / 2;
+    const centroY = caja.y + caja.alto / 2;
+    // Una raya (la de la cuenta, la de una fracción) sólo puede ser techo o
+    // suelo: es plana y cruza de lado a lado.
+    const esRaya = (g: Caja) => g.alto < 4 && g.ancho > 3 * g.alto;
+    const enSuFranja = fuera.filter(
+      (g) => !esRaya(g) && g.y < caja.y + caja.alto && g.y + g.alto > caja.y && Math.abs(g.y + g.alto / 2 - centroY) < caja.alto / 2,
+    );
+    const tope = { izquierda: -Infinity, derecha: Infinity, arriba: -Infinity, abajo: Infinity };
+    for (const g of enSuFranja) {
+      if (g.x + g.ancho / 2 < centroX) tope.izquierda = Math.max(tope.izquierda, g.x + g.ancho);
+      else tope.derecha = Math.min(tope.derecha, g.x);
+    }
+    const izquierda = foco.final ? Math.max(caja.x - aire, tope.izquierda + 4) : caja.x - 3;
+    const derecha = foco.final ? Math.min(caja.x + caja.ancho + aire, tope.derecha - 4) : caja.x + caja.ancho + 3;
+    for (const g of fuera) {
+      if (enSuFranja.includes(g) || g.x >= derecha || g.x + g.ancho <= izquierda) continue;
+      if (g.y + g.alto / 2 < centroY) tope.arriba = Math.max(tope.arriba, g.y + g.alto);
+      else tope.abajo = Math.min(tope.abajo, g.y);
+    }
+    const arriba = Math.max(caja.y - aire, tope.arriba + 4);
+    const abajo = Math.min(caja.y + caja.alto + aire, tope.abajo - 4);
     const primera = caja.y + caja.alto + Math.max(5, caja.alto * 0.09);
     const segunda = primera + Math.max(5, caja.alto * 0.1);
     // El visto, proporcionado al número y separado del marco por un hueco limpio.
@@ -361,12 +553,11 @@ function Resaltado({
         {foco.final ? (
           <rect
             x={izquierda}
-            y={caja.y - aire}
+            y={arriba}
             width={derecha - izquierda}
-            height={caja.alto + aire * 2}
-            rx={8}
+            height={Math.max(0, abajo - arriba)}
+            rx={12}
             className="pz-trazo pz-marco-final"
-            fill="none"
             pathLength={1}
           />
         ) : (
@@ -383,17 +574,7 @@ function Resaltado({
             pathLength={1}
           />
         ) : null}
-        {foco.etiqueta && conEtiqueta ? (
-          <text
-            x={caja.x + caja.ancho / 2}
-            y={caja.y}
-            dy="-0.65em"
-            textAnchor="middle"
-            className="pz-etiqueta"
-          >
-            {foco.etiqueta}
-          </text>
-        ) : null}
+        {textoEtiqueta}
       </g>
     );
   }
@@ -401,17 +582,8 @@ function Resaltado({
   return (
     <g className="pz-resaltado" data-tipo={foco.tipo}>
       {/* El fondo va DEBAJO del trazo y encima de la fórmula: es lo que hace que
-          la columna operada se ilumine, y no sólo se enmarque. Como la capa no
-          recibe eventos, la fórmula se sigue pudiendo seleccionar. */}
-      <rect
-        x={caja.x}
-        y={caja.y}
-        width={caja.ancho}
-        height={caja.alto}
-        rx={6}
-        className="pz-fondo"
-      />
-
+          la columna operada se ilumine, y no sólo se enmarque. */}
+      <rect x={caja.x} y={caja.y} width={caja.ancho} height={caja.alto} rx={6} className="pz-fondo" />
       <rect
         x={caja.x}
         y={caja.y}
@@ -422,7 +594,6 @@ function Resaltado({
         fill="none"
         pathLength={1}
       />
-
       {foco.tipo === "tachado" ? (
         <line
           x1={caja.x + 1}
@@ -433,136 +604,130 @@ function Resaltado({
           pathLength={1}
         />
       ) : null}
-
-      {/*
-        EL RÓTULO NO PUEDE TAPAR LA CIFRA.
-        Antes subía un ancho fijo (6 px), pensado para el tamaño de letra de
-        pantalla. En Modo proyección la letra del rótulo crece mucho más que
-        esos 6 px —hasta 1,75rem, para leerse desde el fondo del aula—, así que
-        "llevo 1" quedaba prácticamente ENCIMA de la cifra que llevaba encima:
-        el cliente lo fotografió tapando el "1" de la llevada.
-
-        Con `dy="-0.65em"` la distancia se mide en la propia unidad del
-        texto —su `em`, que ES su tamaño de letra— así que crece exactamente
-        al mismo ritmo que la letra, en pantalla y en proyección, sin que este
-        componente tenga que saber a qué tamaño se está dibujando.
-      */}
-      {foco.etiqueta && conEtiqueta ? (
-        <text
-          x={caja.x + caja.ancho / 2}
-          y={caja.y}
-          dy="-0.65em"
-          textAnchor="middle"
-          className="pz-etiqueta"
-        >
-          {foco.etiqueta}
-        </text>
-      ) : null}
+      {textoEtiqueta}
     </g>
   );
 }
 
 /**
- * El brazo que ata el factor de una distributiva al sumando que multiplica.
+ * EL CONECTOR DE LA DISTRIBUTIVA, como lo dibujó el cliente.
  *
- * Va del borde de ABAJO del factor al borde de ABAJO del término, con una
- * curva que se hunde entre los dos —como un arco dibujado a mano por debajo—
- * y una punta de flecha que entra en el término. Reutiliza `.pz-trazo`, que ya
- * se traza solo (`pz-dibuja`) y ya tiene su color por tema y por proyección:
- * el brazo se ve exactamente del mismo azul que las dos cajas que une.
+ * Una escuadra: baja desde el factor, cruza por DEBAJO de la expresión con aire
+ * y sube con su flecha hasta el término al que multiplica; el "× 2" va debajo
+ * de la escuadra. Antes era un arco corto que se colaba entre las cifras y dos
+ * recuadros encima de todo ("flechas toscas y confusas"). La escuadra pasa por
+ * debajo de TODO lo que hay entre los dos —las cifras medidas—, así que no toca
+ * ninguna.
  */
-function ConectorReparto({ factor, termino }: { factor: Caja; termino: Caja }) {
+function ConectorReparto({
+  factor,
+  termino,
+  glifos,
+  etiqueta,
+  marcador,
+  rotulo,
+}: {
+  factor: Caja;
+  termino: Caja;
+  glifos: readonly Caja[];
+  etiqueta?: string;
+  marcador: string;
+  rotulo: (texto: string, caja: Caja, preferidos?: ("arriba" | "abajo" | "derecha" | "izquierda")[]) => RectDeRotulo;
+}) {
   const x0 = factor.x + factor.ancho / 2;
-  const y0 = factor.y + factor.alto;
   const x1 = termino.x + termino.ancho / 2;
-  const y1 = termino.y + termino.alto;
-  // El hundimiento del arco crece con la distancia horizontal: entre cajas
-  // pegadas ("2x") el arco es un simple bucle corto; entre el factor y un
-  // sumando lejano ("2" hasta el "5" de "2(x + 5)") se hunde más, para no
-  // cruzar por encima de lo que hay entre medias.
-  const hundido = Math.max(y0, y1) + Math.max(16, Math.abs(x1 - x0) * 0.16);
+  const izquierda = Math.min(x0, x1);
+  const derecha = Math.max(x0, x1);
+  // Lo más bajo de lo que hay ENTRE los dos, en su mismo renglón.
+  const techo = Math.min(factor.y, termino.y);
+  const suelo = Math.max(factor.y + factor.alto, termino.y + termino.alto);
+  const debajo = glifos
+    .filter((g) => g.x + g.ancho > izquierda - 4 && g.x < derecha + 4 && g.y < suelo && g.y + g.alto > techo)
+    .reduce((max, g) => Math.max(max, g.y + g.alto), suelo);
+  // La punta, del tamaño de la letra y no del grosor del trazo: medida en
+  // unidades del dibujo (`userSpaceOnUse`). Con el tamaño por defecto, que
+  // multiplica el grosor, la punta se volvía un triángulo enorme al proyectar.
+  const punta = Math.max(7, Math.min(14, Math.min(factor.alto, termino.alto) * 0.3));
+  // El vértice de la punta, justo debajo del término; el trazo acaba dentro de ella.
+  const puntaY = termino.y + termino.alto + 3;
+  const finTrazo = puntaY + punta * 0.7;
+  // La barra, por debajo de todo y con tramo de subida suficiente para la punta.
+  const barra = Math.max(debajo + MARGEN_ANOTACION + 4, finTrazo + punta);
+  // La barra con su grosor (6 px al proyectar): el "× 2" va debajo sin tocarla.
+  const rectBarra: Caja = { x: izquierda, y: barra - 3, ancho: Math.max(2, derecha - izquierda), alto: 6 };
+  const rect = etiqueta ? rotulo(etiqueta, rectBarra, ["abajo", "arriba"]) : null;
   return (
     <g className="pz-resaltado" data-tipo="reparto">
+      <defs>
+        <marker
+          id={marcador}
+          viewBox="0 0 10 10"
+          // El trazo acaba dentro de la punta, no en su vértice: con el grosor
+          // de proyección, la raya asomaba por los lados del pico.
+          refX="3"
+          refY="5"
+          markerUnits="userSpaceOnUse"
+          markerWidth={punta}
+          markerHeight={punta}
+          orient="auto"
+        >
+          <path d="M0,0 L10,5 L0,10 Z" className="pz-flecha-reparto" />
+        </marker>
+      </defs>
       <path
-        d={`M ${x0} ${y0} Q ${(x0 + x1) / 2} ${hundido} ${x1} ${y1}`}
-        className="pz-trazo"
+        d={`M ${x0} ${factor.y + factor.alto + 2} V ${barra} H ${x1} V ${finTrazo}`}
+        className="pz-trazo pz-conector"
         fill="none"
+        strokeLinejoin="round"
         pathLength={1}
-        markerEnd="url(#pz-flecha-reparto)"
+        markerEnd={`url(#${marcador})`}
       />
+      {rect && (
+        <text
+          x={rect.x + rect.ancho / 2}
+          y={rect.yTexto}
+          dominantBaseline="hanging"
+          textAnchor="middle"
+          className="pz-etiqueta"
+          {...rol(ROL.PIZARRA)}
+          data-etiqueta={etiqueta}
+        >
+          {etiqueta}
+        </text>
+      )}
     </g>
   );
 }
 
-/**
- * Las notas escritas en una fase sin ejercicio, en orden y todas a la vista.
- *
- * La última escrita —la que el tutor está explicando— va resaltada: es la que
- * corresponde a lo que se oye, y las anteriores se quedan como lo que son en una
- * pizarra de verdad, lo ya escrito.
- */
-function NotasDeLaFase({ notas }: { notas: readonly string[] }) {
-  const visibles = notas.filter((n) => String(n ?? "").trim());
-  if (visibles.length === 0) return null;
-  return (
-    <div className="pz-notas mt-4 flex flex-col items-center gap-3">
-      {visibles.map((nota, i) => (
-        <NotaDePizarra
-          key={`${i}-${nota}`}
-          texto={nota}
-          className={cn(i === visibles.length - 1 ? "pz-nota-actual" : "pz-nota-anterior")}
-        />
-      ))}
-    </div>
-  );
+/** Lo que el panel le da a la pizarra para que anime sus pasos. */
+export interface AnimacionDePizarra {
+  escenas: readonly Escena[];
+  /** Escena que la voz está recorriendo. */
+  escena: number;
+  /** Foco encendido en esa escena; -1 es su entrada. */
+  foco: number;
+  /** La animación ya lo ha destapado todo. */
+  terminada: boolean;
+  proyeccion: boolean;
 }
 
 /**
- * El ejercicio original, fijo en lo alto de la proyección.
- *
- * Limpio: compuesto tal como está escrito, sin marcas ni piezas por destapar
- * —es el enunciado, no un paso—. Va con `position: sticky` (ver la hoja de
- * estilos): si el desarrollo es largo y el panel se desplaza, el ejercicio no
- * se va con él.
- */
-function EnunciadoFijo({ texto: crudo }: { texto: string }) {
-  // "Ejercicio 1:  2/6 + 3/6" → "2/6 + 3/6": el rótulo ya dice que es el ejercicio.
-  const texto = crudo.replace(/^\s*ejercicio[^:]{0,20}:\s*/i, "").trim() || crudo;
-  const html = useMemo(() => {
-    const latex = notacionFormal(texto) ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
-    if (!latex) return null;
-    try {
-      return katex.renderToString(latex, { displayMode: true, throwOnError: false, strict: false });
-    } catch {
-      return null;
-    }
-  }, [texto]);
-  return (
-    <div className="pz-enunciado-fijo" data-enunciado={texto}>
-      <span className="pz-enunciado-rotulo">Ejercicio</span>
-      {html ? (
-        <span className="pz-enunciado-formula" dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        <span className="pz-enunciado-formula pz-tiza">{texto}</span>
-      )}
-    </div>
-  );
-}
-
-/**
- * LA PIZARRA ANIMADA EN FUNCIONAMIENTO: guion, voz y mandos.
+ * EL PANEL DE LA CLASE: la pizarra, la voz que la mueve y los mandos.
  *
  * Recibe las líneas de la lección tal como las escribe el motor, las convierte
- * en guion y las reproduce sincronizadas con el sintetizador. Es lo que el
- * alumno tiene delante en `/estudiante/leccion`.
+ * en guion y lo reproduce sincronizado con la voz del tutor. La pizarra que
+ * enseña es la de la clase entera —sus dos ambientes, el ejercicio fijo arriba—
+ * y la dibuja quien la conoce (el aula, con `tablero`); aquí sólo se decide qué
+ * paso está animándose.
  *
- * MODO PROYECCIÓN
- * El botón lleva el panel a pantalla completa con la API del navegador y le
- * aplica el tema de alto contraste: tipografía escalada, trazos gruesos y las
- * rayas de KaTeX engordadas, que a cuatro metros de una pizarra digital es la
- * diferencia entre ver la operación y adivinarla. Si el navegador deniega la
- * pantalla completa —pasa en algunos iframes—, el tema se aplica igual: se
- * pierde el pantalla completa, no la legibilidad.
+ * MODO PROYECCIÓN: ESPEJO, NO COPIA
+ * El cliente lo pidió como regla (SUB-PRJ-03): "el modo proyección no genera
+ * lógica independiente; replica el estado activo de la pantalla base". Aquí se
+ * cumple por construcción: proyectar es poner EN PANTALLA COMPLETA ESTE MISMO
+ * PANEL —el mismo nodo, el mismo estado, la misma pizarra— con el tema de alto
+ * contraste. No hay una segunda vista que pueda enseñar otra cosa. Al proyectar
+ * se quitan los textos de interfaz ("Paso 2 de 4", "Proyéctala en el aula") y
+ * se escala la letra para leerse desde el fondo del aula.
  */
 export function PanelAnimado({
   lineas,
@@ -576,139 +741,54 @@ export function PanelAnimado({
   leccionEnMarcha = false,
   leccionPausada = false,
   mandosLeccion,
-  reposo = null,
   leccionTerminada = false,
   avatarDeLaLeccion,
-  enunciado = null,
+  tablero,
   className,
 }: {
   /**
-   * EL EJERCICIO ORIGINAL, FIJO ARRIBA AL PROYECTAR.
-   *
-   * El cliente lo pidió sobre una ecuación: al proyectar "2(x + 3) = 16" sólo
-   * se veía la línea que se estaba operando, y el enunciado desaparecía. En el
-   * aula, quien se despista un momento pierde de vista qué se está resolviendo.
-   * Con esto la proyección lleva arriba, fijo, el ejercicio limpio —tal como
-   * está en la tarjeta de la pizarra—, y debajo el paso activo del desarrollo.
-   */
-  enunciado?: string | null;
-  /**
-   * Los pasos de la lección.
-   *
-   * Un paso puede llegar como texto plano —lo que escribe hoy el motor— o
-   * etiquetado con su instrucción de foco. Con etiqueta, la pizarra marca
-   * exactamente lo que dice; sin ella, la deduce del contenido.
+   * Los pasos que se animan. Un paso puede llegar como texto plano o etiquetado
+   * con su instrucción de foco; con etiqueta, la pizarra marca exactamente lo
+   * que dice.
    */
   lineas: readonly (string | PasoSemantico)[];
   tts?: VozUtilizable | null;
   vozActiva?: boolean;
   /**
-   * Lo que el tutor de la lección está diciendo AHORA.
-   *
-   * Con esto la pizarra se coloca sola donde va la voz, sin que el alumno tenga
-   * que darle a Reproducir: si se oye "sumamos las decenas", el recuadro está
-   * sobre las decenas. Si el alumno reproduce el repaso por su cuenta, manda él
-   * y el seguimiento se aparta.
+   * Lo que el tutor de la lección está diciendo AHORA: la pizarra se coloca
+   * sola donde va la voz, sin que nadie pulse Reproducir.
    */
   narracion?: string | null;
-  /**
-   * Avisa de por dónde va la animación y de si ya ha terminado. `texto` es la
-   * línea de la escena en pantalla: el paso que el alumno tiene delante cuando
-   * pulsa «No entendí este paso».
-   */
+  /** Por dónde va la animación, si ya terminó y qué línea es "este paso". */
   alProgresar?: (progreso: { escena: number; foco: number; terminado: boolean; texto?: string | null }) => void;
-  /**
-   * Clave de la fase y el tema en curso: al cambiar, la pizarra vuelve a cero.
-   *
-   * Sin esto, al pasar de una fase a la siguiente la animación seguía donde la
-   * dejó la anterior, y el primer paso de la fase nueva se pintaba con el
-   * recuadro a mitad de camino de una cuenta que ya no está en pantalla.
-   */
+  /** Clave de la fase y el tema en curso: al cambiar, la animación vuelve a cero. */
   reinicio?: string;
   /**
-   * UN SOLO MANDO DE REPRODUCCIÓN.
-   *
-   * Mientras el tutor está explicando, quien manda es la lección: pausar aquí
-   * tiene que parar SU voz, no abrir una reproducción paralela. Por eso el panel
-   * recibe el estado del tutor y sus mandos, y sólo reproduce por su cuenta
-   * cuando la lección está parada. Sin esto había dos motores de audio y dos
-   * índices de paso, y acababan contando cosas distintas.
+   * UN SOLO MANDO DE REPRODUCCIÓN: mientras el tutor explica, pausar aquí para
+   * SU voz; el panel sólo reproduce por su cuenta con la lección parada.
    */
   leccionEnMarcha?: boolean;
   leccionPausada?: boolean;
   mandosLeccion?: { pausar: () => void; reanudar: () => void };
   /** El aula usa esto para poner al avatar a explicar, pensar o celebrar. */
   alCambiarAvatar?: (estado: EstadoPedagogico) => void;
-  /**
-   * LO QUE SE PROYECTA CUANDO NO HAY NADA QUE ANIMAR.
-   *
-   * El botón de Modo proyección vivía sólo aquí, y este panel desaparecía
-   * cuando la fase no tenía un paso animable: en la práctica —con el enunciado
-   * "3/5 + 1/2 = ?" y nada más— o en el concepto. El cliente lo fotografió al
-   * terminar una lección: el botón no estaba, y la proyección en el aula es un
-   * entregable del hito.
-   *
-   * Con esto el panel no desaparece nunca durante una clase. Si no hay nada que
-   * animar se queda en una barra con el botón —sin repetir debajo lo que ya
-   * enseña la pizarra— y, al proyectar, pone en grande lo último que hay en la
-   * pizarra: el paso, el enunciado o la regla.
-   *
-   * EN CONCEPTO, EL DIAGRAMA TAMBIÉN SE PROYECTA.
-   *
-   * El cliente lo fotografió: en Fracciones, al proyectar, sólo se veía una
-   * frase diminuta ("Denominador: en cuántas partes…") en medio de la pantalla
-   * negra —era este mismo texto, compuesto por KaTeX a su tamaño de fórmula—,
-   * y el gráfico circular que sí se ve en la pizarra de arriba no aparecía por
-   * ningún lado. Con `diagrama`, si la fase de Concepto tiene uno para este
-   * tema, se dibuja en grande en su lugar.
-   */
-  reposo?: {
-    texto: string;
-    latex?: string | null;
-    /**
-     * TODO lo escrito en la fase, en orden, cuando la fase no plantea
-     * ejercicio (Concepto, Reglas). "El avatar habla mucho pero muestra poco",
-     * anotó el cliente sobre la proyección: se veía sólo la última línea, y cada
-     * frase nueva borraba la anterior. Con todas, lo dicho sigue a la vista.
-     */
-    notas?: string[] | null;
-    diagrama?: {
-      tema: string;
-      numerador?: number;
-      denominador?: number;
-      vistoNumerador: boolean;
-      vistoDenominador: boolean;
-    } | null;
-  } | null;
-  /**
-   * La lección ha terminado: la pizarra se queda RESUELTA, en el último paso
-   * de su última línea, con todo destapado. Sin esto, al acabar volvía a su
-   * primer paso y el resultado quedaba oculto justo cuando el subtítulo decía
-   * "¡Lección completada!".
-   */
+  /** La lección ha terminado: la pizarra se queda resuelta, en su último paso. */
   leccionTerminada?: boolean;
   /** El tutor de la lección, para que en proyección el avatar sea el que habla. */
   avatarDeLaLeccion?: { estado: EstadoAvatar | EstadoPedagogico; hablando: boolean };
-  /**
-   * Se avisa antes de ponerse a hablar.
-   *
-   * El sintetizador es uno solo y lo comparten el tutor de la lección y este
-   * repaso: sin avisar, las dos locuciones se pisan y no se entiende ninguna.
-   * El aula aprovecha para pausar al tutor.
-   */
+  /** El sintetizador es uno solo: se avisa antes de ponerse a hablar. */
   alTomarLaVoz?: () => void;
+  /** La pizarra de la clase, dibujada con el estado de la animación. */
+  tablero: (animacion: AnimacionDePizarra) => ReactNode;
   className?: string;
 }) {
   const marco = useRef<HTMLDivElement | null>(null);
   const [proyeccion, setProyeccion] = useState(false);
 
   // El guion sólo se rehace cuando cambia LO QUE SE ANIMA, no cuando cambian las
-  // líneas. El tutor va escribiendo mientras explica —el enunciado primero, el
-  // desarrollo después— y casi siempre eso produce el mismo guion: la cuenta es
-  // la misma. Rehacerlo de todas formas reiniciaba la máquina y la pizarra
-  // volvía al primer paso a mitad de explicación.
-  // La firma incluye la etiqueta: dos pasos con el mismo LaTeX y distinta
-  // operación no son el mismo paso.
+  // líneas: rehacerlo reiniciaba la máquina a mitad de explicación. La firma
+  // incluye la etiqueta: dos pasos con el mismo LaTeX y distinta operación no
+  // son el mismo paso.
   const firma = JSON.stringify(lineas);
   const guion = useMemo(
     () => guionDeLeccion(JSON.parse(firma) as (string | PasoSemantico)[]),
@@ -722,23 +802,15 @@ export function PanelAnimado({
     alCambiarAvatar?.(estado.avatar);
   }, [estado.avatar, alCambiarAvatar]);
 
-  /**
-   * UN SOLO DUEÑO DEL SINTETIZADOR.
-   *
-   * Si el tutor vuelve a hablar mientras el repaso se estaba reproduciendo, el
-   * repaso calla y pasa a seguirlo. Sin esta regla los dos hablaban a la vez y,
-   * como cada locución empieza cancelando la anterior, se cancelaban entre
-   * ellas: las dos daban por terminado su paso al instante y el resaltado salía
-   * disparado por las columnas mientras el audio apenas había empezado.
-   */
+  // UN SOLO DUEÑO DEL SINTETIZADOR: si el tutor vuelve a hablar mientras el
+  // repaso se reproducía, el repaso calla y pasa a seguirlo.
   useEffect(() => {
     if (leccionEnMarcha && !leccionPausada && estado.estado === "reproduciendo") {
       mandos.detener();
     }
   }, [leccionEnMarcha, leccionPausada, estado.estado, mandos]);
 
-  // Cambiar de fase o de tema es empezar de cero: la animación vuelve a su
-  // primer paso y se calla lo que ella misma estuviera diciendo.
+  // Cambiar de fase o de tema es empezar de cero.
   const primerReinicio = useRef(true);
   useEffect(() => {
     if (primerReinicio.current) {
@@ -748,34 +820,25 @@ export function PanelAnimado({
     mandos.detener();
   }, [reinicio, mandos]);
 
-  // La pizarra sigue a la voz del tutor. Es lo que ata el resaltado a lo que se
-  // está oyendo: sin esto, la locución iba por las decenas y el recuadro seguía
-  // en el primer paso, esperando a que alguien pulsara Reproducir.
+  // La pizarra sigue a la voz del tutor. Se le dice DÓNDE ESTÁ, no sólo en qué
+  // escena: la cuenta se cuenta en orden y desde el reposo, así que una
+  // locución no puede plantar la pizarra tres pasos más allá.
   useEffect(() => {
     if (!narracion) return;
-    // Se le dice DÓNDE ESTÁ, no sólo en qué escena: la cuenta se cuenta en
-    // orden y desde el reposo, así que una locución no puede plantar la pizarra
-    // tres pasos más allá. Sin esto, la frase que abre la fase de reglas la
-    // dejaba en "Paso 3 de 4" —con las decenas ya resueltas— mientras el tutor
-    // apenas estaba presentando la regla.
     const destino = situacionParaNarracion(escenas, narracion, estado.escena, estado.foco);
     if (!destino) return;
     mandos.situar(destino.escena, destino.foco);
   }, [narracion, escenas, estado.escena, estado.foco, mandos]);
 
   // AL TERMINAR LA LECCIÓN, LA PIZARRA QUEDA RESUELTA: último paso de la última
-  // línea, con el resultado subrayado y confirmado. Se vuelve a situar si el
-  // guion cambia estando terminada —el cierre del ejercicio añade su línea
-  // justo en ese momento— para que lo último que se ve sea eso.
+  // línea. Se vuelve a situar si el guion cambia estando terminada —el cierre del
+  // ejercicio añade su línea justo en ese momento—.
   useEffect(() => {
     if (!leccionTerminada || escenas.length === 0) return;
     const ultima = escenas.length - 1;
     mandos.situar(ultima, Math.max(-1, escenas[ultima].focos.length - 1));
   }, [leccionTerminada, escenas, mandos]);
 
-  // Lo que la lección necesita saber: si la animación ya lo ha destapado todo.
-  // Mientras no lo haya hecho, la pizarra de arriba no puede adelantar el
-  // resultado.
   const terminado =
     escenas.length === 0 ||
     estado.estado === "final" ||
@@ -806,23 +869,7 @@ export function PanelAnimado({
     }
   }, []);
 
-  // Sin nada que animar, la pizarra de reposo: lo último escrito, compuesto
-  // sin marcas. Se calcula antes de decidir si el panel se pinta, porque de
-  // ella depende.
-  const escenaDeReposo = useMemo(
-    () => (reposo?.texto ? escenaEstatica(reposo.texto, "reposo", reposo.latex ?? null) : null),
-    [reposo?.texto, reposo?.latex],
-  );
   const sinAnimacion = escenas.length === 0;
-
-  // El ejercicio de la cabecera fija. Si lo único que se proyecta es el propio
-  // enunciado —la práctica, antes de que haya desarrollo—, no se repite arriba.
-  const enunciadoFijo = String(enunciado ?? "").trim();
-  const conEnunciadoFijo =
-    proyeccion && enunciadoFijo !== "" && !(sinAnimacion && reposo?.texto?.trim() === enunciadoFijo);
-
-  if (sinAnimacion && !escenaDeReposo) return null;
-
   const enMarcha = estado.estado === "reproduciendo";
 
   /** Cualquier mando que arranque la voz pide antes el turno de palabra. */
@@ -830,7 +877,6 @@ export function PanelAnimado({
     alTomarLaVoz?.();
     accion();
   };
-  const escenaActual = sinAnimacion ? escenaDeReposo : (escenas[estado.escena] ?? null);
 
   // En proyección, el avatar es el del TUTOR mientras habla la lección; el del
   // repaso sólo cuando es el repaso el que está hablando.
@@ -842,39 +888,31 @@ export function PanelAnimado({
     <div
       ref={marco}
       className={cn(
-        "rounded-lg border bg-card p-4",
-        sinAnimacion && !proyeccion && "py-2.5",
+        "pz-panel rounded-lg border bg-card p-3",
         proyeccion && "modo-proyeccion flex h-full flex-col overflow-y-auto",
         className,
       )}
       data-panel={sinAnimacion ? "reposo" : "animado"}
-      data-enunciado-fijo={conEnunciadoFijo ? "si" : undefined}
+      data-proyeccion={proyeccion ? "si" : undefined}
     >
-      <div
-        className={cn(
-          "pz-cabecera flex flex-wrap items-center justify-between gap-2",
-          (!sinAnimacion || proyeccion) && "mb-2",
+      <div className="pz-cabecera mb-2 flex flex-wrap items-center justify-between gap-2">
+        {/* Los textos de INTERFAZ —el título del panel y el contador de pasos—
+            no se proyectan: el cliente pidió quitar "Pizarra de clase ·
+            Proyéctala en el aula" de toda proyección. En pantalla sí están. */}
+        {proyeccion ? (
+          <span />
+        ) : (
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-sm font-semibold">Pizarra de la clase</h3>
+            {!sinAnimacion && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Paso {estado.foco + 2} de {estado.segmentos}
+                {/* "de", no "/": ni una barra en lo que ve el alumno (SUB-MTH-05). */}
+                {estado.escenas > 1 ? ` · línea ${estado.escena + 1} de ${estado.escenas}` : ""}
+              </span>
+            )}
+          </div>
         )}
-      >
-        <div className="flex items-baseline gap-2">
-          <h3 className="text-sm font-semibold">
-            {sinAnimacion ? "Pizarra de clase" : "Paso a paso animado"}
-          </h3>
-          {/*
-            El paso que se cuenta es el de la ANIMACIÓN —la entrada y luego cada
-            resaltado—, no la escena. Contando escenas, una cuenta de tres
-            columnas decía "paso 1 de 4" mientras por dentro daba cuatro pasos,
-            y desde fuera parecía que no avanzaba.
-          */}
-          {sinAnimacion ? (
-            <span className="text-xs text-muted-foreground">Proyéctala en el aula</span>
-          ) : (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              Paso {estado.foco + 2} de {estado.segmentos}
-              {estado.escenas > 1 ? ` · línea ${estado.escena + 1}/${estado.escenas}` : ""}
-            </span>
-          )}
-        </div>
         <Button
           size="sm"
           variant="outline"
@@ -886,138 +924,90 @@ export function PanelAnimado({
         </Button>
       </div>
 
-      {/* Arriba y fijo: el ejercicio original, limpio. Debajo, el paso activo. */}
-      {conEnunciadoFijo && <EnunciadoFijo texto={enunciadoFijo} />}
+      {/* En proyección la pizarra comparte escenario con el avatar: el tutor
+          sigue a la vista del aula mientras la pizarra ocupa el resto. */}
+      <div className="pz-escenario">
+        {proyeccion && (
+          <div className="pz-avatar">
+            <Avatar2D estado={avatarProyectado.estado} hablando={avatarProyectado.hablando} />
+          </div>
+        )}
+        <div className="pz-lienzo min-w-0">
+          {tablero({
+            escenas,
+            escena: estado.escena,
+            foco: estado.foco,
+            terminada: terminado,
+            proyeccion,
+          })}
+        </div>
+      </div>
 
-      {/*
-        En proyección la pizarra comparte escenario con el avatar: el tutor
-        tiene que seguir a la vista del aula mientras la fórmula ocupa el resto
-        de la pantalla. Fuera de proyección no se duplica —el avatar ya está en
-        su tarjeta— y la pizarra ocupa todo el ancho.
-      */}
-      {/* Sin nada que animar, el escenario sólo sale al proyectar: en pantalla
-          la pizarra ya enseña lo mismo, y repetirlo aquí debajo duplicaría el
-          contenido. */}
-      {(!sinAnimacion || proyeccion) && (
-        <div className="pz-escenario">
-          {proyeccion && (
-            <div className="pz-avatar">
-              <Avatar2D estado={avatarProyectado.estado} hablando={avatarProyectado.hablando} />
-            </div>
-          )}
-          {sinAnimacion && reposo?.diagrama ? (
-            // EL DIAGRAMA DE CONCEPTO, EN GRANDE, EN LUGAR DE LA FRASE SUELTA.
-            //
-            // `DiagramaConcepto` ya sabe devolver null si el tema no tiene uno
-            // —así que esto no hace falta comprobarlo aquí—, y es EL MISMO
-            // componente que pinta la pizarra clásica arriba: mismo dibujo,
-            // mismos rótulos progresivos, ninguna redacción segunda.
-            <div className="pz-diagrama-proyectado mx-auto w-full max-w-2xl text-center">
-              <div className="pz-diagrama-y-fraccion">
-                <DiagramaConcepto
-                  tema={reposo.diagrama.tema}
-                  numerador={reposo.diagrama.numerador}
-                  denominador={reposo.diagrama.denominador}
-                  vistoNumerador={reposo.diagrama.vistoNumerador}
-                  vistoDenominador={reposo.diagrama.vistoDenominador}
-                />
-                {/* Y bajo el dibujo, la definición en notación formal —vertical,
-                    sin barra inclinada—, la misma que en la pizarra de arriba. */}
-                {reposo.diagrama.tema === "FRACCIONES" &&
-                  reposo.diagrama.vistoNumerador &&
-                  reposo.diagrama.vistoDenominador && (
-                    <FraccionFormal
-                      numerador={reposo.diagrama.numerador ?? 1}
-                      denominador={reposo.diagrama.denominador ?? 4}
-                    />
-                  )}
-              </div>
-              {/* Debajo del dibujo, lo ESCRITO en la fase —no lo dicho: eso va en
-                  el subtítulo—, como notas de pizarra y todas a la vez. */}
-              <NotasDeLaFase notas={reposo.notas?.length ? reposo.notas : [reposo.texto]} />
-            </div>
-          ) : sinAnimacion && (reposo?.notas?.length ?? 0) > 1 ? (
-            <div className="pz-notas-proyectadas mx-auto w-full max-w-4xl">
-              <NotasDeLaFase notas={reposo?.notas ?? []} />
-            </div>
+      {!sinAnimacion && (
+        <div className="pz-mandos mt-3 flex flex-wrap items-center gap-2">
+          {/* El botón actúa sobre QUIEN ESTÉ HABLANDO: con el tutor en marcha,
+              pausa al tutor; con la lección parada, reproduce el repaso. */}
+          {leccionEnMarcha && !leccionPausada ? (
+            <Button size="sm" variant="outline" onClick={() => mandosLeccion?.pausar()}>
+              <Pause className="h-4 w-4" />
+              Pausar
+            </Button>
+          ) : leccionPausada ? (
+            <Button size="sm" variant="outline" onClick={() => mandosLeccion?.reanudar()}>
+              <Play className="h-4 w-4" />
+              Reanudar
+            </Button>
+          ) : enMarcha ? (
+            <Button size="sm" variant="outline" onClick={mandos.pausar}>
+              <Pause className="h-4 w-4" />
+              Pausar
+            </Button>
           ) : (
-            <PizarraAnimada
-              escena={escenaActual}
-              foco={sinAnimacion ? -1 : estado.foco}
-              proyeccion={proyeccion}
-            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={conLaVoz(estado.estado === "pausado" ? mandos.reanudar : mandos.reproducir)}
+            >
+              <Play className="h-4 w-4" />
+              {estado.estado === "pausado" ? "Reanudar" : "Reproducir"}
+            </Button>
+          )}
+
+          <Button size="sm" variant="ghost" onClick={conLaVoz(mandos.repetirPaso)}>
+            <RotateCcw className="h-4 w-4" />
+            Repetir paso
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={mandos.retroceder}
+            aria-label="Paso anterior"
+            disabled={estado.escena === 0 && estado.foco < 0}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <Button size="sm" variant="ghost" onClick={conLaVoz(mandos.avanzar)} aria-label="Avanzar un paso">
+            Avanzar
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          {/* La degradación se dice, no se esconde: si no hay voz, el alumno
+              tiene derecho a saber por qué la pizarra avanza sola. */}
+          {estado.modo === "temporizador" && !proyeccion && (
+            <span className="text-xs text-muted-foreground">
+              {estado.vozCaida
+                ? "La voz ha fallado: se avanza por temporizador."
+                : "Sin voz disponible: se avanza por temporizador."}
+            </span>
           )}
         </div>
       )}
 
-      {!sinAnimacion && (
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {/*
-          El botón actúa sobre QUIEN ESTÉ HABLANDO. Con el tutor en marcha,
-          pausa al tutor —y la pizarra se para con él, porque lo va siguiendo—;
-          con la lección parada, reproduce el repaso animado. Nunca los dos.
-        */}
-        {leccionEnMarcha && !leccionPausada ? (
-          <Button size="sm" variant="outline" onClick={() => mandosLeccion?.pausar()}>
-            <Pause className="h-4 w-4" />
-            Pausar
-          </Button>
-        ) : leccionPausada ? (
-          <Button size="sm" variant="outline" onClick={() => mandosLeccion?.reanudar()}>
-            <Play className="h-4 w-4" />
-            Reanudar
-          </Button>
-        ) : enMarcha ? (
-          <Button size="sm" variant="outline" onClick={mandos.pausar}>
-            <Pause className="h-4 w-4" />
-            Pausar
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={conLaVoz(estado.estado === "pausado" ? mandos.reanudar : mandos.reproducir)}
-          >
-            <Play className="h-4 w-4" />
-            {estado.estado === "pausado" ? "Reanudar" : "Reproducir"}
-          </Button>
-        )}
-
-        <Button size="sm" variant="ghost" onClick={conLaVoz(mandos.repetirPaso)}>
-          <RotateCcw className="h-4 w-4" />
-          Repetir paso
-        </Button>
-
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={mandos.retroceder}
-          aria-label="Paso anterior"
-          disabled={estado.escena === 0 && estado.foco < 0}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-
-        <Button size="sm" variant="ghost" onClick={conLaVoz(mandos.avanzar)} aria-label="Avanzar un paso">
-          Avanzar
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-
-        {/* La degradación se dice, no se esconde: si no hay voz, el alumno tiene
-            derecho a saber por qué la pizarra avanza sola. */}
-        {estado.modo === "temporizador" && (
-          <span className="text-xs text-muted-foreground">
-            {estado.vozCaida
-              ? "La voz ha fallado: se avanza por temporizador."
-              : "Sin voz disponible: se avanza por temporizador."}
-          </span>
-        )}
-      </div>
-      )}
-
       {/* Selector de escena: en clase, el profesor vuelve a un paso concreto sin
           tener que reproducir la lección entera. */}
-      {!sinAnimacion && escenas.length > 1 && (
+      {!sinAnimacion && !proyeccion && escenas.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {escenas.map((escena, i) => (
             <button

@@ -51,6 +51,15 @@ export interface Foco {
   /** Rótulo corto que se dibuja junto al recuadro ("llevo 1"). */
   etiqueta?: string;
   /**
+   * La pieza ENCIMA de la cual va el rótulo, si no es la del recuadro.
+   *
+   * "llevo 1" va sobre la cifra de la llevada —el 1 pequeño que se escribe en
+   * la columna de la izquierda—, "estrictamente arriba y sin tocarla", como lo
+   * pide el informe del cliente (SUB-NOT-04); no sobre la columna que la
+   * produce.
+   */
+  anclaEtiqueta?: string;
+  /**
    * Piezas que este foco enmarca POR SEPARADO, cada una con su caja.
    *
    * Sin esto, dos trozos que comparten clase se enmarcan en UNA sola caja que
@@ -79,6 +88,13 @@ export interface Foco {
    * respuesta final se enmarca y se confirma.
    */
   final?: boolean;
+  /**
+   * El foco se enseña con el CONECTOR de la distributiva —la escuadra que sale
+   * del factor, pasa por debajo de la expresión y sube con su flecha al
+   * término—, sin recuadros: el cliente lo dibujó así ("para que se note la
+   * flecha") y los recuadros encima de cada término lo ensuciaban.
+   */
+  conector?: boolean;
 }
 
 export interface Escena {
@@ -221,10 +237,13 @@ export function escenaDeColumna(texto: string, id: string): Escena | null {
   filas.push([op.operador, ...db.map((d, i) => celda(i, d))].join(" & "));
 
   const cuerpo = filas.join(" \\\\ ") + " \\\\ \\hline";
+  // El renglón del resultado, con un puntal invisible que lo separa de la raya:
+  // la cápsula de la respuesta necesita ese hueco para no cruzar la raya ni la
+  // cifra de encima.
   const total =
     " " +
     [
-      "",
+      "\\rule{0pt}{1.3em}",
       ...dr.map((d, i) =>
         d === "" ? "" : conRevelado(`pz-resultado pz-col-${i}`, pasoDeColumna(i), d),
       ),
@@ -273,7 +292,7 @@ function focosDeColumna(
         tipo: "caja",
         narracion,
         pista: posicion,
-        ...(llevada && i - 1 >= 0 ? { etiqueta: "llevo 1" } : {}),
+        ...(llevada && i - 1 >= 0 ? { etiqueta: "llevo 1", anclaEtiqueta: `pz-llevada-${i - 1}` } : {}),
       });
       arrastre = llevada;
       continue;
@@ -295,7 +314,7 @@ function focosDeColumna(
       tipo: "caja",
       narracion,
       pista: posicion,
-      ...(prestado && i - 1 >= 0 ? { etiqueta: "reagrupo" } : {}),
+      ...(prestado && i - 1 >= 0 ? { etiqueta: "reagrupo", anclaEtiqueta: `pz-llevada-${i - 1}` } : {}),
     });
     arrastre = prestado ? 1 : 0;
   }
@@ -542,14 +561,20 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   // La solución se destapa en el último foco: la ecuación no puede empezar con
   // el resultado escrito, eso es dar la respuesta antes de la pregunta.
   const pasoSolucion = (cancela ? 1 : 0) + (divide ? 1 : 0);
-  const latex =
-    `${izquierda} = ${derecha}` +
-    (llegaALaSolucion
-      ? ` ${marcar(
-          `pz-rev-${pasoSolucion}`,
-          `\\quad \\Rightarrow \\quad ${variable} = ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,
-        )}`
-      : "");
+  // LA SOLUCIÓN, EN SU PROPIO RENGLÓN, alineada por el igual:
+  //
+  //   x + 3 = 8 − 3
+  //       x = 5
+  //
+  // Como se escribe a mano. En una sola línea —"x + 3 = 8 − 3 ⇒ x = 5"— no
+  // cabía en su mitad de la pizarra proyectada (48 px por fórmula) y el 5
+  // quedaba cortado contra la raya que separa los dos ambientes.
+  const rev = (cuerpo: string) => marcar(`pz-rev-${pasoSolucion}`, cuerpo);
+  const latex = llegaALaSolucion
+    ? `\\begin{aligned} ${izquierda} &= ${derecha} \\\\[0.4em] ${rev(variable)} &${rev(
+        `{}= ${marcar("pz-solucion", racionalLatex(c - b, coeficiente))}`,
+      )} \\end{aligned}`
+    : `${izquierda} = ${derecha}`;
 
   const focos: Foco[] = [];
   if (cancela) {
@@ -950,17 +975,21 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
   // cambia el LADO IZQUIERDO: la línea siguiente es la misma ecuación con el
   // paréntesis ya quitado, "2x + 8 = 3x − 1", alineada por el igual. Sin igual
   // (una expresión suelta, "2(x + 4)"), "= 2x + 8" sí es lo correcto.
+  // Entre los dos renglones, aire para la escuadra del conector y su rótulo
+  // "× 2", que pasan por DEBAJO del primero sin pisar el segundo.
   const latex = m[3]
-    ? `\\begin{aligned} ${cabeza} &= ${planoALatex(m[3])} \\\\ ` +
+    ? `\\begin{aligned} ${cabeza} &= ${planoALatex(m[3])} \\\\[1.6em] ` +
       `${marcar(`${final} pz-resultado`, expandido)} &${marcar(`${final} pz-resultado`, `{}= ${planoALatex(m[3])}`)} \\end{aligned}`
     : `${cabeza} ${marcar(final, `= ${marcar("pz-resultado", expandido)}`)}`;
 
   const focos: Foco[] = interior.map((t, i) => ({
     clase: "pz-reparte",
-    // El factor y el sumando al que llega, cada uno con su recuadro: es lo que
-    // enseña que el de fuera entra en los dos, y no sólo en el primero.
+    // El factor y el sumando al que llega: el conector sale del uno y entra en
+    // el otro. Es lo que enseña que el de fuera entra en los dos, y no sólo en
+    // el primero.
     piezas: ["pz-reparte-0", `pz-reparte-${i + 1}`],
     tipo: "caja",
+    conector: true,
     // Con SU signo: en "2(x − 3)" el 2 multiplica a −3 y da −6. Sin el signo la
     // frase decía "multiplica a 3: da 6" mientras debajo aparecía "2x − 6".
     narracion: `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${t.signo === -1 ? "-" : ""}${
@@ -1014,6 +1043,32 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
  */
 export function escenaDeCierre(texto: string, id: string, narracion?: string | null): Escena | null {
   const limpio = String(texto ?? "").trim();
+
+  // UNA SUMA O UNA RESTA SE CIERRA CON SU RESULTADO, NO EN FILA.
+  //
+  // "Toda suma con números de dos o más cifras se presenta en disposición
+  // vertical formal" (SUB-MTH-05): "234 + 178 = [412]" era la única suma de la
+  // clase escrita en fila. La cuenta, en columna, ya está resuelta en el
+  // Ambiente 1; aquí va la respuesta consolidada —"Resultado: [412] ✓"—, sin
+  // repetir la columna entera. El rótulo es escritura de pizarra (`pz-palabra`).
+  const op = /=/.test(limpio) ? operacionDeLinea(limpio) : null;
+  if (op) {
+    return {
+      id,
+      texto: limpio,
+      latex: `\\htmlClass{pz-palabra pz-rotulo}{\\text{Resultado:}}\\;\\;${marcar("pz-final", `\\boxed{${op.resultado}}`)}`,
+      narracion: "El ejercicio completo, de principio a fin.",
+      clase: "cierre",
+      focos: [
+        {
+          clase: "pz-final",
+          tipo: "resultado",
+          narracion: narracion?.trim() || `Resultado final: ${op.resultado}.`,
+          final: true,
+        },
+      ],
+    };
+  }
   // "Resultado: 42" —un rótulo de palabras y el valor—: el rótulo va como texto
   // y sólo el valor, enmarcado. El marco alrededor de la palabra no enmarca
   // ninguna respuesta.
@@ -1051,9 +1106,18 @@ export function escenaDeCierre(texto: string, id: string, narracion?: string | n
   const respuesta = partes[partes.length - 1];
   if (!respuesta) return null;
 
-  const cabeza = partes.slice(0, -1).join(" = ");
   const enmarcada = marcar("pz-final", `\\boxed{${respuesta}}`);
-  const latex = cabeza ? `${cabeza}${union}${enmarcada}` : enmarcada;
+  // EL EJERCICIO Y SU RESPUESTA, SIN REPETIR EL DESARROLLO:
+  //
+  //   1/2 + 1/3 = [5/6] ✓
+  //
+  // Los pasos intermedios ya están escritos en la pizarra —ninguno se borra—, y
+  // copiarlos otra vez en el cierre no cabía en su mitad a tamaño de aula
+  // (fórmulas de 48 px como mínimo al proyectar): la cadena entera, un renglón
+  // por igualdad, se salía por abajo del Ambiente 2 y la cápsula pisaba el
+  // renglón de encima.
+  // Con un espacio fino tras el igual: la cápsula necesita su aire sin rozarlo.
+  const latex = partes.length > 1 ? `${partes[0]}${union}\\,${enmarcada}` : enmarcada;
   const dicha = limpio.split(/=|≈/).at(-1)?.trim() || limpio;
 
   return {
@@ -1094,7 +1158,7 @@ function conCierre(escena: Escena): Escena {
   const dicha = escena.texto.split("=").at(-1)?.trim() || escena.texto;
   return {
     ...escena,
-    latex: [...partes.slice(0, -1).map((p) => p.trim()), marcar("pz-final", `\\boxed{${respuesta}}`)].join(" = "),
+    latex: `${partes.slice(0, -1).map((p) => p.trim()).join(" = ")} = \\,${marcar("pz-final", `\\boxed{${respuesta}}`)}`,
     focos: [
       ...escena.focos,
       { clase: "pz-final", tipo: "resultado", narracion: `Resultado final: ${dicha}.`, final: true },
@@ -1258,8 +1322,13 @@ export function guionDeLeccion(lineas: readonly (string | PasoSemantico)[]): Esc
   return escenas;
 }
 
-/** Qué hace única a una escena: la cuenta que resuelve, no cómo está escrita. */
-function identidadDeEscena(escena: Escena): string {
+/**
+ * Qué hace única a una escena: la cuenta que resuelve, no cómo está escrita.
+ *
+ * La usa también la pizarra, para saber qué línea escrita corresponde a qué
+ * escena del guion —la que la animación está recorriendo—.
+ */
+export function identidadDeEscena(escena: Escena): string {
   const op = operacionDeLinea(escena.texto);
   if (op) return `columna:${op.a}${op.operador}${op.b}`;
   return `${escena.clase}:${normalizar(escena.texto).replace(/\s+/g, "")}`;

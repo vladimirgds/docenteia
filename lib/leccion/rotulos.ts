@@ -38,6 +38,10 @@ export function rotulosALatex(texto: string): string | null {
   const marcas = [...linea.matchAll(PATRON_ROTULO)];
   if (marcas.length === 0) return null;
 
+  // Una suma o una resta, EN COLUMNA (ver `rotulosEnColumna`).
+  const enColumna = rotulosEnColumna(linea);
+  if (enColumna) return enColumna;
+
   // Lo que queda al quitar los números rotulados tiene que ser sólo la
   // operación: signos, paréntesis y espacios.
   const resto = linea.replace(PATRON_ROTULO, " ").trim();
@@ -55,6 +59,42 @@ export function rotulosALatex(texto: string): string | null {
     .replace(/÷/g, " \\div ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * LA SUMA Y LA RESTA ROTULADAS, EN COLUMNA.
+ *
+ * El cliente la fotografió en horizontal —"234 [sumando] + 178 [sumando] = 412
+ * [suma o total]"— y la dibujó como se hace en clase:
+ *
+ *        234   (sumando)
+ *      + 178   (sumando)
+ *      ─────
+ *        412   (suma o total)
+ *
+ * "Toda suma con números de dos o más cifras se presenta en disposición
+ * vertical formal." Las cifras, alineadas a la derecha por su valor posicional;
+ * cada nombre, a su derecha y entre paréntesis, en letra de pizarra (la clase
+ * `pz-palabra` la pone la hoja de estilos: es escritura, no fórmula).
+ *
+ * `null` si la línea no es exactamente "a [r] ± b [r] = c [r]".
+ */
+function rotulosEnColumna(linea: string): string | null {
+  const m = linea
+    .replace(/[−–—]/g, "-")
+    .match(/^\s*(\d+)\s*\[([^\]]{1,24})\]\s*([+-])\s*(\d+)\s*\[([^\]]{1,24})\]\s*=\s*(\d+)\s*\[([^\]]{1,24})\]\s*$/);
+  if (!m) return null;
+  const [, a, ra, op, b, rb, c, rc] = m;
+  // KaTeX no admite `@{}` en la cabecera del array: el aire entre el número y
+  // su nombre va dentro de la celda.
+  const palabra = (r: string) => `\\enspace\\htmlClass{pz-palabra}{\\text{(${r.trim()})}}`;
+  return (
+    `\\begin{array}{rrl} ` +
+    `& ${a} & ${palabra(ra)} \\\\ ` +
+    `${op} & ${b} & ${palabra(rb)} \\\\ \\hline ` +
+    `& ${c} & ${palabra(rc)} ` +
+    `\\end{array}`
+  );
 }
 
 /** ¿La línea lleva números rotulados? */

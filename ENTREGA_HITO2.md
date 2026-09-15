@@ -2080,3 +2080,106 @@ clásica, con su marco visible y su rótulo; y «Propiedad uniforme de la suma»
 proyectada a 38 px, centrada. Todo contra la **compilación de producción**. Las
 demás baterías, con el servidor levantado —incluido el barrido de 200 sesiones y
 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build` limpios.
+
+## 32. Informe técnico del cliente: los cinco subprocesos universales y las 16 observaciones, verificadas
+
+El cliente envió un informe formal («Informe técnico y funcional de arquitectura
+y diseño pedagógico») con cinco subprocesos que deben gobernar toda la
+plataforma y dieciséis observaciones concretas, y pidió **verificarlas antes de
+darlas por levantadas**. Se implementan como reglas generales —ninguna rama por
+ejercicio— y se verifican en Chrome con una batería nueva que mide en pantalla
+lo que el informe exige.
+
+### SUB-TIP-01 · Una fuente por rol
+
+Cada elemento lleva su discriminador: `TUTOR_DIALOG` (lo que dice el tutor:
+subtítulos, el pie de cada paso, la retroalimentación, el estado del avatar),
+`BOARD_LABEL` (lo escrito en la pizarra: notas, «Ejercicio:», «MCM(2, 3):»,
+rótulos de las marcas, los del dibujo) y `MATH_EXPRESSION` (KaTeX). Los roles
+viven en `lib/leccion/roles.ts`; las familias, en Tailwind (`font-tutor`,
+`font-pizarra`, `font-formula`) y se aplican por `[data-rol]` en `globals.css`,
+nunca a mano en un componente. Segoe Print para el tutor, Chalkboard SE para la
+pizarra (en Windows, que no la trae, su equivalente Comic Sans MS), KaTeX para
+las fórmulas. Lo que dice el tutor compone además sus fórmulas enteras:
+«2(x + 3) = 16» es UNA fórmula, no «2(» de prosa, «x + 3» y «) = 16».
+
+### SUB-PIZ-02 · La pizarra en dos ambientes
+
+`Pizarra` es ahora la pizarra de la clase entera: «Ejercicio:» y el enunciado
+fijos arriba, y debajo dos ambientes al 50 %. Cada línea del desarrollo es un
+paso con su propia pizarra animada y su estado —activa, completada, pendiente—,
+así que **nada se borra**: al terminar, los dos ambientes enseñan el
+procedimiento entero. El reparto lo decide `repartirEnAmbientes`
+(`lib/leccion/ambientes.ts`), una regla monótona que no mira lo que viene
+después: el planteamiento y los pasos que repiten su primer gesto, al Ambiente
+1; los cálculos auxiliares (el MCM, lo que sale de cada columna) y el cierre, al
+Ambiente 2; el primer paso con otro gesto abre el Ambiente 2 y desde ahí todo
+sigue en él. El cierre es el ejercicio y su respuesta en cápsula —«1/2 + 1/3 =
+[5/6] ✓»—, y una suma o una resta se cierra **en columna**, con el total
+enmarcado. Un paso anterior que ya llegaba a la respuesta (la cuenta animada)
+la deja subrayada: se enmarca una sola vez.
+
+### SUB-PRJ-03 · Proyección espejo
+
+Proyectar es poner en pantalla completa **el mismo panel**: no hay una segunda
+vista que pueda enseñar otra cosa. Sin textos de interfaz, fondo `slate-950`,
+fórmulas de 48 px como mínimo (también las de las notas), notas y rótulos de 24
+px como mínimo y 24 px entre notas.
+
+### SUB-NOT-04 · Anotaciones que no tapan
+
+`colocarEtiqueta` (`lib/leccion/etiquetas.ts`) prueba los cuatro lados de cada
+marca contra las cifras MEDIDAS en el navegador y se queda en el primero que
+deja 8 px de aire; la caja de la letra del rótulo se mide también (la de
+Windows tiene ascendentes muy largos) y el rótulo no sale de su ambiente.
+«llevo 1» va estrictamente encima de su llevada (`anclaEtiqueta`). La cápsula de
+la respuesta —esquinas redondeadas, borde esmeralda 500 de 2 px, fondo al 10 %,
+visto a la derecha— recorta su aire contra lo que tiene al lado. La
+distributiva es la escuadra que dibujó el cliente, con la punta de tamaño fijo
+(`markerUnits="userSpaceOnUse"`) y el «× 2» debajo.
+
+### SUB-MTH-05 · Notación formal estricta
+
+`planoALatex` compone `(a)/(b)`, `n/(b)` y `d/dx` como fracciones y `*` como
+`×`; «234 [sumando] + 178 [sumando] = 412 [suma o total]» va en columna con cada
+nombre; la práctica de suma y resta, en columna con el «?» bajo la raya; y
+tampoco la interfaz escribe barras («línea 1 de 2»).
+
+### Fallos encontrados al verificar
+
+La batería nueva cazó, además, estos, ya corregidos: al **reanudar tras una
+pausa** durante una ayuda («Más difícil», «No entendí»), el reproductor
+reescribía la pizarra sin haberla podido vaciar y **duplicaba el desarrollo**
+(ahora vuelve a la foto de la pizarra con la que empezó la ayuda,
+`baseDeAyuda`); **«Más difícil» pulsado en Concepto o en Reglas** traía un
+ejercicio que se quedaba en esa fase, pintado como notas sueltas, sin
+«Ejercicio:» ni animación (ahora abre antes la fase del ejemplo); la solución de
+una ecuación larga no cabía en su ambiente (va en
+su propio renglón, alineada por el igual); la cápsula podía rozar el «=»; al
+proyectar, «(suma o total)» se salía por la derecha; KaTeX mete espacios de
+anchura cero (`vlist-s`) que se contaban como cifras; y el ámbar del dibujo daba
+3,2:1 sobre blanco (ahora ámbar 700, 5:1).
+
+### Comprobado
+
+`qa/observaciones.mjs` (nuevo) da cuatro clases enteras en Chrome —aritmética
+básica y avanzada con llevadas, fracciones con MCM y ecuaciones con
+distributiva, hasta el nivel difícil—, mide la pizarra de continuo y, en cada
+momento clave, pausa, fotografía la pantalla y la proyección y las compara:
+**23.176 comprobaciones y 0 fallos**, con 84 capturas de evidencia: en
+proyección, fórmulas de 48 px, notas de 25,6 px y rótulos de 26 px como mínimo;
+ningún rótulo a menos de 9,5 px de una cifra; contraste del dibujo de 13,6:1
+proyectado y 4,7:1 en pantalla; y ni una «/» ni un «*» en el texto visible. Con
+`QA_VOZ_REAL=1` corre con el **motor de voz real** del sistema: una clase de
+fracciones entera, hasta el nivel difícil, con pausas y reanudaciones, **21.035
+comprobaciones y 0 fallos** (en esta máquina sólo hay voces de Windows en
+inglés: se usa una, declarada es-ES; lo que se mide es el ritmo real de la voz,
+no la pronunciación). `qa/hito2.mjs`: **597** (bloque nuevo con los cinco
+subprocesos y las comprobaciones de fuente reescritas a la nueva pizarra);
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **86** (sus comprobaciones de la
+pizarra antigua, reescritas a la de dos ambientes: la escuadra, la cápsula del
+cierre, la fracción de palabras, las fuentes por rol); las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, qa 1.462,
+sesiones 126, aceptación 24, matemáticas 100, frontend 10 y el barrido de 200
+sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`,
+limpios.

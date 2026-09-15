@@ -3,27 +3,28 @@
 import katex from "katex";
 import { Fragment, useMemo } from "react";
 
-import { expresionFormalDeFraccion, partirNota } from "@/lib/leccion/notas";
+import { partirNota } from "@/lib/leccion/notas";
+import { ROL, rol } from "@/lib/leccion/roles";
 import { planoALatex, separarProsaYMatematicas } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 
 /**
  * UNA NOTA ESCRITA EN LA PIZARRA, CON SU JERARQUÍA.
  *
- * El rótulo ("Fracciones equivalentes:", "MCM(2, 3):") va en la letra de
- * pizarra y a tamaño de aula; lo que dice, con sus fórmulas compuestas por
- * KaTeX; y cada idea en su renglón. Es lo que el cliente pidió para la
- * proyección: antes el rótulo salía a tamaño de párrafo junto a una fórmula a
- * tamaño de proyección, y en el aula no se leía.
+ * El rótulo ("Fracciones equivalentes:", "MCM(2, 3):") y la prosa van en letra
+ * de pizarra —rol BOARD_LABEL—; las fórmulas, compuestas por KaTeX —rol
+ * MATH_EXPRESSION—; y cada idea en su renglón, ALINEADA A LA IZQUIERDA y con
+ * aire entre una y otra: el cliente vio las propiedades "amontonadas al centro"
+ * y pidió alinearlas a la izquierda con espaciado amplio.
  *
  * Los tamaños no se fijan aquí sino en la hoja de estilos (`.pz-nota`), que es
- * donde vive el tema de proyección: fuera de él la nota se lee a tamaño normal.
+ * donde vive el tema de proyección.
  */
 export function NotaDePizarra({ texto, className }: { texto: string; className?: string }) {
   const trozos = useMemo(() => partirNota(texto), [texto]);
   if (trozos.length === 0) return null;
   return (
-    <div className={cn("pz-nota pz-tiza", className)}>
+    <div className={cn("pz-nota", className)} {...rol(ROL.PIZARRA)}>
       {trozos.map((t, i) => (
         <p key={i} className="pz-nota-trozo">
           {t.rotulo ? <span className="pz-nota-rotulo">{t.rotulo}</span> : null}
@@ -41,9 +42,8 @@ export function NotaDePizarra({ texto, className }: { texto: string; className?:
 
 /**
  * Lo que dice la nota: la prosa en letra de pizarra y cada fórmula compuesta
- * en ESTILO DE BLOQUE (`\displaystyle`). En línea, KaTeX baja las fracciones a
- * tamaño de subíndice: proyectadas, "2/4 = 1/2" quedaba con los números más
- * pequeños que el propio rótulo.
+ * en ESTILO DE BLOQUE (`\displaystyle`): en línea, KaTeX baja las fracciones a
+ * tamaño de subíndice.
  */
 function CuerpoDeNota({ texto }: { texto: string }) {
   const partes = useMemo(
@@ -68,7 +68,7 @@ function CuerpoDeNota({ texto }: { texto: string }) {
     <span className="pz-nota-cuerpo">
       {partes.map((p, i) =>
         "html" in p && p.html ? (
-          <span key={i} dangerouslySetInnerHTML={{ __html: p.html }} />
+          <span key={i} {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: p.html }} />
         ) : (
           <Fragment key={i}>{p.contenido}</Fragment>
         ),
@@ -78,11 +78,33 @@ function CuerpoDeNota({ texto }: { texto: string }) {
 }
 
 /**
+ * Una fracción escrita con PALABRAS —Numerador sobre Denominador—, con su raya
+ * horizontal. Las palabras son escritura de pizarra, así que van en su letra y a
+ * su tamaño; antes las componía KaTeX en su tipografía de fórmula y en la
+ * pizarra se leían en otra letra que las notas de al lado (el cliente:
+ * "considerar el mismo tamaño y tipo de letra").
+ */
+function FraccionDePalabras({ arriba, abajo }: { arriba: string; abajo: string }) {
+  return (
+    <span
+      className="pz-fraccion-palabras"
+      {...rol(ROL.PIZARRA)}
+      role="math"
+      aria-label={`${arriba} partido por ${abajo}`}
+    >
+      <span className="pz-fraccion-palabras-arriba">{arriba}</span>
+      <span className="pz-fraccion-palabras-abajo">{abajo}</span>
+    </span>
+  );
+}
+
+/**
  * La definición formal de la fracción del dibujo: Numerador sobre Denominador,
- * igual a 1/4, con las dos rayas horizontales y en una sola fórmula.
+ * igual a 1 sobre 4, con las dos rayas horizontales.
  *
- * La usan la pizarra y la proyección de la fase de Concepto: la misma
- * expresión en los dos sitios, compuesta del mismo modo.
+ * Las palabras, en letra de pizarra (son escritura); el igual y la fracción
+ * numérica, en KaTeX (son fórmula). A la misma letra y tamaño que las notas: es
+ * una nota más de la pizarra, no un recuadro aparte.
  */
 export function FraccionFormal({
   numerador,
@@ -93,41 +115,25 @@ export function FraccionFormal({
   denominador?: number;
   className?: string;
 }) {
+  const n = Number.isInteger(numerador) ? (numerador as number) : 1;
+  const d = Number.isInteger(denominador) && (denominador as number) > 0 ? (denominador as number) : 4;
   const html = useMemo(() => {
     try {
-      return katex.renderToString(expresionFormalDeFraccion(numerador, denominador), {
-        displayMode: true,
-        throwOnError: false,
-        strict: false,
-      });
+      return katex.renderToString(`= \\dfrac{${n}}{${d}}`, { displayMode: false, throwOnError: false, strict: false });
     } catch {
       return null;
     }
-  }, [numerador, denominador]);
-  if (!html) return null;
+  }, [n, d]);
   return (
     <div
-      className={cn("pz-fraccion-formal", className)}
-      role="math"
-      aria-label={`Numerador partido por denominador, igual a ${numerador ?? 1} partido por ${denominador ?? 4}`}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+      className={cn("pz-nota pz-fraccion-formal", className)}
+      {...rol(ROL.PIZARRA)}
+      aria-label={`Numerador partido por denominador, igual a ${n} partido por ${d}`}
+    >
+      <p className="pz-nota-trozo">
+        <FraccionDePalabras arriba="Numerador" abajo="Denominador" />{" "}
+        {html ? <span {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: html }} /> : `= ${n} sobre ${d}`}
+      </p>
+    </div>
   );
-}
-
-/** "Numerador / Denominador" como fracción de verdad, con su raya. */
-function FraccionDePalabras({ arriba, abajo }: { arriba: string; abajo: string }) {
-  const html = useMemo(() => {
-    const limpio = (s: string) => s.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]/g, "");
-    try {
-      return katex.renderToString(`\\dfrac{\\text{${limpio(arriba)}}}{\\text{${limpio(abajo)}}}`, {
-        throwOnError: false,
-        strict: false,
-      });
-    } catch {
-      return null;
-    }
-  }, [arriba, abajo]);
-  if (!html) return <span>{`${arriba} / ${abajo}`}</span>;
-  return <span className="pz-nota-fraccion" dangerouslySetInnerHTML={{ __html: html }} />;
 }

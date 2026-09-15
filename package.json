@@ -28,6 +28,7 @@
     "qa:sesiones": "node qa/sesiones.mjs",
     "qa:aceptacion": "node qa/aceptacion.mjs",
     "qa:barrido": "node qa/barrido.mjs",
+    "qa:observaciones": "node qa/observaciones.mjs",
     "qa:todo": "npm test",
     "legacy:start": "node server.js",
     "qa:paso1": "node qa/paso1.mjs",

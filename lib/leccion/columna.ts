@@ -262,7 +262,15 @@ export function marcasDeColumna(op: OperacionEnColumna, ancho: number): string[]
  */
 export function columnaVertical(
   op: OperacionEnColumna,
-  opciones: { conResultado: boolean },
+  opciones: {
+    conResultado: boolean;
+    /**
+     * Bajo la raya, el "?" de lo que se pregunta. Es el planteamiento de la
+     * práctica tal como lo dibujó el cliente —"678 + / 145 / ___ / ?"—: la
+     * cuenta preparada para resolverse por columnas.
+     */
+    conIncognita?: boolean;
+  },
 ): string {
   const ancho = Math.max(String(op.a).length, String(op.b).length, String(op.resultado).length);
   const celdas = (lista: string[]) => lista.join(" & ");
@@ -283,7 +291,9 @@ export function columnaVertical(
   const cuerpo = filas.join(" \\\\ ") + " \\\\ \\hline";
   const total = opciones.conResultado
     ? " " + celdas(["", ...cifras(op.resultado, ancho)])
-    : "";
+    : opciones.conIncognita
+      ? " " + celdas(["", ...Array.from({ length: ancho }, (_, i) => (i === ancho - 1 ? "?" : ""))])
+      : "";
 
   // Una columna por cifra, más la primera para el signo.
   const columnas = "r" + "c".repeat(ancho);
@@ -310,7 +320,7 @@ export function columnasDeOperacion(texto: string): number {
  */
 export function columnaDeLinea(
   texto: string,
-  opciones: { conResultado: boolean },
+  opciones: { conResultado: boolean; conIncognita?: boolean },
 ): string | null {
   const op = leerSumaOResta(texto);
   return op ? columnaVertical(op, opciones) : null;

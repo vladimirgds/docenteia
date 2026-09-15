@@ -703,9 +703,7 @@ const desdeFr = Date.now();
 while (Date.now() - desdeFr < 40_000) {
   vigilanciaFr.push(
     await paginaFr.evaluate(() => {
-      const fase = [...document.querySelectorAll("h2")]
-        .map((h) => h.textContent?.trim())
-        .find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "";
+      const fase = (() => { const id = document.querySelector(".pz-pizarra")?.getAttribute("data-fase") ?? ""; return /concepto/i.test(id) ? "Concepto" : /regla|propiedad/i.test(id) ? "Reglas y propiedades" : /ejemplo/i.test(id) ? "Ejemplo paso a paso" : /pr[aá]ctica/i.test(id) ? "Práctica" : ""; })();
       // Quién decidió lo que marca la pizarra animada en este momento: la
       // etiqueta que mandó el motor, o una deducción a partir del texto.
       const panel = document.querySelector(".pz-animada");
@@ -912,10 +910,16 @@ const estadoVisible = (pagina) =>
       const a = el?.querySelector("annotation");
       if (a) { pregunta = a.textContent; break; }
     }
+    // La pizarra de dos ambientes: el ejercicio en el encabezado "Ejercicio:" y
+    // el desarrollo, los pasos de los ambientes que no son el planteamiento.
+    const encabezado = document.querySelector(".pz-encabezado-ejercicio");
+    void porRotulo;
     return {
-      tarjeta: (porRotulo("Ejercicio")?.innerText ?? "").replace(/\s+/g, " ").trim(),
-      tarjetaLatex: porRotulo("Ejercicio")?.querySelector("annotation")?.textContent ?? null,
-      desarrollo: [...(porRotulo("Desarrollo")?.querySelectorAll("annotation") ?? [])].map((a) => a.textContent),
+      tarjeta: (encabezado?.innerText ?? "").replace(/\s+/g, " ").trim(),
+      tarjetaLatex: encabezado?.querySelector(".pz-encabezado-formula annotation")?.textContent ?? null,
+      desarrollo: [...document.querySelectorAll('.pz-ambiente .pz-elemento:not([data-papel="planteamiento"])')]
+        .map((e) => e.querySelector("annotation")?.textContent)
+        .filter(Boolean),
       pregunta,
       completada: /¡Lección completada!/.test(document.body.innerText ?? ""),
       proyeccion: [...document.querySelectorAll("button")].some((b) => /Modo proyección/.test(b.textContent ?? "")),
@@ -965,12 +969,15 @@ async function contestar(pagina, estado) {
   let marca = null;
   for (let k = 0; k < 160 && !marca; k++) {
     marca = await pagina.evaluate(() => {
-      const g = document.querySelector('.pz-animada .pz-resaltado[data-tipo="resultado"]');
+      // La respuesta ENMARCADA (la del cierre), y las cifras de SU paso: la
+      // pizarra enseña varios pasos a la vez.
+      const g = document.querySelector('.pz-animada .pz-resaltado[data-tipo="resultado"][data-final="si"]');
       if (!g) return null;
       const svg = g.ownerSVGElement.getBoundingClientRect();
-      const glifos = [...document.querySelectorAll(".pz-animada .pz-resultado, .pz-animada .pz-solucion")]
+      const paso = g.closest(".pz-animada");
+      const glifos = [...paso.querySelectorAll(".pz-resultado, .pz-solucion, .pz-final")]
         .flatMap((el) => [el, ...el.querySelectorAll("*")])
-        .filter((el) => el.childElementCount === 0 && (el.textContent ?? "").trim())
+        .filter((el) => el.childElementCount === 0 && /[^\s\u200b-\u200d\ufeff]/.test(el.textContent ?? ""))
         .map((el) => el.getBoundingClientRect())
         .filter((r) => r.width > 0);
       if (glifos.length === 0) return null;
@@ -1136,13 +1143,17 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
         const texto = document.body.innerText ?? "";
         // La expresión formal, VERTICAL (revisión daa127d, 2ª): una sola fórmula
         // con dos rayas de fracción y sin ninguna barra inclinada.
+        // Las PALABRAS van en letra de pizarra con su raya (HTML) y "= 1/4" en
+        // KaTeX: "el mismo tamaño y tipo de letra" que las notas, pidió el cliente.
         const f = document.querySelector(".pz-fraccion-formal");
         const compuesta = (f?.querySelector(".katex-html")?.textContent ?? "").replace(/\s+/g, "");
         return {
           numerador: /numerador: \d/.test(texto),
           denominador: /denominador: \d/.test(texto),
-          formal: Boolean(f) && f.querySelectorAll(".mfrac").length === 2 &&
-            /Numerador/.test(compuesta) && /Denominador/.test(compuesta) && /=/.test(compuesta) && !/\//.test(compuesta),
+          formal: Boolean(f) && f.querySelectorAll(".mfrac").length === 1 &&
+            /Numerador/.test(f.querySelector(".pz-fraccion-palabras-arriba")?.textContent ?? "") &&
+            /Denominador/.test(f.querySelector(".pz-fraccion-palabras-abajo")?.textContent ?? "") &&
+            /=/.test(compuesta) && !/\//.test(f.textContent ?? ""),
           barra: /Numerador\s*\/\s*Denominador/.test(texto),
         };
       }),
@@ -1200,8 +1211,10 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
   }
   check("se consigue entrar en Modo proyección", enProyeccion);
 
+  // Las llevadas se animan en el EJEMPLO (en Reglas ya no se anima ninguna
+  // cuenta, OBS-04 del informe): se espera a que la clase llegue a él.
   let medida = null;
-  for (let k = 0; k < 60 && !medida; k++) {
+  for (let k = 0; k < 600 && !medida; k++) {
     medida = await pagina.evaluate(() => {
       const t = [...document.querySelectorAll(".pz-etiqueta")].find((x) => /llevo/i.test(x.textContent ?? ""));
       if (!t) return null;
@@ -1212,7 +1225,7 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     if (!medida) await pagina.waitForTimeout(300);
   }
   if (!medida) {
-    check('la lección llega a mostrar "llevo 1" en proyección', false, "no apareció en 18 s");
+    check('la lección llega a mostrar "llevo 1" en proyección', false, "no apareció en 3 min");
   } else {
     const holgura = medida.caja.top - medida.etiqueta.bottom;
     console.log(`  · borde de abajo de "llevo 1": ${medida.etiqueta.bottom.toFixed(0)} · borde de arriba de la caja: ${medida.caja.top.toFixed(0)} · holgura: ${holgura.toFixed(1)}px`);
@@ -1239,13 +1252,15 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     };
   });
   console.log(`  · fuentes computadas: ${JSON.stringify(fuentes)}`);
+  // El informe del cliente (SUB-TIP-01) fijó una fuente por ROL: lo que dice
+  // el tutor, Segoe Print; lo que se escribe en la pizarra, Chalkboard SE.
   check(
-    "el subtítulo del tutor YA NO pide letra de pizarra: es habla, no escritura",
-    Boolean(fuentes.subtitulo) && !/Segoe Print|Comic Sans|Chalkboard/.test(fuentes.subtitulo),
+    "el subtítulo del tutor es TUTOR_DIALOG: Segoe Print",
+    Boolean(fuentes.subtitulo) && /^"?Segoe Print/.test(fuentes.subtitulo),
   );
   check(
-    "la etiqueta ESCRITA sobre la pizarra sí la pide",
-    Boolean(fuentes.etiqueta) && /Chalkboard SE|Segoe Print/.test(fuentes.etiqueta),
+    "la etiqueta ESCRITA sobre la pizarra es BOARD_LABEL: Chalkboard SE",
+    Boolean(fuentes.etiqueta) && /^"?Chalkboard SE/.test(fuentes.etiqueta),
   );
   check(
     "y las dos fuentes son distintas entre sí",
@@ -1272,8 +1287,10 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     pagina.evaluate(() => {
       const panel = document.querySelector(".pz-animada");
       if (!panel || panel.getAttribute("data-gesto") !== "distributiva") return null;
-      const arco = panel.querySelector('g[data-tipo="reparto"] path');
-      const marcador = document.querySelector("marker#pz-flecha-reparto");
+      // El trazo del conector (no el de su punta, que va dentro del marker).
+      const arco = panel.querySelector('g[data-tipo="reparto"] path.pz-conector');
+      // La punta, definida con el propio conector y de tamaño fijo.
+      const marcador = panel.querySelector('g[data-tipo="reparto"] marker[markerUnits="userSpaceOnUse"]');
       return arco ? { hayArco: true, tieneMarcador: Boolean(marcador), d: arco.getAttribute("d") } : { hayArco: false };
     });
 
@@ -1310,10 +1327,11 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     console.log("  · no salió ningún ejemplo con paréntesis a la izquierda en 6 intentos (puede pasar por azar)");
   } else {
     console.log(`  · arco: ${vista.d}`);
-    check("aparece el brazo curvo entre el factor y el sumando", vista.hayArco);
-    check("con su punta de flecha definida", vista.tieneMarcador);
-    // El arco va de un punto a otro con una curva (comando "Q"), no una recta.
-    check("es una curva, no una línea recta", /^M [\d.-]+ [\d.-]+ Q /.test(vista.d ?? ""));
+    check("aparece el conector entre el factor y el sumando", vista.hayArco);
+    check("con su punta de flecha definida, de tamaño fijo", vista.tieneMarcador);
+    // Como lo dibujó el cliente (OBS-16): una ESCUADRA que baja del factor,
+    // cruza por debajo de la expresión y sube al sumando.
+    check("es una escuadra limpia: baja, cruza por debajo y sube", /^M [\d.-]+ [\d.-]+ V [\d.-]+ H [\d.-]+ V [\d.-]+$/.test(vista.d ?? ""));
 
     // REVISIÓN daa127d, PUNTO 5: la tarjeta de arriba no adelanta lo que la
     // animación de abajo todavía está repartiendo. Se vigila mientras dura el
@@ -1324,15 +1342,15 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     while (Date.now() - t0 < 12000) {
       muestras.push(
         await pagina.evaluate(() => {
-          const rotulo = [...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Ejercicio");
-          const tarjeta = rotulo?.parentElement?.querySelector("annotation")?.textContent ?? "";
+          // El enunciado, en el encabezado "Ejercicio:" de la pizarra.
+          const tarjeta = document.querySelector(".pz-encabezado-formula annotation")?.textContent ?? "";
           const panel = document.querySelector(".pz-animada");
           const fila = panel?.querySelector(".pz-rev-2.pz-resultado");
           return {
             tarjeta,
             gesto: panel?.getAttribute("data-gesto") ?? null,
             repartido: fila ? Number(getComputedStyle(fila).opacity) > 0.5 : false,
-            etiqueta: panel?.querySelector(".pz-etiqueta")?.textContent ?? null,
+            etiqueta: panel?.querySelector(".pz-etiqueta[data-etiqueta]")?.textContent ?? null,
             pie: panel?.querySelector(".pz-pie")?.textContent ?? "",
           };
         }),
@@ -1394,7 +1412,7 @@ console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí e
   // proyectadas, paso animado)— cada ~120 ms, hasta llegar al ejemplo.
   const foto = () =>
     pagina.evaluate(() => {
-      const fase = [...document.querySelectorAll("h2")].map((h) => h.textContent?.trim()).find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "";
+      const fase = (() => { const id = document.querySelector(".pz-pizarra")?.getAttribute("data-fase") ?? ""; return /concepto/i.test(id) ? "Concepto" : /regla|propiedad/i.test(id) ? "Reglas y propiedades" : /ejemplo/i.test(id) ? "Ejemplo paso a paso" : /pr[aá]ctica/i.test(id) ? "Práctica" : ""; })();
       const subtitulo = document.querySelector('p[class*="bg-muted/60"]')?.textContent ?? "";
       const notas = [...document.querySelectorAll(".modo-proyeccion .pz-nota")].map((n) => (n.textContent ?? "").replace(/\s+/g, " ").trim());
       const rotulo = document.querySelector(".modo-proyeccion .pz-nota-rotulo");
@@ -1404,10 +1422,12 @@ console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí e
         fase,
         subtitulo,
         notas,
-        fraccionDePalabras: Boolean(document.querySelector(".modo-proyeccion .pz-nota-fraccion .mfrac")),
+        // Numerador sobre Denominador, con su raya, en letra de pizarra.
+        fraccionDePalabras: Boolean(document.querySelector(".modo-proyeccion .pz-fraccion-palabras-arriba")),
         rotulo: rotulo ? { px: parseFloat(getComputedStyle(rotulo).fontSize), fuente: getComputedStyle(rotulo).fontFamily } : null,
         formulaPx: formula ? parseFloat(getComputedStyle(formula).fontSize) : null,
-        etiqueta: document.querySelector(".pz-animada .pz-etiqueta")?.textContent ?? null,
+        // El rótulo de una marca (no la sonda con la que se mide la letra).
+        etiqueta: document.querySelector(".pz-animada .pz-etiqueta[data-etiqueta]")?.textContent ?? null,
       };
     });
   const fotos = [];
@@ -1533,15 +1553,17 @@ console.log("\n── Revisión daa127d (2ª): fracción formal, cierre enmarcad
 /** Todo lo que se ve del panel animado y de la proyección, de una vez. */
 const fotoPanel = (pagina) =>
   pagina.evaluate(() => {
-    const panel = document.querySelector(".pz-animada");
-    const fijo = document.querySelector(".pz-enunciado-fijo");
-    const nota = document.querySelector(".modo-proyeccion .pz-animada .pz-nota");
+    // El paso que la voz está recorriendo (la pizarra enseña todos a la vez).
+    const panel = document.querySelector('.pz-animada[data-estado="activa"]');
+    // "Ejercicio:" y el enunciado, fijos en lo alto de la pizarra.
+    const fijo = document.querySelector(".pz-encabezado-ejercicio");
+    const nota = document.querySelector(".modo-proyeccion .pz-ambiente .pz-nota");
     const formal = document.querySelector(".modo-proyeccion .pz-fraccion-formal");
     // Se comparan fórmulas sin sus marcas ni su espaciado: la tarjeta puede
     // llevar resaltados (\htmlClass) y la cabecera fija va limpia.
     const plano = (t) => String(t ?? "").replace(/\\htmlClass\{[^}]*\}/g, "").replace(/\\left|\\right|[{}\s]/g, "");
     return {
-      fase: [...document.querySelectorAll("h2")].map((h) => h.textContent?.trim()).find((t) => /Concepto|Reglas y propiedades|Ejemplo|Práctica/.test(t ?? "")) ?? "",
+      fase: (() => { const id = document.querySelector(".pz-pizarra")?.getAttribute("data-fase") ?? ""; return /concepto/i.test(id) ? "Concepto" : /regla|propiedad/i.test(id) ? "Reglas y propiedades" : /ejemplo/i.test(id) ? "Ejemplo paso a paso" : /pr[aá]ctica/i.test(id) ? "Práctica" : ""; })(),
       subtitulo: document.querySelector('p[class*="bg-muted/60"]')?.textContent ?? "",
       proyeccion: Boolean(document.querySelector(".modo-proyeccion")),
       panel: document.querySelector("[data-panel]")?.getAttribute("data-panel") ?? null,
@@ -1552,9 +1574,10 @@ const fotoPanel = (pagina) =>
       tachado: Boolean(panel?.querySelector('.pz-resaltado[data-tipo="tachado"]')),
       fijo: fijo ? plano(fijo.querySelector("annotation")?.textContent ?? fijo.textContent) : null,
       fijoAbajo: fijo ? fijo.getBoundingClientRect().bottom : null,
-      pasoArriba: panel ? panel.getBoundingClientRect().top : null,
-      tarjeta: plano([...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Ejercicio")?.parentElement?.querySelector("annotation")?.textContent),
+      pasoArriba: (panel ?? document.querySelector(".pz-animada"))?.getBoundingClientRect().top ?? null,
+      tarjeta: plano(document.querySelector(".pz-encabezado-formula annotation")?.textContent),
       formal: formal ? formal.querySelectorAll(".mfrac").length : 0,
+      palabras: Boolean(formal?.querySelector(".pz-fraccion-palabras-arriba") && formal?.querySelector(".pz-fraccion-palabras-abajo")),
       notaPx: nota ? parseFloat(getComputedStyle(nota).fontSize) : null,
       notaCentro: nota ? getComputedStyle(nota).textAlign : null,
       notaTexto: nota ? (nota.textContent ?? "").replace(/\s+/g, " ").trim() : null,
@@ -1596,9 +1619,11 @@ async function muestrearHastaLaPractica(pagina, ms) {
   const fotos = await muestrearHastaLaPractica(pagina, 150_000);
   console.log(`  · fases: ${[...new Set(fotos.map((f) => f.fase).filter(Boolean))].join(" → ")} · ${fotos.length} muestras`);
 
+  // Numerador sobre Denominador en letra de pizarra (con su raya) y "= 1/4" en
+  // KaTeX: las dos rayas, cada una en la letra de su rol.
   check(
     "Concepto proyectado: bajo el gráfico, la definición formal con sus DOS rayas de fracción",
-    fotos.some((f) => /Concepto/.test(f.fase) && f.formal === 2),
+    fotos.some((f) => /Concepto/.test(f.fase) && f.formal === 1 && f.palabras),
   );
   const vistoFueraDeSitio = fotos.filter((f) => f.visto && f.gesto !== "cierre");
   check(
@@ -1637,7 +1662,15 @@ async function muestrearHastaLaPractica(pagina, ms) {
   const ultima = fin.desarrollo.at(-1) ?? "";
   const [n, d] = String(correcta).split("/");
   const cerrada = /\\boxed\{/.test(ultima) && (d ? ultima.includes(`\\frac{${n}}{${d}}`) : ultima.includes(String(n)));
-  const cuerpo = await pagina.evaluate(() => document.body.innerText ?? "");
+  // La fracción del feedback va compuesta con su raya (ni una "/" en pantalla):
+  // se lee la fórmula que la compone, no el texto.
+  const feedback = await pagina.evaluate(() => {
+    const el = document.querySelector(".pz-retroalimentacion");
+    if (!el) return null;
+    const c = el.cloneNode(true);
+    c.querySelectorAll(".katex-mathml").forEach((x) => x.remove());
+    return { texto: c.textContent ?? "", latex: [...el.querySelectorAll("annotation")].map((x) => x.textContent).join(" ") };
+  });
   console.log(`  · práctica "${enunciado}" fallada tres veces · última línea: ${ultima.replace(/\\htmlClass\{[^}]*\}/g, "").slice(0, 80)}…`);
   check(
     "fallada con los intentos agotados, el ejercicio NO queda inconcluso: la pizarra termina en su resultado enmarcado",
@@ -1645,18 +1678,23 @@ async function muestrearHastaLaPractica(pagina, ms) {
   );
   check(
     "y el tutor da el feedback de conclusión con el resultado final",
-    new RegExp(`resultado final es ${String(correcta).replace("/", "\\/")}`).test(cuerpo),
+    Boolean(feedback) && /resultado final es/i.test(feedback.texto) &&
+      (d ? feedback.latex.includes(`\\frac{${n}}{${d}}`) : feedback.texto.includes(String(n))),
+    JSON.stringify(feedback),
   );
+  // La línea de cierre, en el Ambiente 2 con su cápsula esmeralda y el visto.
   const rotuloCierre = await pagina.evaluate(() => {
-    const fbox = [...document.querySelectorAll(".pz-final .fbox")].find((b) => !b.closest(".pz-animada"));
+    const cierre = document.querySelector('[data-ambiente="2"] [data-papel="cierre"]');
+    const marco = cierre?.querySelector("rect.pz-marco-final");
     return {
-      rotulo: [...document.querySelectorAll("span")].some((s) => /^Resultado final$/i.test((s.textContent ?? "").trim())),
-      borde: fbox ? getComputedStyle(fbox).borderTopColor : null,
+      enAmbiente2: Boolean(cierre),
+      borde: marco ? getComputedStyle(marco).stroke : null,
+      visto: Boolean(cierre?.querySelector("path.pz-visto")),
     };
   });
   check(
-    "en la pizarra clásica, la línea de cierre lleva su marco visible y su rótulo «Resultado final»",
-    rotuloCierre.rotulo && Boolean(rotuloCierre.borde) && !/rgba\(0, 0, 0, 0\)|transparent/.test(rotuloCierre.borde),
+    "la línea de cierre va en el Ambiente 2, con su cápsula esmeralda y su visto",
+    rotuloCierre.enAmbiente2 && /16, 185, 129/.test(rotuloCierre.borde ?? "") && rotuloCierre.visto,
     JSON.stringify(rotuloCierre),
   );
   check("sin errores en la página", errores.length === 0, errores.slice(0, 2).join(" | "));
@@ -1674,8 +1712,9 @@ async function muestrearHastaLaPractica(pagina, ms) {
   const regla = primera.filter((f) => /Propiedad uniforme/.test(f.notaTexto ?? ""));
   console.log(`  · regla proyectada: ${regla[0] ? `${regla[0].notaPx}px · ${regla[0].notaCentro}` : "—"}`);
   check(
-    "«Propiedad uniforme de la suma: lo mismo a los dos lados» se proyecta a tamaño de aula (≥ text-3xl, 30 px) y centrada",
-    regla.length > 0 && regla.every((f) => f.notaPx >= 30 && f.notaCentro === "center"),
+    // El informe fijó 24 px como mínimo y la alineación a la izquierda (OBS-10).
+    "«Propiedad uniforme de la suma: lo mismo a los dos lados» se proyecta a tamaño de aula (≥ 24 px) y alineada a la izquierda",
+    regla.length > 0 && regla.every((f) => f.notaPx >= 24 && (f.notaCentro === "left" || f.notaCentro === "start")),
   );
 
   // "Más difícil" trae 2(x + 3) = 16, el ejercicio de la captura. Para pulsar se

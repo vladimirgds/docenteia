@@ -132,10 +132,12 @@ for (const c of casosLatex) {
   check(`«${c.entrada}» → «${c.esperado}»`, obtenido === c.esperado, `obtenido: «${obtenido}»`);
 }
 
-// "d/dx" es notación de derivada, no una fracción: convertirla la rompería.
+// "d/dx" es notación de derivada: se compone como el operador de Leibniz, d
+// sobre dx, que es como lo escribe un libro de texto. El informe del cliente
+// prohíbe cualquier "/" en pantalla (SUB-MTH-05); antes se dejaba la barra.
 check(
-  "d/dx no se convierte en fracción",
-  !planoALatex("d/dx[x³]").includes("\\frac"),
+  "d/dx se compone como el operador de Leibniz, sin barra inclinada",
+  planoALatex("d/dx[x³]").startsWith("\\frac{d}{dx}") && !planoALatex("d/dx[x³]").includes("/"),
   planoALatex("d/dx[x³]"),
 );
 
@@ -401,10 +403,13 @@ if (catalogo) {
   // El enunciado tiene que quedar anclado. Es la regresión que ya ocurrió una
   // vez: al componer sólo la última línea, desaparecía en cuanto empezaba el
   // desarrollo.
+  // Con los dos ambientes: el enunciado va fijo en el encabezado ("Ejercicio:")
+  // y abre el Ambiente 1; los pasos se reparten detrás, sin borrarlo nunca.
   check(
     "pizarra.tsx ancla el enunciado y compone el desarrollo aparte",
-    /\(ejercicio \|\| planteaEjercicio\)\s*&&/.test(fuentePizarra) &&
-      /pasos\.length\s*>\s*0/.test(fuentePizarra),
+    /\{planteaEjercicio && \(\s*<EncabezadoEjercicio texto=\{ejercicio\?\.texto \?\? null\} \/>/.test(fuentePizarra) &&
+      /\{ linea: ejercicio, papel: "planteamiento" \}/.test(fuentePizarra) &&
+      /for \(const linea of desarrollo\)/.test(fuentePizarra),
   );
   // Y el paso intermedio NO puede aparecer en la práctica: revelaría la
   // respuesta que el alumno tiene que hallar.
@@ -1343,26 +1348,30 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
     "utf8",
   );
 
-  // La tarjeta de arriba se pinta por entrar en la fase, no por haber pasos.
+  // PIZARRA DE DOS AMBIENTES (informe del cliente, SUB-PIZ-02): "Ejercicio:" y
+  // el enunciado fijos arriba; debajo, el Ambiente 1 y el Ambiente 2.
+  // El encabezado se pinta por entrar en la fase, no por haber pasos.
   check(
-    "la tarjeta de EJERCICIO no está condicionada al desarrollo",
-    /\{\(ejercicio \|\| planteaEjercicio\) && \(/.test(fuentePizarra2),
+    "el encabezado del ejercicio no está condicionado al desarrollo",
+    /\{planteaEjercicio && \(\s*<EncabezadoEjercicio/.test(fuentePizarra2) &&
+      /const planteaEjercicio =\s*actual != null && \(esFaseDeEjemplo\(actual\.id\) \|\| esFaseDePractica\(actual\.id\)\);/.test(fuentePizarra2),
   );
-  // Y la de abajo sigue oculta mientras no haya nada que desarrollar.
+  // Y el Ambiente 2 no enseña nada mientras ningún paso llegue a él.
   check(
-    "la tarjeta de DESARROLLO permanece oculta hasta que hay pasos",
-    /\{pasos\.length > 0 && \(/.test(fuentePizarra2),
+    "el Ambiente 2 no enseña nada hasta que un paso llega a él",
+    /elementos\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
   check(
-    "el enunciado se compone por encima del desarrollo",
-    fuentePizarra2.indexOf("(ejercicio || planteaEjercicio)") <
-      fuentePizarra2.indexOf("{pasos.length > 0"),
+    "el enunciado se compone por encima de los dos ambientes",
+    fuentePizarra2.indexOf("<EncabezadoEjercicio texto=") > 0 &&
+      fuentePizarra2.indexOf("<EncabezadoEjercicio texto=") < fuentePizarra2.indexOf('<div className="pz-ambientes">'),
   );
-  // En una fase con ejercicio los pasos no se degradan a "paso suelto".
+  // En una fase con ejercicio las líneas son PASOS del ejercicio, no notas sueltas.
   check(
-    "en una fase con ejercicio los pasos van al desarrollo, no sueltos",
-    /if \(!planteaEjercicio\) \{[\s\S]{0,200}pasoSuelto: desarrollo\.length > 0/.test(fuentePizarra2),
+    "en una fase con ejercicio los pasos van a los ambientes, no sueltos",
+    /const notas = planteaEjercicio \? \[\] :/.test(fuentePizarra2) &&
+      /if \(!actual \|\| !planteaEjercicio \|\| !ejercicio\) return \[\];/.test(fuentePizarra2),
   );
   // Último recurso: el enunciado que viaja dentro de la pregunta.
   check(
@@ -1807,13 +1816,18 @@ console.log("\n · Sumas y restas dispuestas en columna");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
+  // Con los dos ambientes, la cuenta es UNA: la del planteamiento. En la
+  // práctica se compone en columna y sin resolver ("?" bajo la raya); en el
+  // ejemplo se resuelve animada sobre ella misma, columna a columna.
   check(
-    "la tarjeta de EJERCICIO compone la operación planteada",
-    /columna="planteamiento"/.test(fuenteP2),
+    "el planteamiento de la práctica se compone en columna, sin resolver",
+    /columna: papel === "planteamiento" && enColumna && estatica \? \("planteamiento" as const\) : undefined/.test(fuenteP2) &&
+      /conIncognita: columna === "planteamiento" && \/\\\?\\s\*\$\/\.test\(linea\.texto\)/.test(fuenteP2),
   );
   check(
-    "el desarrollo compone la cuenta resuelta",
-    /columna: "resuelta"/.test(fuenteP2),
+    "en el ejemplo la cuenta se resuelve animada sobre el propio planteamiento",
+    /const estatica = papel === "planteamiento" && pideAlAlumno;/.test(fuenteP2) &&
+      /escenaDeLinea\(pasoDeLinea\(linea\), `linea-\$\{linea\.id\}`\)/.test(fuenteP2),
   );
   // La cuenta resuelta aparece SÓLO cuando hay desarrollo. En la práctica el
   // desarrollo está vacío hasta que el alumno pide ayuda, así que el total no
@@ -1826,8 +1840,9 @@ console.log("\n · Sumas y restas dispuestas en columna");
   );
   // Y compone la operación que se está explicando, no la que hubiera antes.
   check(
-    "la cuenta resuelta es la que se está explicando",
-    /texto: cuenta\.texto \}, columna: "resuelta"/.test(fuenteP2),
+    "la cuenta resuelta es la que se está explicando: la del ejercicio del encabezado",
+    /\{ linea: ejercicio, papel: "planteamiento" \}/.test(fuenteP2) &&
+      /const enColumna = leerSumaOResta\(sinRayasDibujadas\(ejercicio\.texto\)\) != null;/.test(fuenteP2),
   );
 }
 
@@ -1930,10 +1945,12 @@ console.log("\n · La transición de fase no deja recuadros residuales");
   );
   // Una salida anidada dentro de un contenedor que a su vez sale encadena dos
   // desmontajes, y el de dentro se ve como un recuadro que asoma y desaparece.
+  // Con los dos ambientes basta UNO: el de la fase, que sustituye la vista
+  // entera. Los pasos no entran ni salen: se quedan escritos (continuidad).
   const presencias = (fuentePz.match(/<AnimatePresence/g) ?? []).length;
   check(
     "no hay más AnimatePresence de los necesarios",
-    presencias === 2,
+    presencias === 1 && /<AnimatePresence mode="wait">[\s\S]{0,300}key=\{actual\.id\}/.test(fuentePz),
     `encontrados: ${presencias}`,
   );
   check(
@@ -2024,9 +2041,14 @@ console.log("\n · Coeficiente y exponente resaltados en el ejemplo");
       !/trust: true/.test(fuentePz2),
   );
   // Sólo en el ejemplo: es donde el tutor nombra las partes una a una.
+  // Con la pizarra animada, el coeficiente y el exponente los marca la escena
+  // del ejemplo; el enunciado que se le PIDE al alumno se compone quieto, sin
+  // marcas (marcarlo sería hacerle el primer paso), y la leyenda sólo en el ejemplo.
   check(
     "el resaltado se pide sólo en la fase de ejemplo",
-    /destacarTerminos=\{esFaseDeEjemplo\(actual\.id\)\}/.test(fuentePz2),
+    /if \(!actual \|\| !esFaseDeEjemplo\(actual\.id\) \|\| !ejercicio\) \{\s*return \{ coeficiente: false, exponente: false \};/.test(fuentePz2) &&
+      /const estatica = papel === "planteamiento" && pideAlAlumno;/.test(fuentePz2) &&
+      !/destacarTerminos=\{/.test(fuentePz2),
   );
   // El color vive en la hoja de estilos, para que siga al tema claro y oscuro.
   const hoja = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -2124,9 +2146,10 @@ console.log("\n · Cuentas dibujadas con guiones");
     "la pizarra recompone la cuenta dibujada antes que nada",
     /const latex =\s*\n(?:\s*\/\/[^\n]*\n)*\s*\(linea\.operacion\?\.tipo === "resultado" \|\| linea\.operacion\?\.final \? latexDeLaSubrutina\(linea\) : null\)\s*\n\s*\?\? columnaDeCuentaDibujada\(linea\.texto\)/.test(fuentePzC),
   );
+  // La prosa escrita en la pizarra es NOTA DE PIZARRA (rol BOARD_LABEL).
   check(
     "la prosa tampoco compone la raya de guiones",
-    /TextoMatematico texto=\{sinRayasDibujadas\(linea\.texto\)\}/.test(fuentePzC),
+    /<NotaDePizarra\s+texto=\{sinRayasDibujadas\(linea\.texto\)\}/.test(fuentePzC),
   );
 }
 
@@ -2355,7 +2378,11 @@ console.log("\n · Cada número con su nombre debajo");
   ];
   for (const caso of rotulados) {
     const latex = rotulosALatex(caso.entrada);
-    const puestos = [...(latex ?? "").matchAll(/\\text\{([^}]*)\}/g)].map((m) => m[1].replace(/\\ /g, " "));
+    // Entre paréntesis en la suma y la resta en columna: "234 (sumando)", como
+    // lo dibujó el cliente en su informe (OBS-03).
+    const puestos = [...(latex ?? "").matchAll(/\\text\{([^}]*)\}/g)].map((m) =>
+      m[1].replace(/\\ /g, " ").replace(/^\((.*)\)$/, "$1"),
+    );
     check(
       `«${caso.entrada}» rotula [${caso.nombres.join(", ")}]`,
       puestos.join("|") === caso.nombres.join("|"),
@@ -2500,18 +2527,18 @@ console.log("\n · El desarrollo de aritmética es una sola matriz");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
-  // En aritmética con desarrollo se compone la cuenta y NADA más: un solo paso.
+  // En aritmética la cuenta es UNA —la del planteamiento, que se anima—: de las
+  // demás líneas del motor sólo entran las notas de cada columna (Ambiente 2)
+  // y el cierre; los trozos con que redibuja la cuenta no abren paso propio.
   check(
     "en aritmética el desarrollo se reduce a la cuenta",
-    /if \(ejercicio && cuenta\)[\s\S]{0,200}texto: cuenta\.texto \}, columna: "resuelta" \}/.test(
-      fuentePzG,
-    ),
+    /if \(enColumna && !cierre && !auxiliar\) continue;/.test(fuentePzG),
   );
-  // Y va ANTES de componer los pasos sueltos, para que no lleguen a pintarse.
+  // Y se decide ANTES de repartir los pasos en los ambientes.
   check(
     "la cuenta se decide antes que los pasos sueltos",
-    fuentePzG.indexOf('columna: "resuelta" }') <
-      fuentePzG.indexOf("const pasos: PasoCompuesto[] = desarrollo.map"),
+    fuentePzG.indexOf("if (enColumna && !cierre && !auxiliar) continue;") > 0 &&
+      fuentePzG.indexOf("if (enColumna && !cierre && !auxiliar) continue;") < fuentePzG.indexOf("repartirEnAmbientes(conEscena"),
   );
 }
 
@@ -2644,11 +2671,13 @@ console.log("\n · La cuenta compuesta es la que se explica");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
+  // Con los dos ambientes ya no hay dos tarjetas que sincronizar: hay UNA
+  // cuenta, la del planteamiento, que se anima en el ejemplo y se compone quieta
+  // en la práctica.
   check(
-    "la pizarra decide una sola cuenta para las dos tarjetas",
-    /const cuenta = useMemo\(/.test(fuentePzG) &&
-      /linea=\{cuenta \? \{ \.\.\.ejercicio, texto: cuenta\.texto \} : ejercicio\}/.test(fuentePzG) &&
-      /texto: cuenta\.texto \}, columna: "resuelta"/.test(fuentePzG),
+    "la pizarra decide una sola cuenta: la del planteamiento",
+    /const enColumna = leerSumaOResta\(sinRayasDibujadas\(ejercicio\.texto\)\) != null;/.test(fuentePzG) &&
+      /if \(enColumna && !cierre && !auxiliar\) continue;/.test(fuentePzG),
   );
 }
 
@@ -2723,16 +2752,18 @@ console.log("\n · El desarrollo de aritmética es UNA matriz resuelta");
   );
   // La composición SUSTITUYE: la cuenta compuesta y, como mucho, el cierre del
   // ejercicio con su resultado enmarcado —no un array que crece—.
+  // En la pizarra de dos ambientes la cuenta no se recompone con cada trozo:
+  // cada escena del guion se asigna a UNA línea (la primera con su identidad),
+  // y los trozos redibujados de la cuenta no abren paso propio.
   check(
-    "el desarrollo se sustituye, no se acumula",
-    /pasos: \[\s*\{ linea: \{ \.\.\.ejercicio, id: -ejercicio\.id - 2, texto: cuenta\.texto \}, columna: "resuelta" \},\s*\.\.\.\(cierre \? \[\{ linea: cierre \}\] : \[\]\),\s*\]/.test(
-      fuentePzH,
-    ),
+    "el desarrollo no se acumula: cada escena, en una sola línea",
+    /if \(candidato != null && !usadas\.has\(candidato\)\) \{/.test(fuentePzH) &&
+      /if \(enColumna && !cierre && !auxiliar\) continue;/.test(fuentePzH),
   );
-  // Y la decisión la toma la función que la suite acaba de comprobar.
+  // Y la cuenta la anima la misma subrutina que la suite comprueba (escenaDeLinea).
   check(
-    "la pizarra usa la misma decisión que se comprueba aquí",
-    /columnaDelDesarrollo\(desarrollo\.map\(\(l\) => l\.texto\), ejercicio\.texto\)/.test(fuentePzH),
+    "la pizarra usa la misma subrutina que se comprueba en la suite",
+    /escenaDeLinea\(pasoDeLinea\(linea\), `linea-\$\{linea\.id\}`\)/.test(fuentePzH),
   );
 }
 
@@ -2771,9 +2802,12 @@ console.log("\n · La tarjeta de regla no compone prosa");
   // El ejemplo sobra cuando el enunciado ya ES una operación dispuesta: en
   // "Suma con llevada" el enunciado es la cuenta en columna con su total, y
   // debajo quedaba un "19 + 45 = 64" horizontal que desdice el formato.
+  // Desde el informe del cliente (OBS-04) va más allá: con una operación
+  // dispuesta, la tarjeta entera no se muestra en Reglas —la regla se lee en la
+  // nota del tutor—, así que tampoco su ejemplo.
   check(
     "el ejemplo no se compone bajo una operación ya dispuesta",
-    /regla\.ejemplo && !esOperacionDispuesta\(regla\.enunciado\)/.test(tarjeta),
+    /esFaseDeReglas\(actual\.id\) && reglaEnCurso && !esOperacionDispuesta\(reglaEnCurso\.enunciado\)/.test(fuentePzI),
   );
 
   const dispuesta = (enunciado) => String(enunciado ?? "").includes("\\begin{array}");

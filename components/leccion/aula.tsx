@@ -18,7 +18,6 @@ import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
-import { esAnimable } from "@/lib/leccion/animacion";
 import { PanelAnimado } from "@/components/leccion/pizarra-animada";
 import type { EstadoPedagogico } from "@/lib/leccion/sincronizacion";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
@@ -35,7 +34,7 @@ import {
   type LineaPizarra,
   type ReglaPizarra,
 } from "@/components/leccion/pizarra";
-import { TextoMatematico } from "@/components/math";
+import { TextoTutor } from "@/components/leccion/texto-tutor";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,8 +46,7 @@ import {
   type EstadoConversacion,
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
-import { esFaseDeConcepto, esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
-import { conceptoDeFraccion, tieneDiagrama } from "@/lib/leccion/diagramas";
+import { esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
@@ -64,7 +62,6 @@ import {
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
 import {
-  cuentaDeArrayLatex,
   esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
@@ -294,6 +291,29 @@ export function Aula({
   const [fases, setFases] = useState<FaseAbierta[]>([]);
   const [ejercicio, setEjercicio] = useState<LineaPizarra | null>(null);
   const [desarrollo, setDesarrollo] = useState<LineaPizarra[]>([]);
+  // Espejo del desarrollo para leerlo desde los callbacks del reproductor.
+  const desarrolloRef = useRef<LineaPizarra[]>([]);
+  useEffect(() => {
+    desarrolloRef.current = desarrollo;
+  }, [desarrollo]);
+  /**
+   * LA PIZARRA TAL COMO ESTABA AL EMPEZAR UNA AYUDA ("Más difícil", "Dame otro
+   * ejemplo", "No entendí este paso"…).
+   *
+   * Al reanudar tras una pausa —o al retroceder— el reproductor rehace la
+   * pizarra: la borra y reescribe lo que su lección ya había escrito. Durante
+   * una ayuda "borrar" no podía vaciarla —se habría llevado las fases y el
+   * ejercicio de antes—, así que no hacía nada, y la reescritura DUPLICABA todo
+   * el desarrollo: tras pausar en "3/6 + 2/6", el Ambiente 2 salía con las
+   * conversiones repetidas debajo de la suma. Ahora "borrar" vuelve a esta
+   * foto, y el reproductor reescribe encima justo lo suyo.
+   */
+  const baseDeAyuda = useRef<{
+    fases: FaseAbierta[];
+    ejercicio: LineaPizarra | null;
+    desarrollo: LineaPizarra[];
+    escrito: string[];
+  } | null>(null);
   /**
    * De qué fase es el contenido que hay ahora mismo en el ejercicio y en el
    * desarrollo.
@@ -672,7 +692,23 @@ export function Aula({
       writeBoardExplain: () => {},
       highlightBoard: (objetivo) => setResaltado(objetivo ?? null),
       clearBoard: () => {
-        if (esAyuda.current) return;
+        if (esAyuda.current) {
+          // Durante una ayuda, "borrar" es volver a la pizarra que había al
+          // empezarla (ver `baseDeAyuda`): el reproductor reescribe encima lo
+          // suyo sin duplicar nada.
+          const base = baseDeAyuda.current;
+          if (base) {
+            fasesRef.current = base.fases;
+            setFases(base.fases);
+            ejercicioRef.current = base.ejercicio;
+            setEjercicio(base.ejercicio);
+            escrito.current = [...base.escrito];
+            desarrolloRef.current = base.desarrollo;
+            setDesarrollo(base.desarrollo);
+            setResaltado(null);
+          }
+          return;
+        }
         limpiarPizarra();
         setResaltado(null);
       },
@@ -927,6 +963,15 @@ export function Aula({
         // que vuelva a abrirlo.
         esAyuda.current = presentacion !== "reiniciar" && fasesRef.current.length > 0;
 
+        // "MÁS DIFÍCIL" PULSADO EN CONCEPTO O EN REGLAS. Lo que llega es un
+        // ejercicio —su ejemplo y su práctica—, y en una fase sin ejercicio la
+        // pizarra lo pintaba como notas sueltas: sin «Ejercicio:», sin sus dos
+        // ambientes y sin animar nada, con la pregunta de la práctica debajo.
+        // Se abre antes la fase del ejemplo, y el ejercicio nuevo entra en ella.
+        if (presentacion === "sustituir" && esAyuda.current && !faseConEjercicio()) {
+          abrirEscena("ejemplo_guiado");
+        }
+
         if (presentacion === "sustituir") {
           // Llega OTRO ejercicio, no otro paso del mismo: la tarjeta de arriba
           // toma el nuevo. Se conserva la fase, de modo que el alumno no
@@ -956,6 +1001,17 @@ export function Aula({
           );
           setDesarrollo([]);
         }
+
+        // La foto de la pizarra con la que empieza esta ayuda: a ella se vuelve
+        // cada vez que el reproductor la rehace (reanudar, retroceder).
+        baseDeAyuda.current = esAyuda.current
+          ? {
+              fases: [...fasesRef.current],
+              ejercicio: ejercicioRef.current,
+              desarrollo: presentacion === "sustituir" ? [] : [...desarrolloRef.current],
+              escrito: [...escrito.current],
+            }
+          : null;
 
         // Una lección de seguimiento repite concepto y reglas tal cual: se
         // recorta para entrar directamente por el ejemplo.
@@ -1183,19 +1239,6 @@ export function Aula({
   const faseAbierta = fases[fases.length - 1]?.id ?? "";
 
   /**
-   * ¿LA CUENTA DE LA REGLA SE ANIMA, O SE QUEDA EN SU TARJETA?
-   *
-   * El cliente lo repitió dos veces: en "Reglas y propiedades" hay una cuenta
-   * estática en una esquina. Es el enunciado de la regla —la suma en columna de
-   * "Suma con llevada"—, que en el catálogo viene como un `array` de LaTeX ya
-   * montado: KaTeX lo compone entero de una vez y ahí se queda.
-   *
-   * Deshecho hasta la cuenta que representa, la pizarra la monta columna por
-   * columna como cualquier otra, y la tarjeta deja de componerla: una sola
-   * cuenta en pantalla, la que se mueve. Si no hay cuenta que sacar —una regla
-   * que es una fórmula y no una operación—, todo se queda como estaba.
-   */
-  /**
    * LA REGLA QUE SE ESTÁ EXPLICANDO, RESUELTA EN UN SOLO SITIO.
    *
    * Esto vivía dentro de la pizarra, y por eso la primera corrección no sirvió
@@ -1219,127 +1262,37 @@ export function Aula({
     return porPizarra ?? reglasDelTema[0];
   }, [faseAbierta, reglasDelTema, reglaDetectada, ejercicio, desarrollo]);
 
-  const cuentaDeLaRegla = useMemo(() => {
-    const enunciado = reglaEnCurso?.enunciado;
-    if (!enunciado) return null;
-    const cuenta = cuentaDeArrayLatex(enunciado);
-    if (cuenta) return cuenta;
-    return esAnimable(enunciado) ? enunciado : null;
-  }, [reglaEnCurso]);
-
-  const reglaAnimada = cuentaDeLaRegla != null;
-
+  /**
+   * LO QUE SE ANIMA: los pasos del ejercicio, y sólo en las fases que plantean
+   * uno (el ejemplo y la práctica).
+   *
+   * En Concepto y Reglas no se anima nada. Se animaba la cuenta del catálogo de
+   * la regla —la suma en columna de "Suma con llevada", 24 + 17— y el cliente la
+   * vio aparecer "mientras se está definiendo el concepto de suma... un ejercicio
+   * que carece de sentido en este contexto. Retirarlo." Esas fases enseñan
+   * definiciones y la regla; la cuenta con sus llevadas se anima en el ejemplo,
+   * con los números de la lección.
+   *
+   * Cada línea viaja como PASO: su LaTeX y, si el generador la envió, la
+   * instrucción de foco.
+   */
   const lineasAnimadas = useMemo(() => {
-    // Cada línea viaja como PASO: su LaTeX y, si el generador la envió, la
-    // instrucción de foco. Con etiqueta, la pizarra marca exactamente lo que
-    // dice; sin ella, la deduce como hasta ahora.
     const pasos: PasoSemantico[] = [];
-
-    // EN LA FASE DE REGLAS, LA CUENTA DE LA REGLA TAMBIÉN SE ANIMA.
-    //
-    // Lo pidió el cliente: en "Reglas y propiedades" se veía una cuenta
-    // estática en una esquina, y al oír "llevo 1" no se destacaba nada. Metida
-    // en la pizarra animada, la cuenta se monta paso a paso y el acarreo
-    // aparece cuando el tutor lo nombra.
-    // Sólo si de la regla sale una cuenta que se pueda animar. Si no —una
-    // notación que no es una operación—, se queda donde estaba: en su tarjeta.
-    // Empujarla igualmente la quitaría de arriba sin ponerla en ninguna parte.
-    if (cuentaDeLaRegla) pasos.push({ latex: cuentaDeLaRegla });
-
-    // EL EJERCICIO QUE SE LE PIDE AL ALUMNO NO SE ANIMA. Animarlo es que la
-    // pizarra le haga el primer paso —el cliente lo fotografió repartiendo el 2
-    // de "2(x + 4) = 3x − 1" mientras el tutor preguntaba cuánto vale x—. El
-    // ejemplo que resuelve el tutor sí se anima, como siempre.
+    if (!esFaseDeEjemplo(faseAbierta) && !esFaseDePractica(faseAbierta)) return pasos;
+    // EL EJERCICIO QUE SE LE PIDE AL ALUMNO NO SE ANIMA: animarlo es que la
+    // pizarra le haga el primer paso. El ejemplo que resuelve el tutor sí.
     if (ejercicio?.texto && !paraResolver.has(ejercicio.texto)) pasos.push(pasoDeLinea(ejercicio));
     for (const linea of desarrollo) {
       if (linea.aclaracion || paraResolver.has(linea.texto)) continue;
       pasos.push(pasoDeLinea(linea));
     }
     return pasos;
-    // `cuentaDeLaRegla` entra en la lista: sin ella el guion no se rehacía al
-    // detectarse la regla —la fase de Reglas no cambia el ejercicio ni el
-    // desarrollo—, y la cuenta no llegaba nunca a la pizarra animada.
-  }, [ejercicio, desarrollo, cuentaDeLaRegla, paraResolver]);
+  }, [faseAbierta, ejercicio, desarrollo, paraResolver]);
 
-  /**
-   * LO QUE SE PROYECTA CUANDO NO HAY NADA QUE ANIMAR.
-   *
-   * Lo último que hay en la pizarra de la fase abierta: el paso más reciente
-   * del desarrollo, si no el enunciado, si no la regla. Con esto el panel —y su
-   * botón de Modo proyección— sigue ahí en la práctica y en el concepto, que es
-   * donde el cliente lo echó en falta.
-   *
-   * EN CONCEPTO, ADEMÁS DEL TEXTO VA EL DIAGRAMA.
-   *
-   * El cliente lo fotografió: al proyectar Concepto se veía sólo una frase
-   * diminuta ("Denominador: en cuántas partes…") y el gráfico circular que la
-   * pizarra clásica sí dibuja arriba no aparecía. `conceptoDeFraccion` es el
-   * MISMO cálculo que usa esa pizarra clásica —vive en `lib/leccion/diagramas`
-   * para que las dos no puedan discrepar—, así que lo que se proyecta es
-   * exactamente lo que ya se ve, sólo que más grande.
-   */
-  const reposo = useMemo(() => {
-    const propio = faseDelContenido === faseAbierta;
-    const ultima = propio ? desarrollo[desarrollo.length - 1] : undefined;
-
-    const diagrama =
-      propio && tema && esFaseDeConcepto(faseAbierta) && tieneDiagrama(tema.tema)
-        ? (() => {
-            const datos = conceptoDeFraccion({
-              faseId: faseAbierta,
-              tema: tema.tema,
-              pasoSuelto: ultima ?? null,
-              ejercicio,
-              desarrollo,
-            });
-            return {
-              tema: tema.tema,
-              numerador: datos.fraccion?.numerador,
-              denominador: datos.fraccion?.denominador,
-              vistoNumerador: datos.vistoNumerador,
-              vistoDenominador: datos.vistoDenominador,
-            };
-          })()
-        : null;
-
-    // En Concepto y Reglas —las fases sin ejercicio— se proyecta TODO lo escrito
-    // en la fase, no sólo la última línea: "el avatar habla mucho pero muestra
-    // poco", anotó el cliente. Las líneas de una aclaración no cuentan: esas
-    // responden a una duda y no son notas de la clase.
-    const sinEjercicio = !esFaseDeEjemplo(faseAbierta) && !esFaseDePractica(faseAbierta);
-    const notas =
-      propio && sinEjercicio
-        ? desarrollo.filter((l) => !l.aclaracion && l.clase !== "explicacion").map((l) => l.texto)
-        : null;
-
-    if (ultima?.texto) return { texto: ultima.texto, diagrama, notas };
-    if (propio && ejercicio?.texto) return { texto: ejercicio.texto, diagrama, notas };
-    if (reglaEnCurso?.enunciado) return { texto: reglaEnCurso.nombre, latex: reglaEnCurso.enunciado };
-    return null;
-  }, [faseDelContenido, faseAbierta, desarrollo, ejercicio, reglaEnCurso, tema]);
-
-  /**
-   * EL DESARROLLO NO PUEDE ADELANTAR EL RESULTADO.
-   *
-   * Lo señaló el cliente: arriba, en la pizarra de siempre, aparecía la suma
-   * entera resuelta —412 con sus llevadas— mientras abajo la animación iba por
-   * el primer paso. Con la solución a la vista, el paso a paso no explica nada.
-   *
-   * Así que mientras la animación no haya destapado todo, las líneas que ella
-   * anima no se componen arriba. Las de prosa sí: esas no destripan nada. En
-   * cuanto termina, el desarrollo completo vuelve, que es lo que el alumno
-   * necesita para repasar.
-   */
-  const [animacionCompleta, setAnimacionCompleta] = useState(true);
-  const alProgresarAnimacion = useCallback(
-    ({ terminado, texto }: { terminado: boolean; texto?: string | null }) => {
-      setAnimacionCompleta(terminado);
-      // "Este paso", para el botón «No entendí este paso»: el que la pizarra
-      // animada tiene delante.
-      pasoEnPantalla.current = texto ?? null;
-    },
-    [],
-  );
+  /** "Este paso", para el botón «No entendí este paso»: el que la animación tiene delante. */
+  const alProgresarAnimacion = useCallback(({ texto }: { terminado: boolean; texto?: string | null }) => {
+    pasoEnPantalla.current = texto ?? null;
+  }, []);
 
   /**
    * Los mandos del tutor, para que la pizarra animada pueda usarlos.
@@ -1366,18 +1319,6 @@ export function Aula({
     }),
     [],
   );
-
-  /**
-   * ¿Hay que esconder el desarrollo de la pizarra clásica?
-   *
-   * Sí mientras el tutor explica y la animación no ha destapado todo: con la
-   * cuenta resuelta arriba, el paso a paso de abajo no enseña nada. Filtrar
-   * línea a línea no bastaba —la tarjeta compone la cuenta a partir de los
-   * pasos narrados, no de una línea con el resultado—, así que se le dice a la
-   * pizarra directamente. En cuanto la animación termina, o la lección para,
-   * el desarrollo vuelve entero para poder repasarlo.
-   */
-  const ocultarDesarrollo = !animacionCompleta && controles.playing && lineasAnimadas.length > 0;
 
   /**
    * CAMBIAR DE FASE O DE TEMA EMPIEZA DE CERO.
@@ -1566,34 +1507,31 @@ export function Aula({
         <div className="space-y-4">
           <Progress value={porcentajeReproducido} />
 
-          <Pizarra
-            fases={fases}
-            ejercicio={ejercicio}
-            desarrollo={desarrollo}
-            ocultarDesarrollo={ocultarDesarrollo}
-            faseDelContenido={faseDelContenido}
-            resaltado={resaltado}
-            reglas={reglasDelTema}
-            // La regla ya resuelta: la tarjeta y la pizarra animada tienen que
-            // estar hablando de la MISMA, o una compone lo que la otra anima.
-            reglaDetectada={reglaEnCurso}
-            // Si la cuenta de la regla se está animando abajo, la tarjeta no la
-            // compone: era la "cuenta estática en una esquina" del informe.
-            reglaAnimada={reglaAnimada}
-            tema={tema.tema}
-          />
-
-          {/* Repaso animado de lo que hay en la pizarra: la misma lección, paso
-              a paso, con los resaltados sincronizados con la voz. Se monta sólo
-              cuando hay algo que animar. */}
+          {/* LA PIZARRA DE LA CLASE: UNA SOLA.
+              Antes había dos —la pizarra de siempre arriba y un panel animado
+              debajo, que era además el que se proyectaba—, y el cliente vio que
+              "lo que se muestra en la pantalla celeste no es lo mismo de lo que
+              se proyecta". Ahora la pizarra (con el ejercicio fijo arriba y sus
+              dos ambientes) ES el panel: la animación ocurre dentro de ella, en
+              cada paso escrito, y proyectar es poner ESTE MISMO panel en
+              pantalla completa. No hay copia que pueda divergir. */}
           <PanelAnimado
             lineas={lineasAnimadas}
-            // Sin nada que animar, el panel se queda como barra con el botón de
-            // proyección, y proyecta esto.
-            reposo={reposo}
-            // Al proyectar, el ejercicio de la tarjeta queda fijo arriba y el
-            // paso activo se anima debajo.
-            enunciado={ejercicio?.texto ?? null}
+            tablero={(animacion) => (
+              <Pizarra
+                fases={fases}
+                ejercicio={ejercicio}
+                desarrollo={desarrollo}
+                faseDelContenido={faseDelContenido}
+                resaltado={resaltado}
+                reglas={reglasDelTema}
+                // La regla ya resuelta en el aula: la misma en toda la pizarra.
+                reglaDetectada={reglaEnCurso}
+                tema={tema.tema}
+                paraResolver={paraResolver}
+                animacion={animacion}
+              />
+            )}
             avatarDeLaLeccion={{ estado: avatarPizarra ?? estadoAvatar, hablando }}
             // Terminada —y no vuelta a reproducir—, la pizarra queda resuelta.
             leccionTerminada={terminoLaLeccion && !controles.playing}
@@ -1636,14 +1574,15 @@ export function Aula({
               nueva: contaría una cosa mientras la pizarra enseña otra.
           */}
           {subtitulo && faseDelSubtitulo === faseAbierta && (
-            // SIN fuente propia: el cliente corrigió el pedido anterior. La
-            // manuscrita era para lo que se ESCRIBE en la pizarra, no para lo
-            // que el avatar DICE; el subtítulo es habla, y el habla se lee
-            // mejor en la tipografía limpia de siempre (la que ya trae la
-            // interfaz), no en cursiva.
-            <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
-              <TextoMatematico texto={subtitulo} />
-            </p>
+            // LO QUE DICE EL TUTOR: rol TUTOR_DIALOG. El informe del cliente
+            // fija las tres fuentes por rol —"IA explicando: Segoe Print",
+            // exclusiva para los subtítulos de narración y la retroalimentación—
+            // y la aplica la hoja de estilos; las fórmulas de la frase, KaTeX.
+            <TextoTutor
+              como="p"
+              className="pz-subtitulo rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed"
+              texto={subtitulo}
+            />
           )}
 
           {cargando && (
@@ -1658,7 +1597,7 @@ export function Aula({
             <Card className="border-primary/50">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-medium">
-                  <TextoMatematico texto={pregunta} />
+                  <TextoTutor como="span" className="pz-pregunta" texto={pregunta} />
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -1703,23 +1642,31 @@ export function Aula({
                 <Lightbulb className="h-4 w-4" />
               )}
               <AlertDescription>
-                {veredicto.correcto === true
-                  ? "Correcto. Lo has resuelto bien."
-                  : (veredicto.pista ?? veredicto.mensaje)}
+                <TextoTutor
+                  como="span"
+                  className="pz-veredicto"
+                  texto={
+                    veredicto.correcto === true
+                      ? "Correcto. Lo has resuelto bien."
+                      : String(veredicto.pista ?? veredicto.mensaje ?? "")
+                  }
+                />
               </AlertDescription>
             </Alert>
           )}
 
           {/* Mensaje pedagógico del tutor */}
+          {/* La retroalimentación también es voz del tutor, y sus fórmulas
+              ("Resultado final: 11/10") salen con la fracción vertical. */}
           {feedback && (
-            <p
+            <TextoTutor
+              como="p"
               className={cn(
-                "text-sm font-medium",
+                "pz-retroalimentacion text-sm font-medium",
                 feedback.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600",
               )}
-            >
-              {feedback.msg}
-            </p>
+              texto={feedback.msg}
+            />
           )}
 
           {/* Botones contextuales de apoyo */}

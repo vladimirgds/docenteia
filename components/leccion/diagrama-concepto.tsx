@@ -50,8 +50,10 @@ export interface PropiedadesFraccion {
   vistoDenominador?: boolean;
 }
 
+// Todos por encima de 4,5:1 sobre la tarjeta blanca (OBS-02): el ámbar 600
+// se quedaba en 3,2:1; el 700 da 5:1.
 const CLASES_TONO: Record<TonoEtiqueta, string> = {
-  acento: "fill-amber-600",
+  acento: "fill-amber-700",
   tenue: "fill-muted-foreground",
   normal: "fill-foreground",
 };
@@ -89,6 +91,12 @@ function Etiquetas({
             y={e.y}
             textAnchor={e.anclaje}
             fontSize={e.tamano}
+            // Los rótulos del dibujo son escritura de pizarra (BOARD_LABEL), y
+            // su tono se declara para que la proyección lo aclare: sobre la
+            // pizarra oscura, "juntar dos cantidades da el total" en gris
+            // oscuro no se leía (el cliente pidió un tono más claro).
+            data-rol="BOARD_LABEL"
+            data-tono={e.tono}
             className={cn(CLASES_TONO[e.tono], mostrar && "pz-porcion")}
           >
             {e.texto}
@@ -417,7 +425,7 @@ export function DiagramaConcepto({
   const Diagrama = DIAGRAMAS[tema];
   if (!Diagrama) return null;
   return (
-    <div className="flex justify-center rounded-md border bg-muted/20 p-3">
+    <div className="pz-diagrama-marco flex justify-center rounded-md border bg-muted/20 p-3">
       <Diagrama
         numerador={numerador}
         denominador={denominador}

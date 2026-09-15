@@ -73,7 +73,13 @@ import {
   sumaResueltaLSG,
 } from "../src/lsgPrompt.js";
 import { manejarConsulta } from "../src/queryCore.js";
-import { expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
+import { esNotaRotulada, expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
+import { esCalculoAuxiliar, repartirEnAmbientes } from "../lib/leccion/ambientes.ts";
+import { colocarEtiqueta, MARGEN_ANOTACION, seSolapan } from "../lib/leccion/etiquetas.ts";
+import { rotulosALatex } from "../lib/leccion/rotulos.ts";
+import { ROL, ROLES_TIPOGRAFICOS, rol } from "../lib/leccion/roles.ts";
+import { planoALatex, separarProsaYMatematicas } from "../lib/matematicas/index.ts";
+import { columnaVertical } from "../lib/leccion/columna.ts";
 import { crearVozCompartida } from "../lib/leccion/voz.ts";
 import {
   etiquetaValida,
@@ -463,9 +469,12 @@ titulo("A1b. Lo destapado se queda escrito, y se declara con una regla CSS");
     "el revelado se declara con una regla, no escribiendo estilos en los nodos",
     panel.includes("<style>{reglasDeRevelado(") && !/\.style\.opacity\s*=/.test(panel),
   );
+  // Con la pizarra de dos ambientes cada paso tiene su estado: en el ACTIVO sólo
+  // se dibuja su foco encendido; en uno ya COMPLETADO, sólo lo que es
+  // procedimiento (lo tachado y la respuesta enmarcada).
   check(
     "y sólo se enciende el foco de la columna que se está operando",
-    /if \(i !== foco\) return \[\];/.test(panel),
+    /estado === "activa" \? i === foco : estado === "completada" \? Boolean\(f\.final\) \|\| f\.tipo === "tachado" : false/.test(panel),
   );
 }
 
@@ -517,11 +526,119 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   check(
     "y la pizarra dibuja una caja por pieza",
     panel.includes("(f.piezas ?? [f.clase]).flatMap") &&
-      panel.includes("escena.focos.flatMap((f) => f.piezas ?? [f.clase])"),
+      panel.includes("escena.focos.flatMap((f) => [...(f.piezas ?? [f.clase])"),
   );
   check(
-    "con el rótulo escrito una sola vez",
-    panel.includes("conEtiqueta={j === 0}"),
+    "con el rótulo escrito una sola vez (y sólo en el paso activo)",
+    panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
+  );
+}
+
+titulo("A00i. Informe del cliente: los cinco subprocesos universales");
+
+{
+  // SUB-TIP-01 — TRES ROLES, CADA UNO CON SU FUENTE.
+  check(
+    "hay exactamente tres roles: TUTOR_DIALOG, BOARD_LABEL y MATH_EXPRESSION",
+    JSON.stringify(ROLES_TIPOGRAFICOS) === JSON.stringify(["TUTOR_DIALOG", "BOARD_LABEL", "MATH_EXPRESSION"]) &&
+      rol(ROL.PIZARRA)["data-rol"] === "BOARD_LABEL",
+  );
+
+  // SUB-PIZ-02 — LOS DOS AMBIENTES, POR UNA REGLA MONÓTONA.
+  const reparto = (pasos) => repartirEnAmbientes(pasos.map(([papel, gesto]) => ({ papel, gesto }))).join("");
+  check(
+    "1/2 + 1/3: planteamiento y las dos conversiones a la izquierda; MCM, suma y respuesta a la derecha",
+    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]) === "121122",
+    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]),
+  );
+  check(
+    "2(x + 3) = 16: el reparto a la izquierda; el despeje y la solución a la derecha",
+    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "despeje"], ["cierre", "resultado"]]) === "1222",
+  );
+  check(
+    "una línea escrita no cambia de lado: abierto el Ambiente 2, lo que viene sigue en él",
+    reparto([["planteamiento", null], ["paso", "a"], ["paso", "b"], ["paso", "a"]]) === "1122",
+  );
+  check(
+    "el MCM, los múltiplos y lo que sale de cada columna son cálculos auxiliares",
+    esCalculoAuxiliar("MCM(2, 3): 2 × 3 = 6") && esCalculoAuxiliar("Múltiplos de 4: 4, 8, 12") &&
+      esCalculoAuxiliar("unidades: 3 + 4 = 7") && !esCalculoAuxiliar("2x + 6 = 16"),
+  );
+
+  // SUB-NOT-04 — NINGÚN RÓTULO A MENOS DE 8 PX DE UNA CIFRA.
+  check("el margen mínimo es el del informe: 8 px", MARGEN_ANOTACION === 8);
+  {
+    // "entre 6" sobre el denominador de 3/6: encima está el 3. Debe bajar.
+    const numerador = { x: 100, y: 0, ancho: 20, alto: 24 };
+    const denominador = { x: 100, y: 34, ancho: 20, alto: 24 };
+    const { rect, lado } = colocarEtiqueta({ caja: denominador, ancho: 50, alto: 16, obstaculos: [numerador, denominador] });
+    check(
+      "«entre 6» no se pone encima del denominador (taparía el numerador): baja, a 8 px de toda cifra",
+      lado === "abajo" && !seSolapan(rect, numerador, MARGEN_ANOTACION) && !seSolapan(rect, denominador, MARGEN_ANOTACION - 0.5),
+      `${lado} ${JSON.stringify(rect)}`,
+    );
+  }
+  check(
+    "«llevo 1» se ancla ENCIMA de su llevada (la cifra pequeña de la columna de la izquierda)",
+    escenaDeColumna("234 + 178", "e").focos.filter((f) => f.etiqueta === "llevo 1").map((f) => f.anclaEtiqueta).join(",") === "pz-llevada-1,pz-llevada-0",
+    JSON.stringify(escenaDeColumna("234 + 178", "e").focos.map((f) => f.anclaEtiqueta)),
+  );
+  check(
+    "la cuenta en columna deja aire entre la raya y el resultado, para su cápsula",
+    /\\hline \\rule\{0pt\}\{1\.3em\}/.test(escenaDeColumna("24 + 17", "e").latex),
+  );
+
+  // La respuesta final: el ejercicio y su respuesta, sin repetir el desarrollo.
+  const cierre = escenaDeCierre("1/2 + 1/3 = 3/6 + 2/6 = (3 + 2)/6 = 5/6", "c");
+  check(
+    "el cierre es «1/2 + 1/3 = [5/6]»: cabe en su mitad de la pizarra a 48 px",
+    cierre.latex === "\\frac{1}{2} + \\frac{1}{3} = \\,\\htmlClass{pz-final}{\\boxed{\\frac{5}{6}}}",
+    cierre.latex,
+  );
+
+  {
+    // Y una suma NO se cierra en fila: "toda suma con números de dos o más
+    // cifras en disposición vertical". La columna ya está resuelta en el
+    // Ambiente 1; el cierre del Ambiente 2 es "Resultado: [412]".
+    const suma = escenaDeCierre("234 + 178 = 412", "c");
+    check(
+      "el cierre de «234 + 178» es «Resultado: [412]», sin la suma escrita en fila",
+      suma.latex === "\\htmlClass{pz-palabra pz-rotulo}{\\text{Resultado:}}\\;\\;\\htmlClass{pz-final}{\\boxed{412}}" &&
+        suma.focos[0]?.final === true && suma.focos[0]?.narracion === "Resultado final: 412.",
+      suma.latex,
+    );
+  }
+
+  // SUB-MTH-05 — NI "/" NI "*": FRACCIONES DE VERDAD Y ×.
+  check("(3 + 2)/6 → \\frac{3 + 2}{6}", planoALatex("(3 + 2)/6") === "\\frac{3 + 2}{6}", planoALatex("(3 + 2)/6"));
+  check("3 * 2 → 3 \\times 2", planoALatex("3 * 2") === "3 \\times 2", planoALatex("3 * 2"));
+  check("11/10 → \\frac{11}{10}", planoALatex("11/10") === "\\frac{11}{10}");
+  {
+    const l = rotulosALatex("234 [sumando] + 178 [sumando] = 412 [suma o total]") ?? "";
+    let compone = true;
+    try { katex.renderToString(l, { displayMode: true, throwOnError: true, trust: (c) => c.command === "\\htmlClass" }); } catch { compone = false; }
+    check(
+      "«234 [sumando] + 178 [sumando] = 412 [suma o total]» va EN COLUMNA, con su raya y cada nombre",
+      /^\\begin\{array\}\{rrl\}/.test(l) && /\\hline & 412/.test(l) && (l.match(/pz-palabra/g) ?? []).length === 3 && compone,
+      l,
+    );
+  }
+  check(
+    "la práctica «678 + 145 = ?» va en columna, con el «?» bajo la raya",
+    /\\hline\s+&\s+&\s+&\s+\?/.test(columnaVertical({ a: 678, b: 145, operador: "+", resultado: 823 }, { conResultado: false, conIncognita: true }) ?? ""),
+    columnaVertical({ a: 678, b: 145, operador: "+", resultado: 823 }, { conResultado: false, conIncognita: true }),
+  );
+  check(
+    "en lo que dice el tutor, «2(x + 3) = 16» es UNA fórmula, no «2(» + fórmula + «) = 16»",
+    JSON.stringify(separarProsaYMatematicas("Vamos a repartir el 2 en 2(x + 3) = 16.").filter((p) => p.tipo === "linea").map((p) => p.contenido)) === '["2(x + 3) = 16"]',
+  );
+  check(
+    "y un paréntesis de prosa sigue siendo prosa",
+    separarProsaYMatematicas("Sumamos por columnas (primero las unidades).").every((p) => p.tipo === "texto"),
+  );
+  check(
+    "«unidades: 3 + 4 = 7» es una nota rotulada (rótulo en letra de pizarra, fórmula en KaTeX)",
+    esNotaRotulada("unidades: 3 + 4 = 7") && esNotaRotulada("MCM(2, 3): 2 × 3 = 6") && !esNotaRotulada("2x + 6 = 16"),
   );
 }
 
@@ -813,15 +930,19 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
         !/>\s*\/\s*</.test(visible) && /Numerador/.test(visible) && /Denominador/.test(visible),
     );
     check("con la fracción del dibujo: 3 de 8 se escribe 3 sobre 8", expresionFormalDeFraccion(3, 8).endsWith("\\dfrac{3}{8}"));
+    // Después, el cliente pidió además "el mismo tamaño y tipo de letra" que las
+    // notas: las PALABRAS van en letra de pizarra, con su raya horizontal en
+    // HTML, y sólo "= 1/4" lo compone KaTeX en estilo de bloque.
     check(
       "la pizarra la compone con ese componente —y en ningún sitio queda «Numerador / Denominador:»—",
       /<FraccionFormal/.test(pizarraTsx) && !/Numerador \/ Denominador/.test(pizarraTsx) &&
-        /export function FraccionFormal/.test(notaTsx) && /expresionFormalDeFraccion\(numerador, denominador\)/.test(notaTsx) &&
-        /displayMode: true/.test(notaTsx.slice(notaTsx.indexOf("export function FraccionFormal"))),
+        /export function FraccionFormal/.test(notaTsx) &&
+        /<FraccionDePalabras arriba="Numerador" abajo="Denominador" \/>/.test(notaTsx) &&
+        /\\\\dfrac\{\$\{n\}\}\{\$\{d\}\}/.test(notaTsx),
     );
     check(
-      "y la proyección de Concepto la pone bajo el gráfico circular, cuando ya se han dicho las dos palabras",
-      /reposo\.diagrama\.vistoNumerador &&\s*reposo\.diagrama\.vistoDenominador && \(\s*<FraccionFormal/.test(panelTsx),
+      "y la pizarra de Concepto la pone bajo el gráfico circular, cuando ya se han dicho las dos palabras (la misma en pantalla y proyectada)",
+      /diagrama === "FRACCIONES" && vistoNumerador && vistoDenominador && \(\s*<FraccionFormal/.test(pizarraTsx),
     );
   }
 
@@ -1050,20 +1171,22 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // "Mantén fijado en la parte superior el ejercicio original limpio
   // (2(x + 3) = 16), y renderiza abajo el paso del desarrollo activo con la
   // distributiva."
+  // Con el informe (SUB-PIZ-02) el encabezado es de LA pizarra —"Ejercicio:" y
+  // el enunciado—, la misma en pantalla y proyectada: ya no es un añadido del
+  // modo proyección.
   check(
-    "el panel recibe el enunciado de la tarjeta y, al proyectar, lo fija arriba",
-    /enunciado=\{ejercicio\?\.texto \?\? null\}/.test(aulaTsx) &&
-      /proyeccion && enunciadoFijo !== ""/.test(panelTsx) &&
-      /\{conEnunciadoFijo && <EnunciadoFijo texto=\{enunciadoFijo\} \/>\}\s*[\s\S]{0,700}<div className="pz-escenario">/.test(panelTsx),
+    "la pizarra fija arriba «Ejercicio:» y el enunciado de la tarjeta, en las dos vistas",
+    /\{planteaEjercicio && \(\s*<EncabezadoEjercicio texto=\{ejercicio\?\.texto \?\? null\} \/>/.test(pizarraTsx) &&
+      /function EncabezadoEjercicio/.test(pizarraTsx) && /: "Ejercicio:"/.test(pizarraTsx),
   );
   check(
-    "limpio —compuesto tal cual, sin marcas ni piezas por destapar— y pegado arriba aunque el panel se desplace",
-    /function EnunciadoFijo[\s\S]{0,900}notacionFormal\(texto\) \?\? \(pareceMatematica\(texto\) \? planoALatex\(texto\) : null\)/.test(panelTsx) &&
-      /\.pz-enunciado-fijo \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
+    "limpio —compuesto tal cual, sin marcas ni piezas por destapar— y pegado arriba aunque la pizarra se desplace",
+    /function EncabezadoEjercicio[\s\S]{0,1200}notacionFormal\(enunciado\) \?\? \(pareceMatematica\(enunciado\) \? planoALatex\(enunciado\) : null\)/.test(pizarraTsx) &&
+      /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
   );
   check(
-    "sin repetirlo cuando lo único que se proyecta es el propio enunciado",
-    /!\(sinAnimacion && reposo\?\.texto\?\.trim\(\) === enunciadoFijo\)/.test(panelTsx),
+    "y el panel ya no tiene un enunciado propio que pudiera diferir del de la pizarra",
+    !/EnunciadoFijo/.test(panelTsx) && !/enunciadoFijo/.test(panelTsx),
   );
 
   // ── 4. EL VISTO VERDE, SÓLO EN LA RESPUESTA FINAL ───────────────────────────
@@ -1127,10 +1250,12 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // diminuto (text-sm). Sube el tamaño de estas explicaciones en proyección a un
   // formato visible para aula (text-2xl o text-3xl), centrado y con fuente
   // clara."
+  // El informe lo afinó después: notas de 24 px como mínimo, ALINEADAS A LA
+  // IZQUIERDA ("definiciones amontonadas al centro", OBS-10), no centradas.
   check(
-    "una nota sola en su lienzo de proyección nunca baja de text-3xl, centrada y en trazo grueso",
-    /\.modo-proyeccion \.pz-animada \.pz-nota \{[^}]*font-size: clamp\(1\.875rem,[^}]*font-weight: 600;[^}]*justify-content: center;/.test(estilos) &&
-      /\.modo-proyeccion \.pz-nota \{[^}]*color: hsl\(0 0% 100%\)/.test(estilos),
+    "una nota proyectada nunca baja de 24 px, en blanco y alineada a la izquierda",
+    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: clamp\(1\.6rem,[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
+      /^\.pz-nota \{[^}]*align-items: flex-start;[^}]*text-align: left;/m.test(estilos),
   );
   check(
     "y lo que explica el tutor bajo cada paso, al menos text-2xl",
@@ -1495,9 +1620,10 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     const notaTsx = readFileSync(new URL("../components/leccion/nota-pizarra.tsx", import.meta.url), "utf8");
     const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
     check(
-      "la pizarra proyectada pinta la prosa como NOTA (rótulo + fórmula), no como un párrafo diminuto",
-      /<NotaDePizarra texto=\{escena\.texto\} \/>/.test(panelTsx) && /"pz-nota pz-tiza"/.test(notaTsx) &&
-        /\\\\dfrac\{\\\\text\{/.test(notaTsx),
+      "la pizarra pinta la prosa como NOTA (rótulo + fórmula en estilo de bloque), no como un párrafo diminuto",
+      /<NotaDePizarra texto=\{escena\.texto\} \/>/.test(panelTsx) &&
+        /className=\{cn\("pz-nota", className\)\} \{\.\.\.rol\(ROL\.PIZARRA\)\}/.test(notaTsx) &&
+        /\\\\displaystyle \$\{planoALatex\(p\.contenido\)\}/.test(notaTsx),
     );
     const tam = estilos.match(/\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(([\d.]+)rem/);
     check(
@@ -1505,16 +1631,18 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
       Boolean(tam) && Number(tam[1]) >= 1.5,
       tam?.[0],
     );
+    // El informe del cliente cambió la letra del subtítulo: es voz del tutor
+    // (TUTOR_DIALOG, Segoe Print), y la pone su ROL, no una regla de .pz-pie.
     check(
-      "y el subtítulo sigue en la letra del sistema: la nota no toca .pz-pie",
-      /\.pz-pie \{\s*line-height: 1\.5;\s*\}/.test(estilos),
+      "y el pie de cada paso es voz del tutor: su letra la pone el rol, no la nota",
+      /\.pz-pie \{\s*line-height: 1\.55;\s*\}/.test(estilos) &&
+        /<TextoTutor\s+como="p"\s+className="pz-pie/.test(panelTsx),
     );
+    const pizarraFase = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
     check(
-      "en Concepto y Reglas se proyecta TODO lo escrito en la fase, no sólo la última línea",
-      /notas\?: string\[\] \| null;/.test(panelTsx) && /<NotasDeLaFase notas=/.test(panelTsx) &&
-        /desarrollo\.filter\(\(l\) => !l\.aclaracion && l\.clase !== "explicacion"\)/.test(
-          readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8"),
-        ),
+      "en Concepto y Reglas se escribe TODO lo de la fase, no sólo la última línea (en pantalla y proyectado)",
+      /const notas = planteaEjercicio \? \[\] : desarrollo\.filter\(\(l\) => !l\.aclaracion && l\.clase !== "explicacion"\)/.test(pizarraFase) &&
+        /notasAmbiente2\.map\(nota\)/.test(pizarraFase),
     );
   }
 
@@ -1523,7 +1651,8 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     const e = escenaDeDistributiva("2(x + 4) = 3x - 1", "e");
     check(
       "en una ecuación, lo repartido va en su PROPIO renglón: 2x + 8 = 3x − 1, alineado por el igual",
-      /\\begin\{aligned\}/.test(e.latex) && /\\\\ \\htmlClass\{pz-rev-2 pz-resultado\}\{2x \+ 8\}/.test(e.latex),
+      // Con aire entre los renglones para la escuadra del conector y su "× 2".
+      /\\begin\{aligned\}/.test(e.latex) && /\\\\\[1\.6em\] \\htmlClass\{pz-rev-2 pz-resultado\}\{2x \+ 8\}/.test(e.latex),
       e.latex,
     );
     check(
@@ -1556,7 +1685,7 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     const pizarraTsx = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
     check(
       "la tarjeta de EJERCICIO compone el enunciado tal cual está escrito: sin lo que la animación destapa",
-      /columna="planteamiento"\s*soloEnunciado/.test(pizarraTsx) &&
+      /soloEnunciado=\{e\.papel === "planteamiento"\}/.test(pizarraTsx) &&
         /\?\? \(soloEnunciado \? null : latexDeLaSubrutina\(linea\)\)/.test(pizarraTsx),
     );
     const lin = leccion(linealResueltaLSG({ concepto: true, nivel: "dificil" }));
@@ -1696,27 +1825,34 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
   // 1,75rem— y el rótulo quedaba prácticamente encima de la llevada. Con
   // `dy="-0.65em"` el hueco se mide en la propia unidad del texto, así que
   // crece con la letra en cualquier tamaño.
+  // Después el informe del cliente lo fijó como regla (SUB-NOT-04): el rótulo
+  // se coloca por GEOMETRÍA MEDIDA —a 8 px de toda cifra, con la caja real de
+  // su letra— y "llevo 1" estrictamente encima de su llevada.
   check(
-    'la etiqueta ya no sube un margen fijo: usa dy="-0.65em", relativo a su propia letra',
-    (panelTsx.match(/dy="-0\.65em"/g) ?? []).length >= 2 && !/y=\{caja\.y - 6\}/.test(panelTsx),
+    "el rótulo se coloca con las cajas medidas y la caja real de su letra; «llevo 1», sobre su llevada",
+    /colocarEtiqueta\(\{\s*caja,\s*ancho,\s*alto,\s*obstaculos: medidas\.glifos,\s*preferidos,\s*limites:/.test(panelTsx) &&
+      /cajaAlto = bb\.height/.test(panelTsx) && (panelTsx.match(/y=\{rect\.yTexto\}/g) ?? []).length >= 2 &&
+      escenaDeColumna("24 + 17", "e").focos.some((f) => f.etiqueta === "llevo 1" && f.anclaEtiqueta === "pz-llevada-0") &&
+      /ancla \? rotulo\(etiqueta, ancla, \["arriba"\]\)/.test(panelTsx),
   );
 
   // 3. EL BRAZO DE LA DISTRIBUTIVA.
   //
-  // El cliente lo dibujó a mano: un arco que sale del factor y entra en el
-  // sumando al que multiplica, no sólo dos cajas separadas.
+  // El cliente lo dibujó a mano: una ESCUADRA que baja del factor, pasa por
+  // debajo de la expresión y sube con su flecha al sumando, con el "× 2" debajo.
   check(
-    "hay un componente que dibuja el arco entre el factor y el sumando",
-    /function ConectorReparto/.test(panelTsx) && /markerEnd="url\(#pz-flecha-reparto\)"/.test(panelTsx),
+    "hay un componente que dibuja la escuadra entre el factor y el sumando, con punta de tamaño fijo",
+    /function ConectorReparto/.test(panelTsx) && /markerEnd=\{`url\(#\$\{marcador\}\)`\}/.test(panelTsx) &&
+      /markerUnits="userSpaceOnUse"/.test(panelTsx) && /V \$\{barra\} H \$\{x1\} V \$\{finTrazo\}/.test(panelTsx),
   );
   check(
-    "sólo se dibuja para la distributiva, y sólo con exactamente dos piezas",
-    /escena\.clase !== "distributiva"\) return null/.test(panelTsx) &&
-      /f\.piezas\.length !== 2\) return null/.test(panelTsx),
+    "sólo se dibuja para los focos de conector, y sólo con sus dos piezas medidas",
+    /if \(f\.conector\) \{\s*const \[a, b\] = f\.piezas \?\? \[\];/.test(panelTsx) &&
+      /if \(!factor \|\| !termino\) return \[\];/.test(panelTsx),
   );
   check(
-    "reutiliza el trazo azul de las cajas —mismo color, misma animación de dibujado—",
-    /className="pz-trazo"[\s\S]{0,80}markerEnd/.test(panelTsx),
+    "reutiliza el trazo de las marcas —mismo color, misma animación de dibujado—",
+    /className="pz-trazo pz-conector"[\s\S]{0,120}markerEnd/.test(panelTsx),
   );
 
   // 4. LA IDENTIDAD TIPOGRÁFICA: dos roles, y el cliente CORRIGIÓ el primer
@@ -1729,28 +1865,34 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
     "el habla ya NO tiene una fuente manuscrita propia: no existe esa clase",
     !/\.pz-manuscrita\b/.test(estilos) && !/pz-manuscrita/.test(aulaTsx) && !/pz-manuscrita/.test(pizarraTsx),
   );
+  // EL INFORME DEL CLIENTE SUSTITUYE ESTA RONDA (SUB-TIP-01): tres roles, cada
+  // uno con su fuente —el tutor en Segoe Print, la pizarra en Chalkboard SE, las
+  // fórmulas en KaTeX—, aplicada por el ROL de cada elemento y no a mano.
+  const tutorTsx = readFileSync(new URL("../components/leccion/texto-tutor.tsx", import.meta.url), "utf8");
+  const tailwind = readFileSync(new URL("../tailwind.config.ts", import.meta.url), "utf8");
   check(
-    "el subtítulo del tutor hereda la tipografía estándar de la interfaz",
-    /\{subtitulo && faseDelSubtitulo === faseAbierta && \([\s\S]{0,500}<p className="rounded-md bg-muted\/60/.test(aulaTsx),
+    "el subtítulo del tutor es TUTOR_DIALOG: Segoe Print, puesta por su rol",
+    /<TextoTutor\s+como="p"\s+className="pz-subtitulo/.test(aulaTsx) && /\{\.\.\.rol\(ROL\.TUTOR\)\}/.test(tutorTsx) &&
+      /--fuente-tutor: "Segoe Print"/.test(estilos) && /\[data-rol="TUTOR_DIALOG"\] \{\s*@apply font-tutor;/.test(estilos),
   );
   check(
-    "el pie de la pizarra animada —lo que dice el foco encendido— también, sin font-family propio",
-    /\.pz-pie \{\s*line-height: 1\.5;\s*\}/.test(estilos),
+    "el pie de la pizarra animada —lo que dice el foco encendido— también es voz del tutor",
+    /<TextoTutor\s+como="p"\s+className="pz-pie/.test(panelTsx) && !/\.pz-pie \{[^}]*font-family/.test(estilos),
   );
   check(
-    "la fuente de pizarra agrupa Chalkboard SE y Segoe Print como alternativas de UN mismo estilo",
-    /\.pz-tiza \{\s*font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;/.test(estilos),
+    "la escritura de pizarra es Chalkboard SE (con Comic Sans MS en Windows), distinta de la del tutor",
+    /--fuente-pizarra: "Chalkboard SE", "Chalkboard", "Comic Sans MS"/.test(estilos) &&
+      /\[data-rol="BOARD_LABEL"\] \{\s*@apply font-pizarra;/.test(estilos) &&
+      /pizarra: \["var\(--fuente-pizarra\)"\]/.test(tailwind) && /tutor: \["var\(--fuente-tutor\)"\]/.test(tailwind),
   );
   check(
-    "la etiqueta de la llevada y los rótulos del diagrama van en esa misma fuente de pizarra",
-    /\.pz-etiqueta \{[\s\S]{0,180}font-family: "Chalkboard SE", "Segoe Print"/.test(estilos) &&
-      /\.pz-diagrama text \{\s*font-family: "Chalkboard SE", "Segoe Print"/.test(estilos),
+    "la etiqueta de la llevada y los rótulos del diagrama son BOARD_LABEL",
+    /className="pz-etiqueta"\s*\{\.\.\.rol\(ROL\.PIZARRA\)\}/.test(panelTsx) && /data-rol="BOARD_LABEL"/.test(diagramaTsx),
   );
   check(
-    "una nota escrita en la pizarra que no se dejó componer como fórmula va en tiza; el habla, en la estándar",
-    /linea\.clase === "explicacion"\s*\?\s*"text-sm text-muted-foreground"\s*:\s*"pz-tiza text-base font-medium"/.test(
-      pizarraTsx,
-    ),
+    "una nota escrita que no se dejó componer como fórmula es NOTA DE PIZARRA; el habla, voz del tutor",
+    /if \(linea\.clase === "explicacion"\) \{[\s\S]{0,300}<TextoTutor/.test(pizarraTsx) &&
+      /<NotaDePizarra\s+texto=\{sinRayasDibujadas\(linea\.texto\)\}/.test(pizarraTsx),
   );
   // Las fórmulas no se tocan: KaTeX sigue siendo quien las compone, sin una
   // fuente distinta impuesta encima.
@@ -1798,27 +1940,28 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
   // nada que animar, sólo componía el último texto escrito —con KaTeX, a
   // tamaño de fórmula—; el dibujo que sí ve la pizarra clásica arriba no
   // llegaba nunca a la proyectada.
+  // Ahora proyectar es poner EN GRANDE LA MISMA PIZARRA (SUB-PRJ-03): el
+  // dibujo está en ella, en el Ambiente 1, y se proyecta porque se proyecta ella.
   check(
-    "la pizarra animada importa el mismo DiagramaConcepto que la clásica",
-    /import \{ DiagramaConcepto \} from "@\/components\/leccion\/diagrama-concepto"/.test(panelTsx),
+    "la pizarra de la clase dibuja el DiagramaConcepto —la misma en pantalla y proyectada—",
+    /import \{ DiagramaConcepto \} from "@\/components\/leccion\/diagrama-concepto"/.test(pizarraTsx) &&
+      !/DiagramaConcepto/.test(panelTsx),
   );
   check(
-    "el reposo puede traer un diagrama, además del texto",
-    /diagrama\?:\s*\{/.test(panelTsx) && /vistoNumerador: boolean/.test(panelTsx),
+    "el dibujo sale en Concepto cuando el tema lo tiene",
+    /const diagrama =\s*actual != null && esFaseDeConcepto\(actual\.id\) && tema && tieneDiagrama\(tema\) \? tema : null;/.test(pizarraTsx),
   );
   check(
-    "y si lo trae, se dibuja en vez de la frase suelta",
-    /sinAnimacion && reposo\?\.diagrama \? \(/.test(panelTsx) &&
-      /<DiagramaConcepto[\s\S]{0,200}tema=\{reposo\.diagrama\.tema\}/.test(panelTsx),
+    "y se dibuja en el Ambiente 1, con la fracción en curso",
+    /\{diagrama && \(\s*<div className="pz-diagrama-y-fraccion[\s\S]{0,200}<DiagramaConcepto\s+tema=\{diagrama\}/.test(pizarraTsx),
   );
   check(
-    "el aula calcula ese diagrama con el MISMO cómputo que usa la pizarra clásica —conceptoDeFraccion—, no uno propio",
-    /conceptoDeFraccion\(\{/.test(aulaTsx) &&
-      /esFaseDeConcepto\(faseAbierta\) && tieneDiagrama\(tema\.tema\)/.test(aulaTsx),
+    "la fracción en curso sale del mismo cómputo de siempre —conceptoDeFraccion—, no de uno propio",
+    /conceptoDeFraccion\(\{/.test(pizarraTsx),
   );
   check(
-    "y en proyección se escala por encima del ancho pequeño de la tarjeta lateral",
-    /\.modo-proyeccion \.pz-diagrama-proyectado \.pz-diagrama \{/.test(estilos),
+    "y en proyección se escala a lo ancho del ambiente",
+    /\.modo-proyeccion \.pz-diagrama \{\s*max-width: min\(40rem, 100%\);/.test(estilos),
   );
 }
 
@@ -1858,9 +2001,13 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
     "el ejemplo de la regla se compone en modo display, no en línea",
     /<Formula latex=\{regla\.ejemplo\} display \/>/.test(pizarraClasica),
   );
+  // El informe pidió después lo contrario de centrar (OBS-10: "definiciones
+  // amontonadas al centro… alinear a la izquierda").
   check(
-    "centrado y al tamaño de la regla",
-    (pizarraClasica.match(/pz-regla-formula[^"]*text-center/g) ?? []).length === 2 &&
+    "alineado a la izquierda, como todo el ambiente, y al tamaño de la regla",
+    (pizarraClasica.match(/className="pz-regla-formula/g) ?? []).length === 2 &&
+      !/pz-regla-formula[^"]*text-center/.test(pizarraClasica) &&
+      /\.pz-ambiente \.katex-display \{[^}]*text-align: left;/.test(estilos) &&
       /\.pz-regla-formula \.katex \{[^}]*font-size: 1\.5rem/.test(estilos),
   );
 
@@ -1872,6 +2019,18 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
   check(
     "y un enunciado para resolver se lleva la tarjeta, con su desarrollo",
     /esEnunciadoParaResolver\(limpio\)[\s\S]{0,200}fijarLineaEjercicio\(linea\);\s*setDesarrollo\(\[\]\);/.test(aulaTsx),
+  );
+  // Pulsado en Concepto o en Reglas, lo que llega es un ejercicio: se abre la
+  // fase del ejemplo, o se pintaba como notas sueltas sin «Ejercicio:».
+  check(
+    "«Más difícil» pulsado en Concepto o Reglas abre la fase del ejemplo antes de sustituir",
+    /if \(presentacion === "sustituir" && esAyuda\.current && !faseConEjercicio\(\)\) \{\s*abrirEscena\("ejemplo_guiado"\);/.test(aulaTsx),
+  );
+  // Reanudar tras una pausa rehace la pizarra: durante una ayuda, "borrar" es
+  // volver a la foto del inicio de la ayuda, o el desarrollo salía duplicado.
+  check(
+    "al reanudar una ayuda no se duplica el desarrollo: se vuelve a la pizarra con la que empezó",
+    /baseDeAyuda\.current = esAyuda\.current/.test(aulaTsx) && /const base = baseDeAyuda\.current;\s*if \(base\) \{/.test(aulaTsx),
   );
   check(
     '"19 + 45 = ?" es un enunciado para resolver; "24 + 17 = 41" no',
@@ -1949,13 +2108,16 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
   );
 
   // 4b. EL MODO PROYECCIÓN NO DESAPARECE.
+  // El panel ya no tiene un "reposo" propio: dibuja LA pizarra de la clase
+  // (con `tablero`), que es la misma en pantalla y proyectada (SUB-PRJ-03).
   check(
-    "sin nada que animar, el panel no se retira: queda la barra con el botón",
-    /if \(sinAnimacion && !escenaDeReposo\) return null;/.test(panelTsx) && /reposo=\{reposo\}/.test(aulaTsx),
+    "sin nada que animar, el panel no se retira: la pizarra y el botón de proyección siguen ahí",
+    !/if \(sinAnimacion[^)]*\) return null;/.test(panelTsx) && /\{tablero\(\{/.test(panelTsx) &&
+      /\{proyeccion \? "Salir de proyección" : "Modo proyección"\}/.test(panelTsx),
   );
   check(
-    "y en pantalla no repite lo que ya enseña la pizarra",
-    /\(!sinAnimacion \|\| proyeccion\) && \(/.test(panelTsx),
+    "y en pantalla la pizarra es UNA: la del panel, sin una segunda copia que pueda decir otra cosa",
+    /tablero=\{\(animacion\) => \(\s*<Pizarra/.test(aulaTsx) && (aulaTsx.match(/<Pizarra\b/g) ?? []).length === 1,
   );
   check(
     "al terminar la lección, la pizarra animada queda resuelta",
@@ -2181,7 +2343,7 @@ titulo("A00a1c. Una sola subrutina compone las dos pizarras");
   );
   check(
     "la pizarra clásica compone con la misma subrutina que anima",
-    /import \{ escenaDeLinea \} from "@\/lib\/leccion\/animacion"/.test(pizarraTsx) &&
+    /import \{ escenaDeLinea, identidadDeEscena, type Escena \} from "@\/lib\/leccion\/animacion"/.test(pizarraTsx) &&
       // Salvo en el ENUNCIADO de la tarjeta, que se compone tal cual está
       // escrito: la escena lleva dentro lo que la animación destapa al final.
       /\?\? \(soloEnunciado \? null : latexDeLaSubrutina\(linea\)\)/.test(pizarraTsx),
@@ -2192,9 +2354,11 @@ titulo("A00a1c. Una sola subrutina compone las dos pizarras");
       /linea\.operacion \? \{ operacion: linea\.operacion \}/.test(pizarraTsx) &&
       /linea\.narracion \? \{ narracion: linea\.narracion \}/.test(pizarraTsx),
   );
+  // Y una nota con rótulo de palabras ("unidades: 3 + 4 = 7") no se compone
+  // entera por KaTeX: va como nota, con el rótulo en letra de pizarra.
   check(
-    "sólo cae a la notación formal o al conversor genérico si la subrutina no reconoce nada",
-    /\?\? \(soloEnunciado \? null : latexDeLaSubrutina\(linea\)\)\s*\?\? notacionFormal\(texto\)\s*\?\? \(pareceMatematica/.test(pizarraTsx),
+    "sólo cae a la notación formal o al conversor genérico si la subrutina no reconoce nada (y no es una nota rotulada)",
+    /\?\? \(soloEnunciado \? null : latexDeLaSubrutina\(linea\)\)[\s\S]{0,300}\?\? \(esNotaRotulada\(texto\) \? null : notacionFormal\(texto\) \?\? \(pareceMatematica\(texto\) \? planoALatex\(texto\) : null\)\)/.test(pizarraTsx),
   );
 
   // Y el resultado: fracciones de verdad, con el factor marcado, para las tres
@@ -2315,28 +2479,27 @@ titulo("A00a2. El acarreo se destaca cuando el tutor lo nombra");
       ) === null,
   );
 
-  // Y en el aula: la cuenta llega a la pizarra animada Y desaparece de la
-  // tarjeta. Las dos mitades, porque tenerla en los dos sitios es el defecto.
+  // EN EL AULA, ESA CUENTA YA NO SE ENSEÑA EN REGLAS (OBS-04 del informe): el
+  // cliente vio "24 + 17" en columna mientras se definía la suma —"un ejercicio
+  // que carece de sentido en este contexto"— y pidió retirarlo. La regla se lee
+  // en la nota que escribe el tutor; la cuenta, en el ejemplo.
   const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
-  check(
-    "el aula saca la cuenta de la regla del catálogo",
-    /cuentaDeArrayLatex\(enunciado\)/.test(aula),
-  );
-  check(
-    "y la mete en las líneas que se animan",
-    /if \(cuentaDeLaRegla\) pasos\.push/.test(aula),
-  );
-  check(
-    "recalculándolas cuando la regla cambia",
-    /\}, \[ejercicio, desarrollo, cuentaDeLaRegla(, paraResolver)?\]\)/.test(aula),
-  );
   const pizarraClasica = readFileSync(
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
   check(
-    "y la tarjeta deja de componerla cuando se está animando",
-    /sinFormula \? \(/.test(pizarraClasica) && /sinFormula=\{reglaAnimada\}/.test(pizarraClasica),
+    "el aula ya no saca la cuenta de la regla del catálogo",
+    !/cuentaDeArrayLatex/.test(aula) && !/cuentaDeLaRegla/.test(aula),
+  );
+  check(
+    "sólo se anima en el Ejemplo y en la Práctica, nunca en Concepto ni en Reglas",
+    /if \(!esFaseDeEjemplo\(faseAbierta\) && !esFaseDePractica\(faseAbierta\)\) return pasos;/.test(aula),
+  );
+  check(
+    "y la tarjeta de la regla no sale cuando su «fórmula» es una cuenta dispuesta",
+    /esFaseDeReglas\(actual\.id\) && reglaEnCurso && !esOperacionDispuesta\(reglaEnCurso\.enunciado\)/.test(pizarraClasica) &&
+      /function esOperacionDispuesta\(enunciado: string\): boolean/.test(pizarraClasica),
   );
 }
 
@@ -3060,18 +3223,22 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
+  // Con la pizarra de dos ambientes ya NO HAY un bloque de desarrollo aparte que
+  // esconder: cada línea es un paso de la misma pizarra, con su estado, y lo
+  // que la voz aún no ha contado se ve sin lo que destapará.
+  const panelAnimado = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
   check(
-    "el aula le dice a la pizarra que esconda el desarrollo",
-    aula.includes("ocultarDesarrollo={ocultarDesarrollo}") &&
-      /const ocultarDesarrollo = !animacionCompleta && controles\.playing/.test(aula),
+    "no hay un desarrollo aparte: cada línea es un paso de LA pizarra, con su estado",
+    !aula.includes("ocultarDesarrollo") && /data-estado=\{e\.escena \? estado : "estatica"\}/.test(pizarra) &&
+      /estado=\{estado\}/.test(pizarra),
   );
   check(
-    "y la pizarra lo obedece: sin desarrollo no compone ni la cuenta ni los pasos",
-    /propio && !ocultarDesarrollo \? desarrolloRecibido : SIN_DESARROLLO/.test(pizarra),
+    "un paso que la voz aún no ha contado no enseña lo que destapará",
+    /estado === "completada" \? escena\.focos\.length - 1 : estado === "pendiente" \? -1 : foco/.test(panelAnimado),
   );
   check(
-    "en cuanto la animación termina —o la lección para— el desarrollo vuelve",
-    aula.includes("!animacionCompleta && controles.playing && lineasAnimadas.length > 0"),
+    "y la cuenta en columna es UNA: la del planteamiento, que se anima; sus trozos no abren tarjeta propia",
+    /if \(enColumna && !cierre && !auxiliar\) continue;/.test(pizarra),
   );
   // Lo que dice, salvo cuando pregunta: una pregunta no es un paso y no mueve
   // la pizarra (revisión daa127d, 2ª).
@@ -3597,26 +3764,25 @@ titulo("D. Máquina de estados del avatar");
     aula.includes("subtitulo && faseDelSubtitulo === faseAbierta") &&
       /const faseAbierta = fases\[fases\.length - 1\]\?\.id \?\? ""/.test(aula),
   );
+  // Con la pizarra de dos ambientes el alto es FIJO (los botones no saltan) y
+  // más bajo en Concepto y Reglas, que escriben menos.
   check(
     "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
-    /const compacta =\s*actual != null && !esFaseDeEjemplo/.test(pizarraTsx) &&
-      pizarraTsx.includes('"h-[19rem] sm:h-[23rem]"') &&
-      pizarraTsx.includes('"h-[24rem] sm:h-[30rem]"'),
+    /const compacta = actual != null && !planteaEjercicio;/.test(pizarraTsx) &&
+      pizarraTsx.includes('"h-[21rem] sm:h-[25rem]"') &&
+      pizarraTsx.includes('"h-[26rem] sm:h-[32rem]"'),
   );
   check(
-    // El cliente volvió a fotografiar la MISMA clase de problema, un nivel
-    // más abajo: dentro de esas 19rem/23rem, la tarjeta que se queda sólo con
-    // el nombre de la regla —sin fórmula, la cuenta se anima abajo— seguía
-    // dejando un bloque vacío debajo. "Tarjeta residual... ocupando espacio
-    // innecesario", la llamó.
-    "y cuando la tarjeta de la regla se queda sin fórmula —la cuenta se anima abajo— ni ESE alto le sobra",
-    /const masCompacta = compacta && actual != null && esFaseDeReglas\(actual\.id\) && reglaAnimada/.test(
-      pizarraTsx,
-    ) && pizarraTsx.includes('"h-[8rem] sm:h-[9rem]"'),
+    // La "tarjeta residual" que el cliente fotografió —la regla sin fórmula,
+    // porque la cuenta se animaba abajo— ya no puede darse: en Reglas la cuenta
+    // no se anima (OBS-04) y la tarjeta no sale si su fórmula es una cuenta.
+    "y no queda ninguna tarjeta de regla vacía: sin fórmula que enseñar, la regla va como nota",
+    !/sinFormula/.test(pizarraTsx) && !/reglaAnimada/.test(pizarraTsx) &&
+      /const notasAmbiente1 = conVisual \? \[\] : notas\.slice\(0, 1\);/.test(pizarraTsx),
   );
   check(
-    "ni repite el rótulo de la regla que ya está en la tarjeta",
-    pizarraTsx.includes("repiteLaRegla") && pizarraTsx.includes("pasoSuelto && !repiteLaRegla"),
+    "ni se repite la regla: si hay tarjeta, las notas van al otro ambiente",
+    /const notasAmbiente2 = conVisual \? notas : notas\.slice\(1\);/.test(pizarraTsx),
   );
 
   check(
@@ -3676,7 +3842,12 @@ titulo("D. Máquina de estados del avatar");
   );
 
   check("existe el tema de proyección", estilos.includes(".modo-proyeccion"));
-  check("con la tipografía escalada", estilos.includes("--pz-escala"));
+  // Escalada a los mínimos del informe: fórmulas ≥ 48 px y notas ≥ 24 px.
+  check(
+    "con la tipografía escalada",
+    /\.modo-proyeccion \.katex \{\s*font-size: clamp\(3rem,/.test(estilos) &&
+      /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);/.test(estilos),
+  );
   check(
     "y las rayas de KaTeX engordadas para que se vean proyectadas",
     estilos.includes(".modo-proyeccion .katex .frac-line"),
@@ -3691,8 +3862,9 @@ titulo("D. Máquina de estados del avatar");
     /\.modo-proyeccion \.katex \{[^}]*clamp\([^)]*vw/.test(bloqueProyeccion),
   );
   check(
-    "y ocupa un lienzo alto, no un renglón en medio de la nada",
-    /\.modo-proyeccion \.pz-animada \{[^}]*min-height/.test(bloqueProyeccion),
+    "y la pizarra ocupa la pantalla entera, no un renglón en medio de la nada",
+    /\.modo-proyeccion \.pz-tablero-caja \{[^}]*flex: 1 1 auto;/.test(bloqueProyeccion) &&
+      /\.modo-proyeccion \.pz-lienzo,\s*\.modo-proyeccion \.pz-pizarra \{[^}]*height: 100%;/.test(bloqueProyeccion),
   );
   check(
     "el avatar se queda a la vista, en un lateral",
@@ -3700,8 +3872,8 @@ titulo("D. Máquina de estados del avatar");
       bloqueProyeccion.includes(".modo-proyeccion .pz-avatar svg"),
   );
   check(
-    "el tema es de pizarra oscura y texto claro",
-    /\.modo-proyeccion \{[^}]*background: hsl\(222 47% 8%\)/.test(bloqueProyeccion) &&
+    "el tema es de pizarra oscura (slate-950, como pide el informe) y texto claro",
+    /\.modo-proyeccion \{[^}]*background: #020617;/.test(bloqueProyeccion) &&
       /\.modo-proyeccion \.katex \{[^}]*color: hsl\(0 0% 100%\)/.test(bloqueProyeccion),
   );
   check(

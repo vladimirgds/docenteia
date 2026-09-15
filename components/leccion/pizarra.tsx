@@ -5,16 +5,20 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 
-import { TextoMatematico } from "@/components/math";
+import { TextoTutor } from "@/components/leccion/texto-tutor";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import { FraccionFormal, NotaDePizarra } from "@/components/leccion/nota-pizarra";
-import { conceptoDeFraccion } from "@/lib/leccion/diagramas";
-import { partirNota } from "@/lib/leccion/notas";
+import {
+  PizarraAnimada,
+  type AnimacionDePizarra,
+  type EstadoEscena,
+} from "@/components/leccion/pizarra-animada";
+import { conceptoDeFraccion, tieneDiagrama } from "@/lib/leccion/diagramas";
 import type { OperacionPaso, PasoSemantico } from "@/lib/leccion/marcado";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
-  columnaDelDesarrollo,
+  leerSumaOResta,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
 import {
@@ -22,8 +26,12 @@ import {
   CLASE_EXPONENTE,
   lineaResaltada,
 } from "@/lib/leccion/destacar";
-import { escenaDeLinea } from "@/lib/leccion/animacion";
+import { escenaDeLinea, identidadDeEscena, type Escena } from "@/lib/leccion/animacion";
+import { esCalculoAuxiliar, repartirEnAmbientes, type PapelDelPaso } from "@/lib/leccion/ambientes";
+import { ROL, rol } from "@/lib/leccion/roles";
+import { esEnunciadoParaResolver } from "@/lib/leccion/seguimiento-lsg";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
+import { esNotaRotulada } from "@/lib/leccion/notas";
 import { rotulosALatex } from "@/lib/leccion/rotulos";
 import {
   esFaseDeConcepto,
@@ -62,13 +70,6 @@ export interface LineaPizarra {
 }
 
 /**
- * Lo que se compone en la pizarra en un momento dado.
- *
- * El tipo va declarado a mano, y no inferido: con las tres ramas del cálculo
- * devolviendo formas distintas, TypeScript construía una unión que hacía
- * explotar la comprobación de tipos durante la compilación.
- */
-/**
  * Cómo se compone una línea de aritmética.
  *
  * "planteamiento" es la operación en columna con la raya y sin el total: lo que
@@ -77,18 +78,6 @@ export interface LineaPizarra {
  */
 type ModoColumna = "planteamiento" | "resuelta";
 
-/** Un paso del desarrollo, con la forma en que hay que componerlo. */
-interface PasoCompuesto {
-  linea: LineaPizarra;
-  columna?: ModoColumna;
-}
-
-interface ContenidoPizarra {
-  /** Pasos del procedimiento, debajo del enunciado. */
-  pasos: PasoCompuesto[];
-  /** Paso suelto de las fases que no plantean ejercicio. */
-  pasoSuelto: LineaPizarra | null;
-}
 
 /**
  * Una fase abierta de la lección. Sólo identidad: ningún contenido.
@@ -140,32 +129,24 @@ export function Pizarra({
   resaltado,
   reglas = [],
   reglaDetectada = null,
-  reglaAnimada = false,
   tema,
-  ocultarDesarrollo = false,
+  paraResolver,
+  animacion = null,
   className,
 }: {
   /** Fases ya abiertas: la tira de progreso y la vista en curso. */
   fases: FaseAbierta[];
   /**
    * Ejercicio activo. Llega ya resuelto desde el aula, que lo fija al entrar
-   * en la fase, así que la tarjeta de arriba se compone en el milisegundo 0
-   * sin esperar a que haya un solo paso calculado.
+   * en la fase, así que el encabezado se compone en el milisegundo 0 sin
+   * esperar a que haya un solo paso calculado.
    */
   ejercicio: LineaPizarra | null;
-  /**
-   * Pasos del procedimiento. Vacío mientras el alumno no pida ayuda ni
-   * resolución; el aula lo SUSTITUYE entero en cada petición.
-   */
+  /** Pasos del procedimiento; el aula lo SUSTITUYE entero en cada petición. */
   desarrollo: LineaPizarra[];
   /**
-   * De qué fase es ese contenido.
-   *
-   * Durante la transición, la vista saliente y la entrante conviven. Sin saber
-   * a quién pertenece cada cosa, el contenido de una podía pintarse un instante
-   * bajo el rótulo de la otra: eso es el parpadeo que se veía, un recuadro que
-   * asoma un milisegundo y desaparece de golpe. Aquí sólo se compone el
-   * contenido de la fase que se está pintando.
+   * De qué fase es ese contenido: durante la transición conviven la vista
+   * saliente y la entrante, y sólo se compone el de la fase que se pinta.
    */
   faseDelContenido: string;
   /** Texto de la línea que el puntero está señalando, si hay alguno. */
@@ -174,56 +155,36 @@ export function Pizarra({
   reglas?: ReglaPizarra[];
   /** Regla que el aula ha detectado como activa a partir de lo narrado. */
   reglaDetectada?: ReglaPizarra | null;
-  /**
-   * La cuenta de la regla la está animando la pizarra de abajo.
-   *
-   * Entonces esta tarjeta NO la compone. El cliente lo reportó dos veces —"en
-   * Reglas y propiedades sigue apareciendo una cuenta estática fija en una
-   * esquina"— y la causa era ésta: la misma suma en columna salía dos veces,
-   * quieta aquí arriba y animándose abajo. La tarjeta se queda con el nombre de
-   * la regla, que es lo que la sitúa; la cuenta la enseña quien la mueve.
-   */
-  reglaAnimada?: boolean;
   /** Tema en curso, para elegir el diagrama de la fase de Concepto. */
   tema?: string;
   /**
-   * Oculta el desarrollo mientras la pizarra animada lo va contando.
-   *
-   * Lo pidió el cliente y tiene toda la razón: con la cuenta resuelta a la
-   * vista —el 412 y sus llevadas— el paso a paso de abajo no explica nada. No
-   * basta con filtrar las líneas del desarrollo, porque la cuenta de esta
-   * tarjeta se COMPONE a partir de los pasos narrados ("unidades: 4 + 8 = 12"),
-   * no de una línea con el resultado. Por eso el aula lo dice explícitamente.
+   * Los enunciados que se le PIDEN al alumno. Su planteamiento no se anima:
+   * animarlo era hacerle a la pizarra el primer paso del ejercicio que tiene
+   * que resolver él.
    */
-  ocultarDesarrollo?: boolean;
+  paraResolver?: ReadonlySet<string>;
+  /** El estado de la animación: qué paso está recorriendo la voz. */
+  animacion?: AnimacionDePizarra | null;
   className?: string;
 }) {
   const actual = fases[fases.length - 1] ?? null;
   const finRef = useRef<HTMLDivElement>(null);
+  const proyeccion = animacion?.proyeccion ?? false;
 
   // El contenido sólo se compone bajo SU fase. Lo que venga marcado con otra
   // no se pinta: es lo que dejaba recuadros residuales al cambiar de fase.
   const propio = actual != null && faseDelContenido === actual.id;
   const ejercicio = propio ? ejercicioRecibido : null;
   const desarrollo = useMemo(
-    () => (propio && !ocultarDesarrollo ? desarrolloRecibido : SIN_DESARROLLO),
-    [propio, ocultarDesarrollo, desarrolloRecibido],
+    () => (propio ? desarrolloRecibido : SIN_DESARROLLO),
+    [propio, desarrolloRecibido],
   );
 
-  // La regla que el tutor está explicando ahora mismo, deducida de las líneas
-  // ya reveladas. Cambia al ritmo del diálogo, no de golpe al entrar en la fase.
   /**
-   * Regla que se compone en la fase de Reglas.
-   *
-   * Se elige, en este orden: la que el aula ha detectado como activa (mira todo
-   * lo narrado), la que se deduzca de lo escrito en la pizarra, y si ninguna de
-   * las dos da resultado, la PRIMERA del tema.
-   *
-   * Ese último recurso no es un adorno. En aritmética y en ecuaciones lineales
-   * el motor no escribe nada en la pizarra durante esta fase —sólo narra—, así
-   * que al dejar de volcar la locución al lienzo la fase se quedaba
-   * COMPLETAMENTE en blanco. Una fase de "Reglas y propiedades" sin ninguna
-   * regla a la vista no es aceptable, y el catálogo siempre tiene una.
+   * Regla que se compone en la fase de Reglas: la que el aula ha detectado como
+   * activa, la que se deduzca de lo escrito o, si ninguna, la primera del tema
+   * —una fase de "Reglas y propiedades" sin ninguna regla a la vista no es
+   * aceptable, y el catálogo siempre tiene una—.
    */
   const reglaEnCurso = useMemo(() => {
     if (!actual || !esFaseDeReglas(actual.id) || reglas.length === 0) return null;
@@ -236,13 +197,8 @@ export function Pizarra({
   }, [actual, ejercicio, desarrollo, reglas, reglaDetectada]);
 
   /**
-   * Qué partes se han marcado de verdad en el ejercicio.
-   *
-   * La leyenda no depende del tema sino de lo que hay marcado. En aritmética no
-   * se marca nada —una suma en columna no tiene coeficiente ni exponente— así
-   * que no se compone leyenda: la leyó el alumno bajo "24 + 17" y no
-   * significaba nada. Y en "x²" sólo se marca el exponente, así que sólo se
-   * nombra el exponente.
+   * Qué partes se han marcado de verdad en el ejercicio, para la leyenda. En
+   * aritmética no se marca nada, y en "x²" sólo el exponente.
    */
   const marcado = useMemo(() => {
     if (!actual || !esFaseDeEjemplo(actual.id) || !ejercicio) {
@@ -255,187 +211,207 @@ export function Pizarra({
     };
   }, [actual, ejercicio]);
 
-  /**
-   * La cuenta de aritmética que se está explicando, si la hay.
-   *
-   * Manda sobre el enunciado de la tarjeta: al pedir ayuda, el tutor puede
-   * pasar a otra operación, y componer la de la tarjeta mientras la voz narra
-   * otra deja al alumno viendo una cosa y oyendo otra. La tarjeta y la cuenta
-   * resuelta salen de AQUÍ las dos, así que no pueden discrepar.
-   */
-  const cuenta = useMemo(
-    () =>
-      ejercicio
-        ? columnaDelDesarrollo(desarrollo.map((l) => l.texto), ejercicio.texto)
-        : null,
-    [ejercicio, desarrollo],
-  );
-
   /** ¿La fase en curso plantea un ejercicio al alumno? */
   const planteaEjercicio =
     actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
 
   /**
-   * ENUNCIADO FIJO ARRIBA + DESARROLLO DEBAJO.
+   * LOS PASOS DEL EJERCICIO, CADA UNO EN SU AMBIENTE.
    *
-   * El enunciado llega en su propia prop y se compone tal cual: no se deduce de
-   * los pasos ni espera a que haya ninguno. Aquí sólo se decide cómo
-   * presentar el desarrollo, que en las fases sin ejercicio se reduce al último
-   * paso escrito.
+   * El planteamiento abre el Ambiente 1; detrás, cada línea del desarrollo con
+   * su papel (paso, cálculo auxiliar, cierre) y su escena de animación. El
+   * reparto entre los dos ambientes lo hace `repartirEnAmbientes`, que sólo
+   * mira lo ya escrito: una línea no cambia de lado cuando llega la siguiente.
    */
-  const { pasos, pasoSuelto } = useMemo((): ContenidoPizarra => {
-    if (!actual) return { pasos: [], pasoSuelto: null };
+  const elementos = useMemo((): ElementoPizarra[] => {
+    if (!actual || !planteaEjercicio || !ejercicio) return [];
 
-    // Concepto y Reglas no plantean ejercicio: se compone el paso actual.
-    if (!planteaEjercicio) {
-      return {
-        pasos: [],
-        pasoSuelto: desarrollo.length > 0 ? desarrollo[desarrollo.length - 1] : null,
-      };
-    }
+    const pideAlAlumno =
+      Boolean(paraResolver?.has(ejercicio.texto)) || esEnunciadoParaResolver(ejercicio.texto);
+    const enColumna = leerSumaOResta(sinRayasDibujadas(ejercicio.texto)) != null;
 
-    // ARITMÉTICA: el desarrollo es UNA sola cuenta en columna, y nada más.
-    //
-    // El motor la escribe por partes mientras la explica —"27 + 38 =", "¹19",
-    // "+45", una cifra suelta— y cada parte abría su propia tarjeta: cinco
-    // apiladas, con barra de desplazamiento y sin rastro de la alineación. Da
-    // igual con qué trozos llegue: se compone la cuenta entera, calculada aquí,
-    // y los trozos no se pintan. Lo que el tutor va diciendo sigue oyéndose.
-    // Salvo el CIERRE: la respuesta final enmarcada va debajo de la cuenta. Es
-    // el último paso de cualquier ejercicio, también de uno en columna.
-    if (ejercicio && cuenta) {
-      const cierre = [...desarrollo].reverse().find((l) => l.operacion?.tipo === "resultado");
-      return {
-        pasos: [
-          { linea: { ...ejercicio, id: -ejercicio.id - 2, texto: cuenta.texto }, columna: "resuelta" },
-          ...(cierre ? [{ linea: cierre }] : []),
-        ],
-        pasoSuelto: null,
-      };
-    }
-
-    const pasos: PasoCompuesto[] = desarrollo.map((linea) => ({ linea }));
-
+    const lista: { linea: LineaPizarra; papel: PapelDelPaso }[] = [
+      { linea: ejercicio, papel: "planteamiento" },
+    ];
     // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
-    // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
-    // hallar, que es justo lo que la ramificación pedagógica evita.
-    if (ejercicio && esFaseDeEjemplo(actual.id) && desarrollo.length > 0) {
-      const intermedio = pasoIntermedioDerivada(ejercicio.texto);
-      if (intermedio) {
-        return {
-          pasos: [{ linea: { id: -ejercicio.id - 1, texto: intermedio, clase: "formula" } }, ...pasos],
-          pasoSuelto: null,
-        };
-      }
+    // EJEMPLO: en la práctica revelaría la respuesta.
+    const intermedio =
+      esFaseDeEjemplo(actual.id) && desarrollo.length > 0 ? pasoIntermedioDerivada(ejercicio.texto) : null;
+    if (intermedio) lista.push({ linea: { id: -ejercicio.id - 1, texto: intermedio, clase: "formula" }, papel: "paso" });
+
+    for (const linea of desarrollo) {
+      const cierre = linea.operacion?.tipo === "resultado" || Boolean(linea.operacion?.final);
+      const auxiliar = !cierre && esCalculoAuxiliar(linea.texto);
+      // UNA CUENTA EN COLUMNA ES UNA SOLA: la del planteamiento, que se anima.
+      // Los trozos con que el motor la redibuja —"27 + 38 =", "¹19", "+45"—
+      // abrían su propia tarjeta cada uno. De las demás líneas sólo se escriben
+      // las notas de cada columna (al margen, en el Ambiente 2) y el cierre.
+      if (enColumna && !cierre && !auxiliar) continue;
+      lista.push({ linea, papel: cierre ? "cierre" : auxiliar ? "auxiliar" : "paso" });
     }
 
-    return { pasos, pasoSuelto: null };
-  }, [actual, planteaEjercicio, ejercicio, desarrollo, cuenta]);
+    // Qué escena del guion corresponde a cada línea: la animación la recorre por
+    // su identidad. Si dos líneas tienen la misma (el planteamiento "24 + 17" y
+    // el cierre "24 + 17 = 41" son la misma cuenta), la escena es de la primera.
+    const indicePorIdentidad = new Map<string, number>();
+    (animacion?.escenas ?? []).forEach((e, i) => {
+      const id = identidadDeEscena(e);
+      if (!indicePorIdentidad.has(id)) indicePorIdentidad.set(id, i);
+    });
+    const usadas = new Set<number>();
 
-  useEffect(() => {
-    finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [desarrollo.length, ejercicio?.id, actual?.id]);
+    const conEscena = lista.map(({ linea, papel }) => {
+      const estatica = papel === "planteamiento" && pideAlAlumno;
+      const escena = estatica ? null : escenaDeLinea(pasoDeLinea(linea), `linea-${linea.id}`);
+      const animable = escena != null && escena.focos.length > 0;
+      let indiceGuion = -1;
+      if (animable) {
+        const candidato = indicePorIdentidad.get(identidadDeEscena(escena));
+        if (candidato != null && !usadas.has(candidato)) {
+          indiceGuion = candidato;
+          usadas.add(candidato);
+        }
+      }
+      return {
+        linea,
+        papel,
+        escena: animable ? escena : null,
+        indiceGuion,
+        gesto: linea.operacion?.tipo ?? (animable ? escena.clase : null),
+        columna: papel === "planteamiento" && enColumna && estatica ? ("planteamiento" as const) : undefined,
+      };
+    });
+
+    const ambientes = repartirEnAmbientes(conEscena.map(({ papel, gesto }) => ({ papel, gesto })));
+    return conEscena.map((e, i) => ({ ...e, ambiente: ambientes[i] }));
+  }, [actual, planteaEjercicio, ejercicio, desarrollo, paraResolver, animacion?.escenas]);
 
   /**
-   * ¿Es una fase de las que enseñan poco: Concepto o Reglas?
-   *
-   * Ahí no hay ejercicio ni desarrollo, sólo una tarjeta y a lo sumo una línea.
-   * Con el alto del ejemplo paso a paso, lo que se ve es medio lienzo vacío.
+   * La fracción en curso, y si ya se han dicho "numerador" / "denominador":
+   * el MISMO cálculo que usa cualquier otra vista (`conceptoDeFraccion`).
    */
-  /**
-   * La fracción en curso, y si ya se han dicho "numerador" / "denominador".
-   *
-   * Vive en `lib/leccion/diagramas.ts` —ver `conceptoDeFraccion`— porque la
-   * pizarra animada necesita EXACTAMENTE este mismo cálculo cuando se proyecta
-   * sin nada que animar: con la lógica duplicada aquí y allí, una podía
-   * quedarse viendo el denominador mientras la otra todavía no.
-   */
+  const ultimaNota = desarrollo.length > 0 ? desarrollo[desarrollo.length - 1] : null;
   const { fraccion: fraccionEnCurso, vistoNumerador, vistoDenominador } = useMemo(
     () =>
       conceptoDeFraccion({
         faseId: actual?.id,
         tema,
-        pasoSuelto,
+        pasoSuelto: planteaEjercicio ? null : ultimaNota,
         ejercicio,
         desarrollo,
       }),
-    [actual, tema, pasoSuelto, ejercicio, desarrollo],
+    [actual, tema, planteaEjercicio, ultimaNota, ejercicio, desarrollo],
   );
 
-  const compacta =
-    actual != null && !esFaseDeEjemplo(actual.id) && !esFaseDePractica(actual.id);
+  useEffect(() => {
+    finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [desarrollo.length, ejercicio?.id, actual?.id]);
 
-  /**
-   * ¿LA TARJETA DE LA REGLA SE QUEDA SÓLO CON EL NOMBRE?
-   *
-   * Cuando la cuenta se anima abajo, `TarjetaRegla` se compone `sinFormula`:
-   * el nombre y un aviso de una línea, sin notación ni ejemplo. El cliente la
-   * fotografió DENTRO del alto pensado para una tarjeta CON fórmula
-   * (19rem/23rem, el que ya se redujo una vez por el mismo motivo) y la vio
-   * como "una tarjeta residual... ocupando espacio innecesario". No sobra la
-   * tarjeta —sigue anclando el nombre de la regla mientras se explica—, sobra
-   * el alto que arrastra de un contenido que aquí no tiene.
-   */
-  const masCompacta = compacta && actual != null && esFaseDeReglas(actual.id) && reglaAnimada;
+  /** El estado de la escena de un elemento, según por dónde va la voz. */
+  const estadoDe = (indiceGuion: number): EstadoEscena => {
+    if (!animacion || indiceGuion < 0) return "completada";
+    if (indiceGuion < animacion.escena) return "completada";
+    if (indiceGuion === animacion.escena) return "activa";
+    return "pendiente";
+  };
 
-  /**
-   * ¿La línea suelta no dice más que el nombre de la regla que ya está arriba?
-   *
-   * En la fase de Reglas, el motor escribe "Suma con llevada: si pasa de 9,
-   * llevo 1" justo debajo de la tarjeta que ya se titula "Suma con llevada" y
-   * enseña la cuenta. Es el mismo rótulo por segunda vez, y por tercera en el
-   * subtítulo. La pizarra es para la notación; la prosa, para la voz.
-   */
-  const repiteLaRegla = useMemo(() => {
-    if (!pasoSuelto || !reglaEnCurso) return false;
-    const limpiar = (t: string) =>
-      String(t ?? "")
-        .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
-        .toLowerCase()
-        .trim();
-    const nombre = limpiar(reglaEnCurso.nombre);
-    return nombre.length > 3 && limpiar(pasoSuelto.texto).startsWith(nombre);
-  }, [pasoSuelto, reglaEnCurso]);
+  const compacta = actual != null && !planteaEjercicio;
+
+  // ── Concepto y Reglas: lo escrito en la fase, en sus dos ambientes ─────────
+  const notas = planteaEjercicio ? [] : desarrollo.filter((l) => !l.aclaracion && l.clase !== "explicacion");
+  const diagrama =
+    actual != null && esFaseDeConcepto(actual.id) && tema && tieneDiagrama(tema) ? tema : null;
+  // La tarjeta de la regla, salvo cuando su "fórmula" es una cuenta ya resuelta
+  // (la suma en columna de "Suma con llevada"): el cliente la vio aparecer
+  // mientras se definía la suma —"24 + 17", un ejercicio que no venía a cuento—
+  // y pidió retirarla. La regla se lee en la nota que escribe el tutor.
+  const tarjeta =
+    actual != null && esFaseDeReglas(actual.id) && reglaEnCurso && !esOperacionDispuesta(reglaEnCurso.enunciado)
+      ? reglaEnCurso
+      : null;
+  const conVisual = Boolean(diagrama) || Boolean(tarjeta);
+  const notasAmbiente1 = conVisual ? [] : notas.slice(0, 1);
+  const notasAmbiente2 = conVisual ? notas : notas.slice(1);
+
+  // LA RESPUESTA SE ENMARCA UNA VEZ: en el cierre. Un paso anterior que ya
+  // llegaba a ella —la cuenta en columna con su resultado— la deja subrayada,
+  // sin una segunda cápsula con su visto.
+  const ultimoCierre = elementos.reduce((k, e, i) => (e.papel === "cierre" ? i : k), -1);
+
+  const renderElemento = (e: ElementoPizarra) => {
+    const regla = esFaseDeEjemplo(actual?.id ?? "") && reglas.length ? identificarRegla(e.linea.texto, reglas) : null;
+    const estado = estadoDe(e.indiceGuion);
+    return (
+      <div
+        key={e.linea.id}
+        className="pz-elemento"
+        data-papel={e.papel}
+        data-estado={e.escena ? estado : "estatica"}
+      >
+        {regla && (
+          <span {...rol(ROL.PIZARRA)} className="pz-insignia-regla mb-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+            {regla.nombre}
+          </span>
+        )}
+        {e.escena ? (
+          <PizarraAnimada
+            escena={e.escena}
+            foco={estado === "activa" ? (animacion?.foco ?? -1) : -1}
+            estado={estado}
+            proyeccion={proyeccion}
+            marcoFinal={ultimoCierre < 0 || elementos.indexOf(e) >= ultimoCierre}
+          />
+        ) : (
+          <LineaRenderizada
+            linea={e.linea}
+            columna={e.columna}
+            soloEnunciado={e.papel === "planteamiento"}
+            resaltada={resaltado != null && e.linea.texto.includes(resaltado)}
+            reglas={[]}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const nota = (linea: LineaPizarra) => (
+    <div key={linea.id} className="pz-elemento" data-papel="nota">
+      <LineaRenderizada
+        linea={linea}
+        resaltada={resaltado != null && linea.texto.includes(resaltado)}
+        reglas={[]}
+      />
+    </div>
+  );
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <Fases fases={fases} />
+    <div
+      className={cn("pz-pizarra space-y-3", proyeccion && "pz-pizarra-proyectada", className)}
+      data-fase={actual?.id ?? ""}
+    >
+      {/* La tira de fases es interfaz: no se proyecta. */}
+      {!proyeccion && <Fases fases={fases} />}
 
-      {/* ALTURA FIJA, no mínima. Con una altura que crecía según el contenido,
-          la pizarra cambiaba de tamaño en cada paso y los botones de abajo
-          saltaban arriba y abajo mientras el alumno leía. El desbordamiento se
-          resuelve dentro, con scroll propio.
-
-          Fija DENTRO DE CADA FASE, eso sí. Concepto y Reglas enseñan una
-          tarjeta y poco más, y con la altura del ejemplo resuelto quedaba medio
-          lienzo en blanco —el cliente lo reportó como "recuadro vacío"—. Y
-          cuando esa tarjeta se queda sólo con el nombre de la regla —la cuenta
-          se anima abajo, ver `masCompacta`— ni siquiera ese alto reducido le
-          hace falta: el cliente volvió a fotografiarlo, esta vez como "tarjeta
-          residual... ocupando espacio innecesario". El alto cambia sólo al
-          cambiar de fase o de esa condición, que es cuando la vista entera se
-          sustituye de todas formas. */}
+      {/* ALTURA FIJA en pantalla, no mínima: con una altura que crecía con el
+          contenido, los botones de abajo saltaban en cada paso. El
+          desbordamiento se resuelve dentro, con scroll propio. En proyección la
+          pizarra ocupa la pantalla. */}
       <div
         className={cn(
-          "relative overflow-hidden rounded-lg border bg-card shadow-inner",
-          masCompacta
-            ? "h-[8rem] sm:h-[9rem]"
-            : compacta
-              ? "h-[19rem] sm:h-[23rem]"
-              : "h-[24rem] sm:h-[30rem]",
+          "pz-tablero-caja relative overflow-hidden rounded-lg border bg-card shadow-inner",
+          compacta ? "h-[21rem] sm:h-[25rem]" : "h-[26rem] sm:h-[32rem]",
         )}
         aria-live="polite"
         aria-label="Pizarra"
       >
         {!actual ? (
-          <p className="p-5 text-sm text-muted-foreground">
-            La pizarra está en blanco. Elige un tema y pulsa <em>Reproducir</em>.
+          <p {...rol(ROL.PIZARRA)} className="p-5 text-sm text-muted-foreground">
+            La pizarra está en blanco. Elige un tema y pulsa Reproducir.
           </p>
         ) : (
           <AnimatePresence mode="wait">
-            {/* La clave es la escena: al cambiar de fase, la vista entera se
-                sustituye con una transición limpia. */}
+            {/* La clave es la fase: al cambiar, la vista entera se sustituye
+                con una transición limpia. */}
             <motion.div
               key={actual.id}
               initial={{ opacity: 0, x: 28 }}
@@ -444,96 +420,64 @@ export function Pizarra({
               transition={{ duration: 0.32, ease: "easeOut" }}
               className="flex h-full flex-col"
             >
-              <div className="shrink-0 border-b bg-muted/40 px-5 py-2.5">
-                <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
-                  {actual.titulo}
-                </h2>
-              </div>
+              {!proyeccion && (
+                <div className="shrink-0 border-b bg-muted/40 px-5 py-2.5">
+                  <h2 {...rol(ROL.PIZARRA)} className="text-sm font-semibold tracking-wide text-muted-foreground">
+                    {actual.titulo}
+                  </h2>
+                </div>
+              )}
 
-              {/* El scroll vive aquí dentro: la caja de fuera nunca cambia de
-                  tamaño, así que nada de lo que hay debajo se mueve. */}
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-                {/* En la fase de Reglas se compone ÚNICAMENTE la tarjeta de la
-                    regla que el tutor está explicando en este momento. Mostrar
-                    el catálogo entero desincronizaba la pizarra del audio. */}
-                {esFaseDeReglas(actual.id) && reglaEnCurso && (
-                  <TarjetaRegla
-                    key={reglaEnCurso.clave}
-                    regla={reglaEnCurso}
-                    sinFormula={reglaAnimada}
-                  />
+              <div className="pz-tablero-cuerpo min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+                {/* EL EJERCICIO, FIJO ARRIBA: "Ejercicio:" y el enunciado limpio.
+                    Los pasos se despliegan debajo, en los dos ambientes. */}
+                {planteaEjercicio && (
+                  <EncabezadoEjercicio texto={ejercicio?.texto ?? null} />
                 )}
 
-                {/* En la fase de Concepto, un diagrama que enseñe la idea: la
-                    tangente de una curva, las partes de un todo, la balanza. */}
-                {esFaseDeConcepto(actual.id) && tema && (
-                  <DiagramaConcepto
-                    tema={tema}
-                    // La fracción de la que se está hablando, para que el
-                    // dibujo enseñe exactamente eso. Sin esto el diagrama era
-                    // fijo —1 de 4— dijera lo que dijera el tutor.
-                    numerador={fraccionEnCurso?.numerador}
-                    denominador={fraccionEnCurso?.denominador}
-                    // Los rótulos de la pizza no aparecen hasta que se ha
-                    // dicho la palabra: ver el porqué en `vistoNumerador`.
-                    vistoNumerador={vistoNumerador}
-                    vistoDenominador={vistoDenominador}
-                  />
-                )}
+                <div className="pz-ambientes">
+                  <section className="pz-ambiente" data-ambiente="1" aria-label="Ambiente 1">
+                    {planteaEjercicio
+                      ? elementos.filter((e) => e.ambiente === 1).map(renderElemento)
+                      : (
+                        <>
+                          {diagrama && (
+                            <div className="pz-diagrama-y-fraccion space-y-4">
+                              <DiagramaConcepto
+                                tema={diagrama}
+                                numerador={fraccionEnCurso?.numerador}
+                                denominador={fraccionEnCurso?.denominador}
+                                vistoNumerador={vistoNumerador}
+                                vistoDenominador={vistoDenominador}
+                              />
+                              {/* LA DEFINICIÓN FORMAL, vertical y sin barra
+                                  inclinada, a la misma letra y tamaño que las
+                                  notas de al lado (el cliente: "considerar el
+                                  mismo tamaño y tipo de letra"). */}
+                              {diagrama === "FRACCIONES" && vistoNumerador && vistoDenominador && (
+                                <FraccionFormal
+                                  numerador={fraccionEnCurso?.numerador ?? 1}
+                                  denominador={fraccionEnCurso?.denominador ?? 4}
+                                />
+                              )}
+                            </div>
+                          )}
+                          {tarjeta && <TarjetaRegla key={tarjeta.clave} regla={tarjeta} />}
+                          {notasAmbiente1.map(nota)}
+                        </>
+                      )}
+                  </section>
+                  <section className="pz-ambiente" data-ambiente="2" aria-label="Ambiente 2">
+                    {planteaEjercicio
+                      ? elementos.filter((e) => e.ambiente === 2).map(renderElemento)
+                      : notasAmbiente2.map(nota)}
+                  </section>
+                </div>
 
-                {/* LA FRACCIÓN FORMAL, PARA CERRAR LA IDEA.
-                    El cliente lo pidió con estas palabras: "falta mostrar la
-                    expresión matemática explícita correspondiente al
-                    gráfico". Se destapa cuando ya se han dicho las dos
-                    palabras: antes de eso no cierra nada todavía.
-
-                    Y SIN BARRA INCLINADA. Se escribía "Numerador /
-                    Denominador: 1/4", y el cliente lo corrigió: "el estudiante
-                    necesita ver la estructura de numerador arriba y
-                    denominador abajo". Ahora es una sola expresión vertical,
-                    Numerador sobre Denominador igual a 1 sobre 4. */}
-                {esFaseDeConcepto(actual.id) && tema === "FRACCIONES" && vistoNumerador && vistoDenominador && (
-                  <FraccionFormal
-                    numerador={fraccionEnCurso?.numerador ?? 1}
-                    denominador={fraccionEnCurso?.denominador ?? 4}
-                    className="overflow-x-auto text-center"
-                  />
-                )}
-
-                {/* Fases con ejercicio: el enunciado anclado arriba y su
-                    desarrollo debajo, para que el alumno pueda contrastar el
-                    planteamiento con el procedimiento.
-
-                    La tarjeta de ARRIBA no depende de que haya desarrollo: se
-                    pinta en cuanto se entra en la fase, con el enunciado que se
-                    adelantó al recibir la lección. La de ABAJO sólo aparece
-                    cuando hay pasos que mostrar. Atar la primera a la segunda
-                    dejaba la pizarra en blanco durante toda la locución. */}
-                {(ejercicio || planteaEjercicio) && (
-                  <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-3">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                      Ejercicio
-                    </p>
-                    {ejercicio ? (
-                      <LineaRenderizada
-                        linea={cuenta ? { ...ejercicio, texto: cuenta.texto } : ejercicio}
-                        columna="planteamiento"
-                        soloEnunciado
-                        destacarTerminos={esFaseDeEjemplo(actual.id)}
-                        resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
-                        reglas={[]}
-                      />
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Preparando el ejercicio…</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Qué significa cada color. Sin la leyenda, el resaltado es
-                    decoración; con ella, el alumno ata lo que oye —"el
-                    coeficiente 5, el exponente 2"— a lo que ve marcado. */}
+                {/* Qué significa cada color: sin la leyenda, el resaltado es
+                    decoración. */}
                 {(marcado.coeficiente || marcado.exponente) && (
-                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                  <p {...rol(ROL.PIZARRA)} className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {marcado.coeficiente && (
                       <span>
                         <span className="pz-coeficiente">●</span> coeficiente
@@ -547,60 +491,72 @@ export function Pizarra({
                   </p>
                 )}
 
-                {pasos.length > 0 && (
-                  <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Desarrollo
-                    </p>
-                    <AnimatePresence initial={false}>
-                      {pasos.map(({ linea, columna }) => (
-                        <motion.div
-                          key={linea.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.22 }}
-                        >
-                          <LineaRenderizada
-                            linea={linea}
-                            columna={columna}
-                            destacarTerminos={esFaseDeEjemplo(actual.id)}
-                            resaltada={resaltado != null && linea.texto.includes(resaltado)}
-                            reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
-                          />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Concepto y Reglas: no hay ejercicio, se compone el paso en curso.
-
-                    Sin AnimatePresence: una salida anidada dentro de un
-                    contenedor que a su vez está saliendo encadena dos
-                    desmontajes, y el de dentro se ve como un recuadro que
-                    asoma y desaparece. La línea nueva entra con su fundido y
-                    la anterior se va con la fase, de una pieza. */}
-                {pasoSuelto && !repiteLaRegla && (
-                    <motion.div
-                      key={pasoSuelto.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25 }}
-                    >
-                      <LineaRenderizada
-                        linea={pasoSuelto}
-                        resaltada={resaltado != null && pasoSuelto.texto.includes(resaltado)}
-                        reglas={[]}
-                      />
-                    </motion.div>
-                )}
-
                 <div ref={finRef} />
               </div>
             </motion.div>
           </AnimatePresence>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Un paso de la pizarra, con su ambiente y su escena de animación. */
+interface ElementoPizarra {
+  linea: LineaPizarra;
+  papel: PapelDelPaso;
+  /** La escena que lo anima, o null si se compone quieto (una nota, el enunciado de la práctica). */
+  escena: Escena | null;
+  /** Qué escena del guion es: la voz la recorre por este índice. -1 si no está en el guion. */
+  indiceGuion: number;
+  gesto: string | null;
+  columna?: ModoColumna;
+  ambiente: 1 | 2;
+}
+
+/**
+ * "Ejercicio:" y el enunciado, fijos en lo alto de la pizarra.
+ *
+ * Con sus dos puntos —el cliente: "dice Ejercicio, debe decir Ejercicio:"— y en
+ * letra de pizarra; el enunciado, limpio (sin marcas ni piezas por destapar) y
+ * más grande. Es el mismo en pantalla y proyectado, porque es la misma pizarra.
+ */
+function EncabezadoEjercicio({ texto }: { texto: string | null }) {
+  const crudo = String(texto ?? "").trim();
+  // "Ejercicio 2:  2/6 + 3/6" trae su propio rótulo: se respeta el número.
+  const conRotulo = crudo.match(/^\s*(ejercicio[^:]{0,20}):\s*(.+)$/i);
+  const rotulo = conRotulo ? `${conRotulo[1].trim().replace(/^e/, "E")}:` : "Ejercicio:";
+  const enunciado = (conRotulo ? conRotulo[2] : crudo).trim();
+  const html = useMemo(() => {
+    if (!enunciado) return null;
+    const latex = notacionFormal(enunciado) ?? (pareceMatematica(enunciado) ? planoALatex(enunciado) : null);
+    if (!latex) return null;
+    try {
+      // En estilo de bloque: en línea, KaTeX baja las fracciones a tamaño de
+      // subíndice y "1/2 + 1/3" se leía diminuto al lado de "Ejercicio:".
+      return katex.renderToString(`\\displaystyle ${latex}`, { displayMode: false, throwOnError: false, strict: false });
+    } catch {
+      return null;
+    }
+  }, [enunciado]);
+  return (
+    <div className="pz-encabezado-ejercicio" data-enunciado={enunciado}>
+      <span className="pz-encabezado-rotulo" {...rol(ROL.PIZARRA)}>
+        {rotulo}
+      </span>
+      {enunciado ? (
+        html ? (
+          <span className="pz-encabezado-formula" {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          <span className="pz-encabezado-formula" {...rol(ROL.PIZARRA)}>
+            {enunciado}
+          </span>
+        )
+      ) : (
+        <span className="pz-encabezado-formula text-muted-foreground" {...rol(ROL.PIZARRA)}>
+          Preparando el ejercicio…
+        </span>
+      )}
     </div>
   );
 }
@@ -658,23 +614,18 @@ function esOperacionDispuesta(enunciado: string): boolean {
   return String(enunciado ?? "").includes("\\begin{array}");
 }
 
-function TarjetaRegla({
-  regla,
-  sinFormula = false,
-}: {
-  regla: ReglaPizarra;
-  /** La cuenta se está animando abajo: aquí sólo el nombre de la regla. */
-  sinFormula?: boolean;
-}) {
+function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28 }}
-      className="rounded-md border-2 border-primary/40 bg-primary/5 p-4"
+      className="pz-tarjeta-regla rounded-md border-2 border-primary/40 bg-primary/5 p-4"
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold">{regla.nombre}</h3>
+        <h3 {...rol(ROL.PIZARRA)} className="pz-tarjeta-regla-nombre text-base font-semibold">
+          {regla.nombre}
+        </h3>
         {!regla.practicable && (
           <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             sólo referencia
@@ -682,37 +633,17 @@ function TarjetaRegla({
         )}
       </div>
 
-      {/* La tarjeta lleva el nombre de la regla y su notación. Nada más.
-          La descripción en prosa NO se compone: es palabra por palabra lo que
-          el tutor está narrando y lo que se lee en el subtítulo, así que en el
-          lienzo era el mismo texto por tercera vez. La pizarra es para la
-          notación; la prosa, para la voz. */}
-      {/* La notación de la regla, salvo cuando es la pizarra animada la que la
-          está montando paso a paso: dos copias de la misma cuenta —una quieta
-          arriba y otra moviéndose abajo— es exactamente lo que el cliente
-          señaló como "una cuenta estática fija en una esquina". */}
-      {/* LA REGLA Y SU EJEMPLO, AL MISMO TAMAÑO Y CENTRADOS.
-          El ejemplo se componía en línea: fracciones de texto diminutas, pegado
-          a la esquina de abajo, y a ese tamaño el "=" de 1/2 = 2/4 = 3/6 se
-          quedaba en dos rayitas que en la pantalla del cliente se leían como
-          un menos. Un ejemplo que se lee peor que la regla no la ilustra: los
-          dos van en modo display, centrados y con la misma letra grande. */}
-      {sinFormula ? (
-        <p className="py-1 text-xs text-muted-foreground">
-          La cuenta se monta paso a paso aquí debajo.
-        </p>
-      ) : (
-        <div className="pz-regla-formula overflow-x-auto py-1 text-center">
-          <Formula latex={regla.enunciado} display />
-        </div>
-      )}
+      {/* La tarjeta lleva el nombre de la regla y su notación. Nada más: la
+          descripción en prosa es lo que el tutor está narrando, y en el lienzo
+          era el mismo texto por tercera vez. La pizarra es para la notación; la
+          prosa, para la voz. La regla y su ejemplo van al mismo tamaño, en modo
+          display y alineados a la izquierda, como el resto de la pizarra. */}
+      <div className="pz-regla-formula overflow-x-auto py-1">
+        <Formula latex={regla.enunciado} display />
+      </div>
 
-      {/* Y el ejemplo sólo cuando el enunciado NO es ya una operación resuelta.
-          En "Suma con llevada" el enunciado es la propia cuenta en columna, con
-          su llevada y su total: debajo quedaba un "19 + 45 = 64" horizontal que
-          no añade nada y desdice el formato que se está enseñando. */}
-      {!sinFormula && regla.ejemplo && !esOperacionDispuesta(regla.enunciado) && (
-        <div className="pz-regla-formula mt-2 overflow-x-auto border-t pt-2 text-center">
+      {regla.ejemplo && (
+        <div className="pz-regla-formula mt-2 overflow-x-auto border-t pt-2">
           <Formula latex={regla.ejemplo} display />
         </div>
       )}
@@ -745,8 +676,8 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
     }
   }, [latex, display]);
 
-  if (!html) return <span className="font-mono text-sm">{latex}</span>;
-  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+  if (!html) return <span {...rol(ROL.FORMULA)}>{latex}</span>;
+  return <span {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /**
@@ -853,7 +784,13 @@ function LineaRenderizada({
       // El tutor los nombra sobre los números concretos, y así la pizarra
       // enseña lo mismo en vez del esquema abstracto.
       ?? rotulosALatex(linea.texto)
-      ?? (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
+      ?? (columna
+        ? columnaDeLinea(texto, {
+            conResultado: columna === "resuelta",
+            // El planteamiento de la práctica, con el "?" bajo la raya.
+            conIncognita: columna === "planteamiento" && /\?\s*$/.test(linea.texto),
+          })
+        : null)
       // El coeficiente y el exponente marcados, para que se vea lo que se oye.
       ?? (destacarTerminos ? lineaResaltada(texto) : null)
       // LA MISMA SUBRUTINA QUE ANIMA COMPONE TAMBIÉN LO QUIETO.
@@ -879,8 +816,9 @@ function LineaRenderizada({
       // que añade son las marcas. Y una línea sin etiqueta que la subrutina no
       // reconoce sigue su camino de siempre.
       ?? (soloEnunciado ? null : latexDeLaSubrutina(linea))
-      ?? notacionFormal(texto)
-      ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
+      // "unidades: 3 + 4 = 7" es una NOTA con su rótulo: se pinta abajo, con el
+      // rótulo en letra de pizarra y sólo la fórmula en KaTeX.
+      ?? (esNotaRotulada(texto) ? null : notacionFormal(texto) ?? (pareceMatematica(texto) ? planoALatex(texto) : null));
     if (!latex) return null;
 
     try {
@@ -906,7 +844,7 @@ function LineaRenderizada({
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.
   const etiqueta = regla ? (
-    <span className="mb-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+    <span {...rol(ROL.PIZARRA)} className="pz-insignia-regla mb-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
       {regla.nombre}
     </span>
   ) : null;
@@ -922,19 +860,16 @@ function LineaRenderizada({
       <div className={cn(esCierre && "pz-linea-final")}>
         {etiqueta}
         {esCierre && (
-          <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+          <span {...rol(ROL.PIZARRA)} className="mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
             <Check className="h-3 w-3" />
             Resultado final
           </span>
         )}
         <div
+          {...rol(ROL.FORMULA)}
           className={cn(
-            "overflow-x-auto rounded-md px-3 py-2 transition-colors",
-            resaltada
-              ? "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50"
-              : esCierre
-                ? "bg-emerald-500/5 ring-1 ring-emerald-600/30"
-                : "bg-muted/40",
+            "pz-linea-formula overflow-x-auto rounded-md px-1 py-1 transition-colors",
+            resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
           )}
           dangerouslySetInnerHTML={{ __html: formulaEntera }}
         />
@@ -942,28 +877,27 @@ function LineaRenderizada({
     );
   }
 
-  // DOS TIPOS DE PROSA, UNA SOLA LLEVA FUENTE PROPIA.
+  // DOS TIPOS DE PROSA, CADA UNA CON SU ROL.
   //
   // Una línea "explicacion" es lo que el tutor DICE (viene de una directiva
-  // `hablar`): es habla, y el cliente corrigió el pedido anterior —el habla va
-  // en la tipografía estándar del sistema, no en cursiva—. Una línea "formula"
-  // que no se ha dejado componer como fórmula sigue siendo algo ESCRITO en la
-  // pizarra —una nota, un rótulo que el motor no supo convertir a LaTeX—, y
-  // ahí sí va la fuente de tiza: es la pizarra, no el habla.
-  //
-  // Y una fracción escrita CON PALABRAS —"Fracción: numerador / denominador"—
-  // se compone como fracción, con su raya: el cliente la dibujó así sobre la
-  // captura. Escrita con una barra se leía como dos palabras sueltas.
-  if (linea.clase !== "explicacion" && partirNota(linea.texto).some((t) => t.fraccion)) {
+  // `hablar`): es voz, TUTOR_DIALOG. Una línea "formula" que no se ha dejado
+  // componer como fórmula entera es algo ESCRITO en la pizarra —una nota, un
+  // rótulo—: BOARD_LABEL, como NOTA DE PIZARRA (rótulo y cuerpo, sus fórmulas
+  // por KaTeX, cada idea en su renglón). Es el mismo componente en pantalla y
+  // proyectado: antes aquí era un párrafo y en la proyección una nota, y el
+  // cliente vio dos cosas distintas. Una fracción escrita CON PALABRAS
+  // ("Fracción: numerador / denominador") sale como fracción, con su raya.
+  if (linea.clase === "explicacion") {
     return (
       <div>
         {etiqueta}
-        <NotaDePizarra
-          texto={linea.texto}
+        <TextoTutor
+          como="p"
           className={cn(
-            "rounded-md px-3 py-1.5 transition-colors",
+            "rounded-md px-3 py-1.5 text-sm leading-relaxed text-muted-foreground",
             resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
           )}
+          texto={linea.texto}
         />
       </div>
     );
@@ -971,20 +905,15 @@ function LineaRenderizada({
   return (
     <div>
       {etiqueta}
-      <p
+      {/* También aquí sin la raya de guiones: si la cuenta no se ha dejado
+          recomponer, la raya sigue sobrando. */}
+      <NotaDePizarra
+        texto={sinRayasDibujadas(linea.texto)}
         className={cn(
-          "rounded-md px-3 py-1.5 leading-relaxed transition-colors",
-          linea.clase === "explicacion"
-            ? "text-sm text-muted-foreground"
-            : "pz-tiza text-base font-medium",
+          "rounded-md px-1 py-1 transition-colors",
           resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
         )}
-      >
-        {/* También aquí sin la raya de guiones: si la cuenta no se ha dejado
-            recomponer, la raya sigue sobrando. Como prosa se lee igual de mal
-            que como fórmula. */}
-        <TextoMatematico texto={sinRayasDibujadas(linea.texto)} />
-      </p>
+      />
     </div>
   );
 }

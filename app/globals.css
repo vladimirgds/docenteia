@@ -2,50 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── IDENTIDAD TIPOGRÁFICA DE LA PIZARRA ──────────────────────────────────────
-   El cliente lo pidió en dos rondas, y la segunda CORRIGE a la primera —queda
-   dicho aquí para que no se deshaga el ajuste sin querer en el futuro—:
+/* ── LOS TRES ROLES TIPOGRÁFICOS (SUB-TIP-01 del informe del cliente) ─────────
+   El informe técnico del cliente fija, como regla de toda la plataforma, UNA
+   fuente por ROL de contenido, y prohíbe poner la fuente a mano en cada
+   componente. Los componentes sólo declaran el rol (`data-rol`, ver
+   `lib/leccion/roles.ts`); la familia se decide aquí y en ningún otro sitio:
 
-     · Lo que el tutor DICE (el subtítulo, el pie de la animación, una
-       explicación que cae a prosa) va en la tipografía ESTÁNDAR del sistema,
-       limpia y sin cursiva —"Inter / Sans-serif normal", en sus palabras—. La
-       primera ronda le había puesto la manuscrita a esto, y el cliente lo
-       corrigió: el habla se lee peor en cursiva, y esta clase NO tiene una
-       fuente propia; hereda la de la interfaz.
-     · Lo que se ESCRIBE en la pizarra que NO es una fórmula —las etiquetas de
-       "llevo 1" o "× 2", los rótulos del diagrama, una nota suelta— va en la
-       fuente de pizarra escolar: "Chalkboard SE" o "Segoe Print", que el
-       cliente agrupó como alternativas de UN mismo estilo en la segunda ronda
-       (antes las tenía separadas, una para el habla y otra para lo escrito).
-     · Las FÓRMULAS se quedan tal como están: las compone KaTeX, que ya es "la
-       fuente de matemáticas estándar" que pedía el cliente como alternativa a
-       Cambria Math. Aquí no se toca nada.
+     · TUTOR_DIALOG    — lo que DICE el tutor: subtítulos, la frase bajo cada
+                         paso, la retroalimentación, el estado del avatar.
+                         "IA explicando → Segoe Print".
+     · BOARD_LABEL     — lo que se ESCRIBE en la pizarra: notas, "Ejercicio:",
+                         "MCM(2, 3):", "numeradores", "llevo 1", los rótulos del
+                         dibujo. "Escritura de pizarra → Chalkboard SE".
+     · MATH_EXPRESSION — números, operadores, fracciones, ecuaciones. KaTeX, con
+                         su fuente matemática formal ("Cambria Math / KaTeX").
 
-   SON FUENTES DEL SISTEMA, A PROPÓSITO. "Chalkboard SE" es de macOS; "Segoe
-   Print" y "Comic Sans MS" son de Windows. No se cargan como fuente web
-   porque son tipos con derechos de Microsoft/Apple —no hay una versión
-   abierta que pueda auto-alojarse— y porque son EXACTAMENTE las que pidió el
-   cliente, no una aproximación. Un equipo sin ninguna de ellas —Linux, la
-   mayoría de los móviles— cae en el género que sigue en la lista (cursive /
-   sans-serif de mano), que sigue leyéndose como letra escrita a mano.
-*/
-.pz-tiza {
-  font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+   El informe sustituye a lo acordado en rondas anteriores (entonces el habla
+   iba en la letra de la interfaz): ahora cada rol tiene la suya.
+
+   SON FUENTES DEL SISTEMA, A PROPÓSITO: son tipos con derechos de Microsoft y
+   de Apple, sin versión abierta que pueda auto-alojarse. "Chalkboard SE" es de
+   macOS/iPadOS; en Windows no existe, y su equivalente es "Comic Sans MS" (el
+   estilo del que Chalkboard es la versión de Apple), que además la distingue
+   de Segoe Print: los tres roles se ven distintos también en Windows.
+   "Segoe Print" es de Windows; en un Mac cae en "Bradley Hand". */
+:root {
+  --fuente-tutor: "Segoe Print", "Bradley Hand", "Noteworthy", "Comic Sans MS", cursive;
+  --fuente-pizarra: "Chalkboard SE", "Chalkboard", "Comic Sans MS", "Comic Neue", cursive;
+  --fuente-formula: KaTeX_Main, "Cambria Math", "Times New Roman", serif;
+  /* El color con el que se destaca lo que se está operando (el factor y el
+     término que une el conector de la distributiva). */
+  --pz-color-enfasis: hsl(25 95% 40%);
+}
+
+[data-rol="TUTOR_DIALOG"] {
+  @apply font-tutor;
+  font-style: normal;
+}
+
+[data-rol="BOARD_LABEL"] {
+  @apply font-pizarra;
+}
+
+/* Las fórmulas conservan la fuente de KaTeX aunque vayan dentro de una frase
+   del tutor o de una nota: la regla de KaTeX va en `.katex`, y aquí sólo se
+   declara el rol para quien lo lea. */
+[data-rol="MATH_EXPRESSION"] {
+  font-style: normal;
+}
+
+/* Las palabras que van DENTRO de una fórmula compuesta por KaTeX —los nombres
+   de la suma en columna: "(sumando)", "(suma o total)"— son escritura de
+   pizarra: KaTeX les pone su tipografía, y aquí se les devuelve la del rol. */
+.pz-palabra,
+.pz-palabra * {
+  font-family: var(--fuente-pizarra) !important;
+  font-style: normal !important;
+}
+
+/* Y a tamaño de rótulo, no de fórmula: al proyectar, "(suma o total)" a 48 px
+   no cabía en su mitad de la pizarra. */
+.pz-palabra {
+  font-size: 0.72em;
+}
+
+.modo-proyeccion .pz-palabra {
+  font-size: 0.52em;
+}
+
+/* El rótulo del cierre ("Resultado:"), como el de cualquier nota: a su tamaño
+   y en el ámbar de los rótulos de la pizarra. */
+.pz-palabra.pz-rotulo {
+  font-size: 0.95em;
+  font-weight: 700;
+  color: hsl(25 95% 38%);
+}
+
+.modo-proyeccion .pz-palabra.pz-rotulo {
+  font-size: 0.62em;
+  color: hsl(45 96% 62%);
 }
 
 /* ── NOTAS DE PIZARRA ──────────────────────────────────────────────────────────
-   Una línea escrita, con su jerarquía: el rótulo en letra de pizarra, lo que
-   dice con sus fórmulas compuestas por KaTeX, y cada idea en su renglón (ver
-   `NotaDePizarra`). Fuera de proyección se lee a tamaño normal; los tamaños de
-   aula están más abajo, en el tema de proyección. */
+   Una línea escrita, con su jerarquía: el rótulo, lo que dice con sus fórmulas
+   compuestas por KaTeX, y cada idea en su renglón (ver `NotaDePizarra`).
+   ALINEADAS A LA IZQUIERDA y con aire entre una y otra: el cliente las vio
+   "amontonadas al centro" y pidió alinearlas a la izquierda con espaciado
+   amplio. Los tamaños de aula están más abajo, en el tema de proyección. */
 .pz-nota {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.3em;
-  text-align: center;
+  align-items: flex-start;
+  gap: 0.45em;
+  text-align: left;
   font-size: 1.125rem;
-  line-height: 1.4;
+  line-height: 1.45;
+  /* Sin palabras huérfanas: "llevo" y su "1" no se separan de renglón. */
+  text-wrap: pretty;
 }
 
 .pz-nota-rotulo {
@@ -53,8 +106,109 @@
   color: hsl(25 95% 38%);
 }
 
-.pz-nota-anterior {
-  opacity: 0.7;
+/* Una fracción escrita con palabras —Numerador sobre Denominador—, con su raya
+   horizontal, en la letra y el tamaño de la nota. */
+.pz-fraccion-palabras {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1.15;
+  margin: 0 0.15em;
+}
+
+.pz-fraccion-palabras-arriba {
+  padding: 0 0.25em 0.1em;
+  border-bottom: 2px solid currentColor;
+}
+
+.pz-fraccion-palabras-abajo {
+  padding: 0.1em 0.25em 0;
+}
+
+/* ── LA PIZARRA EN DOS AMBIENTES (SUB-PIZ-02) ─────────────────────────────────
+   El ejercicio fijo arriba ("Ejercicio:"), y debajo dos paneles continuos: el
+   Ambiente 1 (planteamiento y primera transformación) y el Ambiente 2
+   (cálculos auxiliares, continuación y respuesta final). Lo de cada ambiente,
+   alineado a la izquierda y con aire uniforme entre paso y paso. */
+.pz-encabezado-ejercicio {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.35rem 0 0.75rem;
+  border-bottom: 2px solid hsl(var(--border));
+  background: hsl(var(--card));
+}
+
+.pz-encabezado-rotulo {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: hsl(25 95% 38%);
+}
+
+.pz-encabezado-formula .katex {
+  font-size: 1.6em;
+}
+
+.pz-ambientes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.pz-ambiente {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.pz-ambiente + .pz-ambiente {
+  border-left: 2px dashed hsl(var(--border));
+  padding-left: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .pz-ambientes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pz-ambiente + .pz-ambiente {
+    border-left: 0;
+    border-top: 2px dashed hsl(var(--border));
+    padding-left: 0;
+    padding-top: 1rem;
+  }
+}
+
+/* Dentro de un ambiente, las fórmulas empiezan a la izquierda, como se escribe
+   en una pizarra: centradas cada una en su renglón, se leían desordenadas. */
+.pz-ambiente .katex-display {
+  margin: 0.2em 0;
+  text-align: left;
+}
+
+/* KaTeX centra la fórmula DENTRO de su bloque: hay que alinearla también ahí. */
+.pz-ambiente .katex-display > .katex,
+.pz-tarjeta-regla .katex-display > .katex {
+  text-align: left;
+}
+
+.pz-ambiente .pz-animada {
+  text-align: left;
+}
+
+/* Una fórmula dentro de una frase —de una nota o de lo que dice el tutor— no se
+   parte entre dos renglones: "1 +" arriba y "2 = 3" abajo no se lee como una
+   cuenta. Va entera; si no cabe, baja entera al renglón siguiente. */
+.pz-nota-cuerpo [data-rol="MATH_EXPRESSION"],
+[data-rol="TUTOR_DIALOG"] [data-rol="MATH_EXPRESSION"] {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 /* Tokens de shadcn/ui. Se declara la paleta clara completa en :root y sólo se
@@ -432,37 +586,33 @@
 }
 
 .pz-visto {
-  stroke: hsl(152 69% 34%);
+  stroke: #10b981;
   stroke-width: 3.5;
   stroke-linejoin: round;
   animation-delay: 300ms;
 }
 
-.dark .pz-visto {
-  stroke: hsl(152 60% 55%);
-}
-
-/* LA RESPUESTA FINAL, ENMARCADA.
+/* LA RESPUESTA FINAL, EN SU CÁPSULA (SUB-NOT-04).
    Sólo el cierre del ejercicio lleva marco y visto (ver `Foco.final`): un
-   resultado intermedio se subraya y nada más. El marco va en el mismo verde que
-   el visto —los dos dicen "terminado"—, y se traza antes que él. */
+   resultado intermedio se subraya y nada más. Como lo describe el informe: una
+   cápsula de esquinas redondeadas, borde verde y fondo verde muy suave, con el
+   visto verde a su derecha; nada cruza las cifras. */
+/* Los valores del informe: borde de 2 px en esmeralda 500 (#10b981) y fondo del
+   mismo esmeralda al 10 % ("border-2 border-emerald-500 bg-emerald-500/10"). */
 .pz-marco-final {
-  stroke: hsl(152 69% 34%);
-  stroke-width: 3;
-}
-
-.dark .pz-marco-final {
-  stroke: hsl(152 60% 55%);
+  stroke: #10b981;
+  stroke-width: 2;
+  fill: rgb(16 185 129 / 0.1);
 }
 
 .pz-resaltado[data-final="si"] .pz-visto {
   animation-delay: 380ms;
 }
 
-/* En la pizarra clásica el marco lo pone KaTeX (`\boxed`), en verde y con un
-   trazo que se vea; en la animada lo dibuja la capa de resaltados en su
-   momento, así que el de KaTeX se oculta para no pintar dos marcos. El borde
-   lleva el grosor en línea (0.04em), de ahí el `!important`. */
+/* Fuera de la animación (una línea de cierre compuesta quieta) el marco lo pone
+   KaTeX (`oxed`), en el mismo verde; dentro, lo dibuja la capa de resaltados
+   y el de KaTeX se oculta para no pintar dos marcos. El borde lleva el grosor
+   en línea (0.04em), de ahí el `!important`. */
 .pz-final {
   color: hsl(160 84% 30%);
   font-weight: 600;
@@ -473,70 +623,34 @@
 }
 
 .pz-final .fbox {
-  border-color: hsl(152 69% 34%);
+  border-color: #10b981;
   border-width: 2px !important;
-  border-radius: 4px;
+  border-radius: 12px;
+  background: rgb(16 185 129 / 0.1);
 }
 
 .pz-animada .pz-final .fbox {
   border-color: transparent;
+  background: transparent;
 }
 
-/* La definición formal de la fracción (Numerador sobre Denominador = 1/4), bajo
-   el dibujo de la fase de Concepto. */
-.pz-fraccion-formal .katex {
-  font-size: 1.35em;
-}
-
-/* EL EJERCICIO ORIGINAL, FIJO EN LO ALTO DE LA PROYECCIÓN. Sólo se pinta al
-   proyectar (ver `EnunciadoFijo`). `sticky` lo mantiene arriba aunque el panel
-   se desplace con un desarrollo largo; el fondo es el de la pizarra, para que
-   lo que pase por debajo no se transparente. */
-.pz-enunciado-fijo {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem 1.25rem;
-  padding: 0.5rem 1rem;
-  border-bottom: 2px solid hsl(210 40% 60% / 0.35);
-  background: inherit;
-}
-
-.pz-enunciado-rotulo {
-  font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
-  font-weight: 700;
-  color: hsl(25 95% 38%);
-}
-
-.pz-enunciado-formula .katex-display {
-  margin: 0;
-}
-
-/* El rótulo de la llevada o de la reagrupación, sobre la caja. Es una nota
-   escrita a mano sobre la pizarra —"llevo 1", "× 2"—, así que va en la fuente
-   de tiza, igual que los rótulos del diagrama. */
+/* Los rótulos de los resaltados —"llevo 1", "× 2", "entre 6"— son escritura de
+   pizarra (su fuente la pone el rol). Se colocan en JavaScript donde no pisan
+   ninguna cifra (ver `lib/leccion/etiquetas.ts`). */
 .pz-etiqueta {
   fill: hsl(25 95% 38%);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
 }
 
 .dark .pz-etiqueta {
   fill: hsl(38 96% 60%);
 }
 
-/* El pie de la pizarra animada: lo que el tutor está DICIENDO mientras el foco
-   está encendido. Es habla, y el cliente corrigió el pedido anterior: el habla
-   se lee en la tipografía estándar del sistema —limpia, sin cursiva—, no en la
-   manuscrita. Esa queda reservada para lo que se ESCRIBE en la pizarra. */
+/* El pie de cada paso: lo que el tutor está contando de él (TUTOR_DIALOG). */
 .pz-pie {
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 /* ── Revelado progresivo ────────────────────────────────────────────────────
@@ -556,170 +670,173 @@
   }
 }
 
-/* ── Modo proyección ────────────────────────────────────────────────────────
-   Para la pizarra digital del aula: se mira desde el fondo de la clase, con la
-   luz encendida y sobre un proyector que come contraste. Pizarra oscura,
-   tipografía escalada al ancho de la pantalla, trazos gruesos y el avatar
-   siempre a la vista en un lateral. */
+/* ── Modo proyección (SUB-PRJ-03) ───────────────────────────────────────────
+   Para la pizarra digital del aula. NO es otra vista: es ESTE MISMO panel —la
+   misma pizarra, el mismo estado— en pantalla completa y con este tema: fondo
+   oscuro de alto contraste, sin los textos de interfaz, letra escalada para
+   leerse de lejos (fórmulas de 48 px como mínimo, notas de 24 px como mínimo),
+   trazos gruesos y el avatar siempre a la vista en un lateral. */
 .modo-proyeccion {
-  --pz-escala: 1.35;
-  background: hsl(222 47% 8%);
+  --pz-color-enfasis: hsl(45 96% 64%);
+  /* El fondo del informe: "tema de alto contraste (bg-slate-950)". */
+  background: #020617;
   color: hsl(0 0% 100%);
-  padding: clamp(1rem, 3vw, 2.5rem);
-  gap: clamp(0.75rem, 2vh, 1.5rem);
+  padding: clamp(1rem, 2.5vw, 2rem);
+  gap: clamp(0.5rem, 1.5vh, 1rem);
 }
 
-/* El escenario: avatar a un lado, fórmula ocupando el resto. Por debajo de
-   1024 px (una tablet en vertical enchufada a la pantalla del aula) se apilan,
-   porque un avatar de 18vw dejaría la fórmula en un canal estrecho. */
+/* El escenario: avatar a un lado y la pizarra en el resto. Por debajo de 1024 px
+   (una tablet en vertical) se apilan y el avatar se retira. */
 .modo-proyeccion .pz-escenario {
   display: grid;
-  grid-template-columns: minmax(9rem, 16vw) 1fr;
-  align-items: center;
-  gap: clamp(1rem, 3vw, 3rem);
+  grid-template-columns: minmax(8rem, 13vw) minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(0.75rem, 2vw, 2rem);
   flex: 1 1 auto;
   min-height: 0;
 }
 
 @media (max-width: 1024px) {
   .modo-proyeccion .pz-escenario {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .modo-proyeccion .pz-avatar {
     display: none;
   }
 }
 
-/* El avatar, a tamaño de aula: la regla gana a las clases de utilidad del SVG
-   por especificidad, así que el componente no necesita saber nada de esto. */
+.modo-proyeccion .pz-avatar {
+  align-self: center;
+}
+
 .modo-proyeccion .pz-avatar svg {
-  width: clamp(7rem, 13vw, 15rem);
+  width: clamp(6.5rem, 11vw, 13rem);
   height: auto;
 }
 
 .modo-proyeccion .pz-avatar span {
-  font-size: clamp(0.9rem, 1.4vw, 1.4rem);
+  font-size: clamp(1.1rem, 1.5vw, 1.5rem);
   color: hsl(0 0% 100%);
 }
 
-/* La fórmula: grande de verdad y centrada en su propio lienzo. Sin la altura
-   mínima quedaba diminuta en medio de la pantalla, que es justo lo que el aula
-   no puede leer. */
-.modo-proyeccion .pz-animada {
+/* La pizarra ocupa toda la altura disponible: su caja deja de tener el alto
+   fijo de la pantalla y crece hasta el borde. */
+.modo-proyeccion .pz-lienzo,
+.modo-proyeccion .pz-pizarra {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: min(58vh, 34rem);
+  min-height: 0;
+  height: 100%;
 }
 
+.modo-proyeccion .pz-tablero-caja {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  background: transparent;
+  border-color: hsl(210 40% 60% / 0.3);
+  box-shadow: none;
+}
+
+.modo-proyeccion .pz-encabezado-ejercicio {
+  background: #020617;
+  border-bottom-color: hsl(210 40% 60% / 0.35);
+}
+
+.modo-proyeccion .pz-ambiente + .pz-ambiente {
+  border-left-color: hsl(210 40% 60% / 0.35);
+}
+
+/* Nunca por debajo del espaciado del informe (gap-6, 24 px). */
+.modo-proyeccion .pz-ambiente {
+  gap: clamp(1.5rem, 3vh, 2.25rem);
+}
+
+/* LAS FÓRMULAS, A TAMAÑO DE AULA: 48 px como mínimo ("fórmulas >= 48px"). */
 .modo-proyeccion .katex {
-  font-size: clamp(2.25rem, 6.5vw, 4.5rem);
+  font-size: clamp(3rem, 3.6vw, 4rem);
   font-weight: 600;
   color: hsl(0 0% 100%);
 }
 
-/* EL DIAGRAMA DE CONCEPTO, PROYECTADO EN GRANDE.
-   El cliente lo fotografió: en Fracciones, "el gráfico circular interactivo
-   debe permanecer visible y escalado en grande", no reducido al ancho de
-   24rem pensado para la tarjeta lateral de la pizarra clásica (`max-w-sm`,
-   en `DiagramaConcepto`). El selector gana en especificidad a esa clase de
-   utilidad —dos clases más la del propio SVG, contra una sola—, así que el
-   componente no necesita saber que se está proyectando. */
-.modo-proyeccion .pz-diagrama-proyectado {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  /* SIN `align-items: center`. Es el eje CRUZADO de un flex en columna —el
-     horizontal—, y con él el hijo (el propio `div` de `DiagramaConcepto`, que
-     es OTRO flex por dentro) deja de estirarse al ancho del contenedor y pasa
-     a encogerse a su contenido; su SVG, con `width: 100%` resuelto contra ESE
-     ancho ya encogido, terminaba en el tamaño de reserva de un SVG sin
-     tamaño (300×150), no en el grande que pide este bloque. El valor por
-     defecto —`stretch`— es el que faltaba: con el hijo estirado al ancho
-     completo, `w-full` del SVG por fin tiene contra qué resolverse, y el
-     centrado horizontal lo sigue dando el `mx-auto` del propio contenedor. */
-  min-height: min(58vh, 34rem);
+/* "Ejercicio:" y el enunciado, más grandes: el cliente pidió "incrementar más
+   el tamaño de la letra" de este encabezado. */
+.modo-proyeccion .pz-encabezado-rotulo {
+  font-size: clamp(1.75rem, 2.4vw, 2.5rem);
+  color: hsl(45 96% 62%);
 }
 
-/* LAS NOTAS, A TAMAÑO DE AULA.
-   El cliente, sobre tres capturas: "las etiquetas textuales (como Fracciones
-   equivalentes:, MCM(2, 3): o Propiedad uniforme de la suma:) se renderizan en
-   una fuente diminuta (text-xs / text-sm) pegada al centro oscuro, mientras los
-   números son gigantes", y pidió "tamaño visible para aula (text-xl o
-   text-2xl)" en letra de pizarra. El rótulo nunca baja de text-2xl (1.5rem) y
-   crece con la pantalla; la fórmula de la nota va un escalón por encima del
-   rótulo —manda la matemática— pero por debajo de la de un paso animado, que no
-   comparte renglón con nada. */
+.modo-proyeccion .pz-encabezado-formula .katex {
+  font-size: clamp(3rem, 3.6vw, 4rem);
+}
+
+/* LAS NOTAS, a tamaño de aula (24 px como mínimo), en blanco sobre la pizarra
+   oscura, alineadas a la izquierda y con aire entre una y otra. La fórmula de
+   una nota, a 48 px como cualquier otra. */
 .modo-proyeccion .pz-nota {
-  font-size: clamp(1.5rem, 2.6vw, 2.5rem);
+  font-size: clamp(1.6rem, 2.2vw, 2.3rem);
   color: hsl(0 0% 100%);
+  gap: 0.6em;
 }
 
 .modo-proyeccion .pz-nota-rotulo {
   color: hsl(45 96% 62%);
 }
 
+/* La fórmula de una nota —"2 × 3 = 6" en "MCM(2, 3): 2 × 3 = 6"— es una
+   fórmula como cualquier otra: 48 px como mínimo, igual que los pasos. */
 .modo-proyeccion .pz-nota .katex {
-  font-size: 1.35em;
+  font-size: max(3rem, 1.3em);
 }
 
-/* UNA NOTA SOLA EN SU LIENZO —la regla que se está contando, "Propiedad
-   uniforme de la suma: lo mismo a los dos lados"—, un escalón más: el cliente
-   la volvió a señalar diminuta y pidió "text-2xl o text-3xl, centrado y con
-   fuente clara". No baja nunca de text-3xl (1.875rem), va centrada en el
-   lienzo y en blanco sobre la pizarra oscura, con el trazo engrosado para que
-   la letra de pizarra se lea desde el fondo del aula. */
-.modo-proyeccion .pz-animada .pz-nota {
-  font-size: clamp(1.875rem, 3vw, 3rem);
-  font-weight: 600;
-  line-height: 1.35;
-  justify-content: center;
+/* Y la de lo que dice el tutor bajo el paso, al tamaño de su frase. */
+.modo-proyeccion .pz-pie .katex {
+  font-size: 1.15em;
 }
 
-/* Las notas ya escritas se quedan a la vista un punto por debajo de la que se
-   está contando, sin apagarse: siguen siendo pizarra que el aula tiene que leer. */
-.modo-proyeccion .pz-nota-anterior {
-  opacity: 0.78;
+.modo-proyeccion .pz-fraccion-palabras-arriba {
+  border-bottom-width: 4px;
 }
 
-/* CONCEPTO PROYECTADO: el dibujo a un lado y lo escrito al otro. Uno debajo del
-   otro no cabían en una pantalla —el diagrama grande más cinco notas—, y la
-   última se salía por abajo justo cuando era la que se estaba explicando. En
-   pantallas estrechas (una tablet en vertical) se vuelven a apilar. */
-@media (min-width: 1024px) {
-  .modo-proyeccion .pz-diagrama-proyectado {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-    align-items: center;
-    column-gap: clamp(1rem, 3vw, 3rem);
-    max-width: none;
-  }
-
-  .modo-proyeccion .pz-diagrama-proyectado .pz-notas {
-    margin-top: 0;
-  }
-
-  /* El dibujo manda en esta fase —el cliente lo pidió "escalado en grande"—:
-     las notas de al lado van un punto por debajo, sin bajar de text-2xl. */
-  .modo-proyeccion .pz-diagrama-proyectado .pz-nota {
-    font-size: clamp(1.5rem, 2.05vw, 2.1rem);
-  }
+/* Lo que no es la nota en curso pero sigue escrito, sin apagarse. */
+.modo-proyeccion .pz-pizarra .text-muted-foreground {
+  color: hsl(210 40% 86%);
 }
 
-/* Las notas de Reglas, sin diagrama, centradas en su lienzo como la fórmula. */
-.modo-proyeccion .pz-notas-proyectadas {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: min(58vh, 34rem);
+/* La tarjeta de la regla, sobre la pizarra oscura. */
+.modo-proyeccion .pz-tarjeta-regla {
+  background: hsl(222 40% 12%);
+  border-color: hsl(45 96% 60% / 0.55);
 }
 
-/* El viewBox es fijo (240×132, o así): con el ancho del SVG suelto, todo lo
-   de dentro —gajos, trazos y el texto de sus propios `fontSize` en unidades
-   del lienzo— crece junto con él, en la misma proporción. No hace falta tocar
-   el tamaño de letra aparte. */
-.modo-proyeccion .pz-diagrama-proyectado .pz-diagrama {
-  max-width: min(44rem, 90vw);
+.modo-proyeccion .pz-tarjeta-regla-nombre {
+  font-size: clamp(1.6rem, 2.2vw, 2.3rem);
+  color: hsl(45 96% 62%);
+}
+
+/* EL DIBUJO DE CONCEPTO, con contraste de aula. El cliente fotografió "juntar
+   dos cantidades da el total" en gris oscuro sobre fondo oscuro: los rótulos
+   del dibujo pasan a blanco y a ámbar de tiza (contraste muy por encima de
+   4,5:1) y el marco deja de ser un panel gris. */
+.modo-proyeccion .pz-diagrama-marco {
+  background: transparent;
+  border-color: hsl(210 40% 60% / 0.35);
+}
+
+.modo-proyeccion .pz-diagrama [data-tono="normal"] {
+  fill: hsl(0 0% 98%);
+}
+
+.modo-proyeccion .pz-diagrama [data-tono="tenue"] {
+  fill: hsl(210 40% 88%);
+}
+
+.modo-proyeccion .pz-diagrama [data-tono="acento"] {
+  fill: hsl(45 96% 64%);
+}
+
+.modo-proyeccion .pz-diagrama {
+  max-width: min(40rem, 100%);
 }
 
 /* Las rayas de KaTeX —la de la fracción, la de la cuenta en columna— son
@@ -744,20 +861,17 @@
   stroke: hsl(0 90% 68%);
 }
 
-/* El visto, en verde de tiza: sobre la pizarra oscura también tiene que decir
-   "correcto" sin confundirse con el ámbar de los recuadros. */
+/* El visto, en el esmeralda de la cápsula. */
 .modo-proyeccion .pz-visto {
-  stroke: hsl(142 70% 62%);
+  stroke: #10b981;
   stroke-width: 7;
 }
 
-/* Y el doble subrayado, en azul también en proyección —como lo pidió el
-   cliente—, en el tono claro que aguanta sobre la pizarra oscura. */
+/* Y el doble subrayado de un resultado intermedio, en azul claro. */
 .modo-proyeccion .pz-subrayado {
   stroke: hsl(199 89% 68%);
 }
 
-/* Sobre pizarra oscura el fondo tiene que pesar más para leerse de lejos. */
 .modo-proyeccion .pz-fondo {
   fill: hsl(45 96% 60% / 0.22);
 }
@@ -766,66 +880,34 @@
   fill: hsl(0 90% 68% / 0.2);
 }
 
+/* Los rótulos de los resaltados, a tamaño de nota (24 px como mínimo). */
 .modo-proyeccion .pz-etiqueta {
   fill: hsl(45 96% 60%);
-  font-size: clamp(1rem, 1.8vw, 1.75rem);
+  font-size: clamp(1.5rem, 1.9vw, 2rem);
 }
 
-/* Lo que el tutor explica en cada paso, bajo la fórmula: a tamaño de aula
-   también (nunca por debajo de text-2xl), centrado. */
+/* Lo que el tutor cuenta de cada paso, bajo él: 24 px como mínimo. */
 .modo-proyeccion .pz-pie {
-  font-size: clamp(1.5rem, 2.3vw, 2.25rem);
+  font-size: clamp(1.5rem, 2vw, 2.1rem);
   color: hsl(210 40% 92%);
   max-width: 60ch;
-  margin-inline: auto;
 }
 
-/* El marco de la respuesta final, en el verde de tiza del visto. */
+/* La respuesta final: la misma cápsula esmeralda, con el trazo escalado como
+   todo lo demás al proyectar. */
 .modo-proyeccion .pz-marco-final {
-  stroke: hsl(142 70% 62%);
-  stroke-width: 6;
+  stroke: #10b981;
+  stroke-width: 4;
+  fill: rgb(16 185 129 / 0.1);
 }
 
 .modo-proyeccion .pz-final {
-  color: hsl(142 70% 72%);
+  color: #6ee7b7;
 }
 
-/* El ejercicio fijo arriba: grande, pero un punto por debajo del paso activo,
-   que es lo que se está explicando. */
-.modo-proyeccion .pz-enunciado-fijo {
-  background: hsl(222 47% 8%);
-}
-
-.modo-proyeccion .pz-enunciado-rotulo {
-  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
-  color: hsl(45 96% 62%);
-}
-
-.modo-proyeccion .pz-enunciado-fijo .katex {
-  font-size: clamp(1.75rem, 3.4vw, 2.75rem);
-}
-
-/* Con el ejercicio fijo arriba, el lienzo del paso cede algo de altura para
-   que los dos quepan en la pantalla sin desplazarse. */
-.modo-proyeccion[data-enunciado-fijo="si"] .pz-animada {
-  min-height: min(46vh, 28rem);
-}
-
-/* La definición formal de la fracción, proyectada bajo el dibujo. */
-.modo-proyeccion .pz-fraccion-formal .katex {
-  font-size: clamp(1.75rem, 3vw, 2.75rem);
-}
-
-/* Cabecera y mandos, legibles y pulsables desde una pantalla táctil de aula. */
-.modo-proyeccion .pz-cabecera h3,
-.modo-proyeccion .pz-cabecera span {
-  font-size: clamp(0.95rem, 1.5vw, 1.35rem);
-  color: hsl(210 40% 92%);
-}
-
-/* El fondo del botón también cambia, no sólo la letra. El botón "outline"
-   conserva el fondo blanco de la interfaz, y con la letra en blanco "Salir de
-   proyección" era un rectángulo vacío: el único botón para volver, invisible. */
+/* El botón para salir, legible y pulsable desde una pantalla táctil de aula.
+   El botón "outline" conserva el fondo blanco de la interfaz, y con la letra en
+   blanco "Salir de proyección" era un rectángulo vacío. */
 .modo-proyeccion button {
   font-size: clamp(0.95rem, 1.3vw, 1.25rem);
   padding: 0.65rem 1.1rem;
@@ -840,8 +922,7 @@
 }
 
 /* El avatar sobre la pizarra oscura: la cabeza se aclara y los rasgos pasan a
-   oscuro. Con los colores de la interfaz clara, la cara era un círculo casi del
-   color del fondo y los ojos, oscuros sobre oscuro, desaparecían. */
+   oscuro, o la cara desaparecía contra el fondo. */
 .modo-proyeccion .pz-avatar .avatar-cabeza {
   fill: hsl(214 95% 93%);
   stroke: hsl(213 94% 72%);
@@ -861,18 +942,8 @@
   height: 1.25em;
 }
 
-/* En proyección, el resaltado ya pasado se ve más que en pantalla: de lejos, un
-   28 % de opacidad es invisible. */
 .modo-proyeccion .pz-resaltado {
   stroke-opacity: 1;
-}
-
-/* ── Diagramas de la fase de Concepto ─────────────────────────────────────────
-   Los rótulos del diagrama —"numerador", "1/8 < 1/4", la nota al pie— son
-   notas escritas a mano sobre el dibujo, no fórmulas: van en la fuente de
-   tiza, igual que la etiqueta de una llevada. */
-.pz-diagrama text {
-  font-family: "Chalkboard SE", "Segoe Print", "Comic Sans MS", "Comic Sans", cursive, sans-serif;
 }
 
 /* La pizza se corta al entrar, porción a porción, en vez de aparecer entera de

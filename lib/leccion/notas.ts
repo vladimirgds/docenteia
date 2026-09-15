@@ -58,6 +58,20 @@ export function partirNota(texto: string): TrozoDeNota[] {
 }
 
 /**
+ * ¿La línea es una nota con rótulo de palabras? "unidades: 3 + 4 = 7",
+ * "MCM(2, 3): 2 × 3 = 6".
+ *
+ * Una línea así se pinta como NOTA —el rótulo en letra de pizarra, la fórmula
+ * en KaTeX—, no como una fórmula entera con el rótulo metido dentro: compuesto
+ * por KaTeX, "unidades:" salía con la letra romana de las fórmulas, que no es la
+ * del rótulo (SUB-TIP-01).
+ */
+export function esNotaRotulada(texto: string): boolean {
+  const [primero] = partirNota(texto);
+  return Boolean(primero?.rotulo && /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{3,}/.test(primero.rotulo));
+}
+
+/**
  * LA DEFINICIÓN DE FRACCIÓN, EN NOTACIÓN FORMAL: Numerador sobre Denominador,
  * igual a la fracción del dibujo.
  *

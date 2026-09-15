@@ -147,7 +147,9 @@ export function Avatar2D({
         </g>
       </svg>
 
-      <span className={cn("text-xs font-medium tabular-nums", COLOR_ESTADO[modo])}>
+      {/* Lo que "dice" el avatar de sí mismo —"Explicando", "¡Muy bien!"— es
+          voz del tutor: rol TUTOR_DIALOG (Segoe Print). */}
+      <span data-rol="TUTOR_DIALOG" className={cn("pz-avatar-estado text-xs font-medium tabular-nums", COLOR_ESTADO[modo])}>
         {ETIQUETA[modo]}
       </span>
     </div>

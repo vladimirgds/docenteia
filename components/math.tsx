@@ -96,8 +96,12 @@ export function TextoMatematico({
         parte.tipo === "texto" ? (
           <Fragment key={i}>{parte.contenido}</Fragment>
         ) : (
+          // Cada fórmula lleva su rol: la frase que la rodea puede ser del
+          // tutor (Segoe Print) o de la pizarra (Chalkboard SE), pero la fórmula
+          // es siempre MATH_EXPRESSION y la compone KaTeX.
           <span
             key={i}
+            data-rol="MATH_EXPRESSION"
             className={parte.tipo === "bloque" ? "block my-2" : undefined}
             dangerouslySetInnerHTML={{
               __html: renderKatex(parte.contenido, parte.tipo === "bloque"),

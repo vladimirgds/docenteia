@@ -163,10 +163,11 @@ export function planoALatex(expresion: string): string {
     return exp ? `^{${exp}}` : "";
   });
 
-  // Operadores.
+  // Operadores. El asterisco es notación de consola: en la pizarra se escribe ×
+  // (el cliente: "cero caracteres / o * en el DOM visual del alumno").
   s = s
     .replace(/·/g, " \\cdot ")
-    .replace(/×/g, " \\times ")
+    .replace(/×|\*/g, " \\times ")
     .replace(/÷/g, " \\div ")
     .replace(/≠/g, " \\neq ")
     .replace(/≤/g, " \\leq ")
@@ -174,6 +175,20 @@ export function planoALatex(expresion: string): string {
     .replace(/≈/g, " \\approx ")
     .replace(/⇒|=>/g, " \\Rightarrow ")
     .replace(/→/g, " \\to ");
+
+  // Fracciones con PARÉNTESIS: "(3 + 2)/6" → \frac{3 + 2}{6}, y "(1 × 3)/(2 × 3)"
+  // con los dos paréntesis. El cliente lo fotografió en el cierre de 1/2 + 1/3:
+  // "(3 + 2)/6" con la barra inclinada, sintaxis de consola en mitad de la
+  // respuesta consolidada. Los paréntesis que sólo agrupan el numerador o el
+  // denominador sobran en la fracción vertical: la raya ya agrupa.
+  s = s.replace(
+    /\(([^()]+)\)\s*\/\s*(?:\(([^()]+)\)|(\d+|[a-z](?![a-z])))/g,
+    (_todo, arriba: string, abajoParentesis?: string, abajoSimple?: string) =>
+      `\\frac{${arriba.trim()}}{${(abajoParentesis ?? abajoSimple ?? "").trim()}}`,
+  );
+  s = s.replace(/(?<![\w}])(\d+)\s*\/\s*\(([^()]+)\)/g, (_t, arriba: string, abajo: string) => `\\frac{${arriba}}{${abajo.trim()}}`);
+  // Y la derivada, que también se escribe con raya: "d/dx" → \frac{d}{dx}.
+  s = s.replace(/(?<![A-Za-z\\])d\s*\/\s*d([a-z])(?![a-z])/g, "\\frac{d}{d$1}");
 
   // Fracciones NUMÉRICAS: "1/2" → "\frac{1}{2}". Sólo dígito/dígito, para no
   // estropear "d/dx", que no es una fracción sino una notación de derivada.
@@ -212,8 +227,16 @@ const VARIABLE = "(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])[a-z](?![A-Za-zÁÉÍ
 // "3x²" se partía en un "3" suelto —que luego se descartaba por no ser
 // expresión— y un "x²" huérfano, de modo que el coeficiente desaparecía de la
 // fórmula compuesta.
-const ATOMO = `(?:\\d*${VARIABLE}${SUPERINDICE}*|\\d+(?:[.,]\\d+)?${SUPERINDICE}*)`;
+const ATOMO_SIMPLE = `(?:\\d*${VARIABLE}${SUPERINDICE}*|\\d+(?:[.,]\\d+)?${SUPERINDICE}*)`;
 const OPERADOR = "\\s*[-+*/=·×÷≈≠≤≥]\\s*";
+// Un PARÉNTESIS con una expresión dentro, con su factor delante: "2(x + 3)",
+// "(3 + 2)". Sin él, "2(x + 3) = 16" se partía en "2(" de prosa, "x + 3" de
+// fórmula y ") = 16" de prosa otra vez: la mitad de la ecuación en la letra del
+// tutor. Dentro sólo caben átomos y operadores, así que un paréntesis de prosa
+// —"(primero las unidades)"— no se toma por fórmula.
+const GRUPO = `(?:\\d*\\(\\s*-?\\s*${ATOMO_SIMPLE}(?:${OPERADOR}${ATOMO_SIMPLE})*\\s*\\)${SUPERINDICE}*)`;
+// El grupo va primero: con el número delante, "2(x + 3)" se quedaba en el "2".
+const ATOMO = `(?:${GRUPO}|${ATOMO_SIMPLE})`;
 
 const EXPRESION = new RegExp(`${ATOMO}(?:${OPERADOR}${ATOMO})*`, "gu");
 

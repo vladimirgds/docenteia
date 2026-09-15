@@ -45,6 +45,13 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      // Las tres familias por ROL (SUB-TIP-01). Ningún componente las usa a mano:
+      // `globals.css` las aplica según el `data-rol` de cada elemento.
+      fontFamily: {
+        tutor: ["var(--fuente-tutor)"],
+        pizarra: ["var(--fuente-pizarra)"],
+        formula: ["var(--fuente-formula)"],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
