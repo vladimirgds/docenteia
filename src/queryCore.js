@@ -228,6 +228,8 @@ export async function manejarConsulta(body, ip = "desconocida") {
           ? {
               nombre: texto(body.aclaracion.regla.nombre, 80),
               formula: texto(body.aclaracion.regla.formula, 200),
+              // La regla contada con palabras (la del catálogo): con ella abre «Explicar regla».
+              descripcion: texto(body.aclaracion.regla.descripcion, 300),
             }
           : null,
         ejercicio: texto(body.aclaracion.ejercicio, 120),
@@ -324,11 +326,28 @@ export async function manejarConsulta(body, ip = "desconocida") {
     // Ahora el desglose es determinista y del ejercicio de la TARJETA: el paso en el que estaba, con su
     // andamiaje, y el resto más despacio. Sin ejercicio en la tarjeta (concepto, reglas), la misma idea
     // contada con otras palabras. La lección la reanuda el aula.
-    if (explicacionDinamica && parte === "resolucion" && aclaracion) {
+    // «EXPLICAR REGLA» CON UN EJERCICIO EN LA TARJETA, TAMBIÉN AQUÍ. Lo redactaba el modelo en vivo, y el
+    // cliente lo fotografió en la práctica de 678 + 145: el avatar contaba la cuenta columna a columna
+    // mientras la pizarra seguía quieta en el «?» —la prosa del modelo no trae pasos que animar—, y en
+    // fracciones escribía «a/b = (a×k)/(b×k)» con barra. Con ejercicio a la vista, la regla se explica
+    // SOBRE él con el desglose determinista: cada paso se escribe y se anima a la vez que se dice. Sin
+    // ejercicio (Concepto, Reglas) sigue explicándola el modelo.
+    const reglaSobreElEjercicio = parte === "concepto" && Boolean(aclaracion?.ejercicio);
+    if (explicacionDinamica && (parte === "resolucion" || reglaSobreElEjercicio) && aclaracion) {
       const temaAcl = `${aclaracion.tema} ${contexto} ${currentTopic}`;
       const raw = aclaracion.ejercicio
         ? desgloseDelEjercicioLSG({ ejercicio: aclaracion.ejercicio, tema: temaAcl, paso: aclaracion.paso, conResultado: aclaracion.conResultado })
         : reexplicacionDeConceptoLSG(temaAcl, aclaracion.insistencia);
+      if (raw && reglaSobreElEjercicio && raw.directivas[1]?.tipo === "hablar") {
+        // Se abre con la regla que se pidió, contada, en lugar del "sin problema" de quien no entiende.
+        const regla = aclaracion.regla;
+        raw.directivas[1] = {
+          tipo: "hablar",
+          texto: regla?.nombre
+            ? `La regla que estamos aplicando es «${regla.nombre}».${regla.descripcion ? ` ${regla.descripcion.replace(/\s*\.?\s*$/, ".")}` : ""} Mira cómo funciona en tu ejercicio, paso a paso.`
+            : "Te explico la regla sobre tu ejercicio, paso a paso.",
+        };
+      }
       if (raw) {
         const des = processLSG(raw, "explicar", query);
         return {
@@ -343,6 +362,9 @@ export async function manejarConsulta(body, ip = "desconocida") {
             lsg: des.lsg,
             pasos: des.pasos,
             advertencias: des.warnings,
+            // El ejercicio NUEVO con el que sigue la práctica tras resolverle la suya: el aula lo
+            // pregunta en lugar de devolverle la pregunta ya resuelta en la pizarra.
+            ...(raw.nuevaPractica ? { nuevaPractica: raw.nuevaPractica } : {}),
             tokens: null,
             cache_activo: false,
           },

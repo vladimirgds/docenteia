@@ -2588,10 +2588,11 @@ console.log("\n · Una aclaración no ocupa la caja de respuesta");
   // dejarle sin el ejercicio que estaba resolviendo—.
   // Desde la revisión daa127d, además, la lección se REANUDA tras la ayuda
   // (`reanudarTrasAclaracion`, que también quita las preguntas de la ayuda); el
-  // camino antiguo queda para cuando no hay lección que reanudar.
+  // camino antiguo queda para cuando no hay lección que reanudar. Y desde la
+  // segunda ronda, la pregunta que vuelve puede ser la de un ejercicio nuevo.
   check(
     "el aula quita las preguntas SÓLO de las aclaraciones",
-    /opciones\.soloExplicacion\s*\?\s*resto && faseAlPedir\s*\?\s*reanudarTrasAclaracion\(recortada, \{[\s\S]{0,260}\}\)\s*:\s*conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)\s*:\s*recortada/.test(fuenteAuF),
+    /opciones\.soloExplicacion\s*\?\s*resto && faseAlPedir\s*\?\s*reanudarTrasAclaracion\(recortada, \{[\s\S]{0,700}\}\)\s*:\s*conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaDeVuelta, transicion\)\s*:\s*recortada/.test(fuenteAuF),
   );
 }
 

@@ -49,9 +49,12 @@ import {
   conPreguntaPendiente,
   enunciadosParaResolver,
   esEnunciadoParaResolver,
+  preguntaFinal,
   reanudarTrasAclaracion,
   restoDeLeccion,
+  trasLaPrimeraPregunta,
 } from "../lib/leccion/seguimiento-lsg.ts";
+import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
   apareceComoTermino,
   processLSG,
@@ -68,6 +71,7 @@ import {
   linealResueltaLSG,
   locucionesDistributiva,
   multiplicacionResueltaLSG,
+  practicaParecida,
   reexplicacionDeConceptoLSG,
   restaResueltaLSG,
   sumaResueltaLSG,
@@ -531,6 +535,215 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   check(
     "con el rótulo escrito una sola vez (y sólo en el paso activo)",
     panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
+  );
+}
+
+titulo("A00h. Segunda ronda del cliente: las ayudas en la práctica, a/b vertical y la tarjeta proyectada");
+
+{
+  // 1. «EXPLICAR REGLA» ANIMA EL EJERCICIO. Con un ejercicio en la tarjeta, el
+  // servidor explica la regla SOBRE él con el desglose determinista —pasos que
+  // se escriben y se animan—, no con prosa suelta del modelo.
+  const leccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
+  const antes = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "clave-que-no-debe-usarse";
+  const regla = await manejarConsulta({
+    query: "Explícame la regla que se aplica",
+    contexto: "Aritmética",
+    currentTopic: "Aritmética",
+    seguimiento: "reexplicar",
+    parte: "concepto",
+    explicacionDinamica: true,
+    aclaracion: {
+      ejercicio: "678 + 145 = ?",
+      tema: "aritmetica",
+      conResultado: false,
+      regla: { nombre: "Suma con llevada", formula: "", descripcion: "Se suma columna por columna de derecha a izquierda." },
+    },
+  });
+  if (antes === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = antes;
+  const pasos = regla.json.pasos ?? [];
+  const pizarras = pasos.filter((p) => p.tipo === "pizarra");
+  const dicho = pasos.filter((p) => p.tipo === "hablar").map((p) => p.texto);
+  check(
+    "«Explicar regla» en la práctica de 678 + 145: desglose determinista, aunque haya modelo configurado",
+    regla.status === 200 && regla.json.modelo === "desglose" && regla.json.fuente_ia === "local",
+    `${regla.json.fuente_ia}/${regla.json.modelo}`,
+  );
+  check(
+    "…que abre nombrando la regla y contándola",
+    /La regla que estamos aplicando es «Suma con llevada»\. Se suma columna por columna de derecha a izquierda\./.test(dicho[0] ?? ""),
+    dicho[0],
+  );
+  check(
+    "…y escribe LA MISMA cuenta en columna, etiquetada para animarse, con cada columna y su cierre",
+    pizarras.some((p) => p.contenido === "678 + 145" && p.operacion?.tipo === "columna") &&
+      ["unidades", "decenas", "centenas"].every((c) => pizarras.some((p) => p.contenido.startsWith(`${c}:`))) &&
+      pizarras.some((p) => p.contenido === "678 + 145 = 823" && p.operacion?.tipo === "resultado"),
+    JSON.stringify(pizarras.map((p) => p.contenido)),
+  );
+  check(
+    "…y cada columna se dice con su nombre, que es lo que mueve la animación",
+    ["unidades", "decenas", "centenas"].every((c) => dicho.some((t) => t.startsWith(`Sumamos las ${c}`))),
+  );
+
+  // 2. SIN SPOILER: tras resolverla, OTRA práctica.
+  const nueva = regla.json.nuevaPractica;
+  check(
+    "tras resolverle la práctica, el servidor manda un ejercicio NUEVO del mismo tipo",
+    nueva && nueva.enunciado !== "678 + 145 = ?" && /^\d{3} \+ \d{3} = \?$/.test(nueva.enunciado) &&
+      nueva.respuesta === resolverEjercicio(nueva.enunciado),
+    JSON.stringify(nueva),
+  );
+  check(
+    "…que se escribe DESPUÉS del cierre y es lo último que se pregunta",
+    pizarras.at(-1)?.contenido === nueva?.enunciado &&
+      pasos.findIndex((p) => p.contenido === "678 + 145 = 823") < pasos.findIndex((p) => p.contenido === nueva?.enunciado) &&
+      // (el motor quita a la pregunta la coletilla "Escribe solo el número")
+      String(nueva?.pregunta).startsWith(pasos.filter((p) => p.tipo === "preguntar").at(-1)?.texto ?? "-"),
+  );
+  // Con la práctica ya contestada no hay nada que adelantarle: ni ejercicio nuevo.
+  const resuelta = await manejarConsulta({
+    query: "No entendí, explícalo mejor",
+    contexto: "Aritmética",
+    currentTopic: "Aritmética",
+    seguimiento: "reexplicar",
+    parte: "resolucion",
+    explicacionDinamica: true,
+    aclaracion: { ejercicio: "678 + 145 = ?", tema: "aritmetica", conResultado: true },
+  });
+  check("con la práctica ya contestada, el desglose cierra sin ejercicio nuevo", resuelta.json.modelo === "desglose" && !resuelta.json.nuevaPractica);
+
+  // El ejercicio parecido, en cada motor: mismo tipo, distinto, y con su respuesta.
+  for (const [ej, tema, forma] of [
+    ["678 + 145 = ?", "", /^\d{3} \+ \d{3} = \?$/],
+    ["3/5 + 1/2 = ?", "", /^\d+\/\d+ \+ \d+\/\d+ = \?$/],
+    ["1/7 + 5/7 = ?", "", /^(\d+)\/(\d+) \+ \d+\/\2 = \?$/],
+    ["52 - 27 = ?", "", /^\d{2} - \d{2} = \?$/],
+    ["23 × 14 = ?", "", /^\d{2} × \d{2} = \?$/],
+    ["2(x + 3) = 16", "", /x/],
+    ["2x + 5 = 15", "", /x/],
+    ["3x⁴ - 2x²", "derivadas", /x/],
+    ["x² - 9", "factorización", /^x² - \d+$/],
+  ]) {
+    const p = practicaParecida(ej, tema);
+    const limpio = (t) => String(t).replace(/\s*=\s*\?$/, "");
+    check(
+      `el ejercicio que sigue a "${ej}" es otro del mismo tipo, con su respuesta`,
+      p && limpio(p.enunciado) !== limpio(ej) && forma.test(p.enunciado) && p.pregunta && p.respuesta &&
+        (tema ? true : p.respuesta === resolverEjercicio(p.enunciado)),
+      JSON.stringify(p),
+    );
+  }
+
+  // En el aula: las dos ayudas desglosan el ejercicio de la tarjeta; el
+  // planteamiento de la práctica se anima mientras se resuelve en voz alta; y la
+  // pregunta que vuelve es la del ejercicio nuevo, que se lleva la tarjeta.
+  const aula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+  const pizarraSrc = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+  check(
+    "el aula desglosa con las DOS ayudas —«No entendí» y «Explicar regla»— si hay ejercicio en la tarjeta",
+    /const desgloseDeLaTarjeta =\s*Boolean\(opciones\.soloExplicacion\) && enTarjeta != null && faseConEjercicio\(\);/.test(aula) &&
+      !/desgloseDeLaPractica =[^;]*opciones\.parte === "resolucion"/.test(aula),
+  );
+  check(
+    "y manda la descripción de la regla para que el tutor la cuente",
+    /descripcion: activa\.descripcion/.test(aula),
+  );
+  check(
+    "el enunciado de la práctica se anima SÓLO mientras el tutor lo resuelve porque el alumno lo pidió",
+    /setEnunciadoExplicado\(desgloseDeLaPractica && llegoElDesglose \? enTarjeta : null\)/.test(aula) &&
+      /ejercicio\.texto === enunciadoExplicado/.test(aula) &&
+      /ejercicio\.texto !== enunciadoExplicado &&/.test(pizarraSrc),
+  );
+  check(
+    "la pregunta que vuelve es la del ejercicio nuevo, sin repetir el paso de palabra",
+    /const preguntaNueva = datos\?\.nuevaPractica \? preguntaFinal\(datos\.lsg\) : null;/.test(aula) &&
+      /const preguntaDeVuelta = preguntaNueva \?\? preguntaPendiente;/.test(aula) &&
+      /const transicion = preguntaNueva \? null : undefined;/.test(aula),
+  );
+  check(
+    "y el ejercicio nuevo es el que se corrige desde entonces",
+    /if \(\(!opciones\.soloExplicacion \|\| preguntaNueva\) && pizarras\.length > 0\)/.test(aula),
+  );
+  check(
+    "la primera línea de un desglose no pasa por enunciado de la fase (a la segunda ayuda se llevaba la tarjeta)",
+    /const propio = preguntaNueva\s*\?/.test(aula) && /enunciadoPorFase\.current = enunciados;/.test(aula),
+  );
+
+  // La combinación, con el desglose real de la práctica de fracciones.
+  const crudo = desgloseDelEjercicioLSG({ ejercicio: "3/5 + 1/2 = ?", conResultado: false });
+  const des = leccion(crudo);
+  const combinada = reanudarTrasAclaracion(des, {
+    faseActual: "practica",
+    pregunta: preguntaFinal(des),
+    mismaFase: trasLaPrimeraPregunta([{ tipo: "hablar", texto: "a" }, { tipo: "preguntar", texto: "¿vieja?" }, { tipo: "hablar", texto: "después" }]),
+    transicion: null,
+  });
+  const dirs = combinada.modulos[0].directivas;
+  const preguntas = dirs.filter((d) => d.tipo === "preguntar");
+  check(
+    "3/5 + 1/2: se resuelve hasta el 11/10 y se pregunta UNA vez, por el ejercicio nuevo",
+    preguntas.length === 1 && crudo.nuevaPractica.pregunta.startsWith(preguntas[0].texto) && /1\/3 \+ 2\/5/.test(preguntas[0].texto) &&
+      !dirs.some((d) => d.texto === "Ahora inténtalo tú.") &&
+      dirs.some((d) => d.contenido === "3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10"),
+    JSON.stringify(preguntas.map((p) => p.texto)),
+  );
+  check(
+    "…y lo que venía tras la pregunta vieja sigue después de la nueva, sin la vieja",
+    dirs.at(-1)?.texto === "después" && !dirs.some((d) => d.texto === "¿vieja?"),
+  );
+  check(
+    "…y el único enunciado que se le pide al alumno es el nuevo",
+    JSON.stringify([...enunciadosParaResolver(combinada)]) === JSON.stringify([crudo.nuevaPractica.enunciado]),
+    JSON.stringify([...enunciadosParaResolver(combinada)]),
+  );
+  check(
+    "sin ejercicio nuevo, la pregunta pendiente vuelve con su «Ahora inténtalo tú», como antes",
+    conPreguntaPendiente({ directivas: [] }, { tipo: "preguntar", texto: "¿?" }).directivas[0]?.texto === "Ahora inténtalo tú." &&
+      conPreguntaPendiente({ directivas: [] }, { tipo: "preguntar", texto: "¿?" }, null).directivas.length === 1,
+  );
+}
+
+{
+  // 3. FRACCIÓN VERTICAL TAMBIÉN CON LETRAS: "a/b = (a×k)/(b×k)".
+  const amplificacion = planoALatex("a/b = (a×k)/(b×k)");
+  check(
+    "la propiedad de amplificación se compone con fracciones verticales",
+    amplificacion === "\\frac{a}{b} = \\frac{a \\times k}{b \\times k}",
+    amplificacion,
+  );
+  const html = katex.renderToString(amplificacion, { throwOnError: true });
+  const visible = html.replace(/<span class="katex-mathml">[\s\S]*?<\/math><\/span>/g, "").replace(/<[^>]+>/g, "");
+  check("…y en lo que KaTeX pinta no queda ninguna barra inclinada", !visible.includes("/") && (html.match(/class="mfrac"/g) ?? []).length === 2);
+  for (const [plano, latex] of [
+    ["x/2 + 2x/3", "\\frac{x}{2} + \\frac{2x}{3}"],
+    ["x²/4", "\\frac{x^{2}}{4}"],
+    ["a/c ± b/c = (a ± b)/c", "\\frac{a}{c} \\pm \\frac{b}{c} = \\frac{a \\pm b}{c}"],
+    ["3/5 + 1/2", "\\frac{3}{5} + \\frac{1}{2}"],
+    ["d/dx(x²)", "\\frac{d}{dx}(x^{2})"],
+    ["km/h", "km/h"],
+    ["y/o", "y/o"],
+  ]) {
+    check(`"${plano}" → ${latex}`, planoALatex(plano) === latex, planoALatex(plano));
+  }
+  check(
+    "y dentro de una frase del tutor, la propiedad sale como fórmula",
+    separarProsaYMatematicas("La propiedad dice que a/b = (a×k)/(b×k), con k distinto de cero.").some((p) => p.tipo !== "texto" && p.contenido === "a/b = (a×k)/(b×k)"),
+  );
+
+  // 4. LA TARJETA PROYECTADA, EN PROPORCIÓN CON LAS NOTAS DE AL LADO.
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  check(
+    "en proyección, la fórmula de la tarjeta va al tamaño exacto de la de una nota (48 px), no a 64",
+    /\.modo-proyeccion \.pz-regla-formula \.katex \{\s*font-size: 3rem;\s*\}/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);\s*\}/.test(css),
+  );
+  check(
+    "…y el nombre de la regla, al tamaño del texto de las notas",
+    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: clamp\(1\.6rem, 2\.2vw, 2\.3rem\);/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(1\.6rem, 2\.2vw, 2\.3rem\);/.test(css),
   );
 }
 
@@ -1016,7 +1229,10 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     );
   }
   {
-    // «No entendí este paso» en la práctica: el desglose llega también al final.
+    // «No entendí este paso» en la práctica: el desglose llega también al final
+    // —su resultado enmarcado— y DESPUÉS plantea un ejercicio nuevo (segunda
+    // ronda del cliente: volver a preguntar el mismo, con la respuesta a la
+    // vista, era darle la solución).
     for (const [ej, final, tema] of [
       ["3/5 + 1/2 = ?", "3/5 + 1/2 = 6/10 + 5/10 = (6 + 5)/10 = 11/10", ""],
       ["2(x + 3) = 16", "x = 5", ""],
@@ -1025,11 +1241,19 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     ]) {
       const d = leccion(desgloseDelEjercicioLSG({ ejercicio: ej, conResultado: false, tema }));
       const pizarras = d.directivas.filter((x) => x.tipo === "pizarra");
-      const ultima = pizarras.at(-1);
+      const cierre = pizarras.filter((x) => x.operacion?.tipo === "resultado").at(-1);
+      const tras = d.directivas.slice(d.directivas.indexOf(cierre) + 1);
+      const nueva = tras.find((x) => x.tipo === "pizarra");
+      const pregunta = tras.find((x) => x.tipo === "preguntar");
       check(
-        `«No entendí» en la práctica "${ej}": termina en su resultado final enmarcado`,
-        ultima?.contenido === final && ultima.operacion?.tipo === "resultado",
-        ultima?.contenido,
+        `«No entendí» en la práctica "${ej}": llega a su resultado final enmarcado`,
+        cierre?.contenido === final,
+        cierre?.contenido,
+      );
+      check(
+        `…y después plantea OTRO ejercicio con su pregunta ("${ej}")`,
+        Boolean(nueva && pregunta) && nueva.contenido !== ej && pizarras.at(-1) === nueva && tras.indexOf(pregunta) > tras.indexOf(nueva),
+        `${nueva?.contenido} / ${pregunta?.texto}`,
       );
     }
   }
@@ -1038,15 +1262,17 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // —etiquetado— queda justo delante de ella y NO puede pasar por enunciado:
     // se llevaría la tarjeta y vaciaría el desarrollo recién explicado (lo cazó
     // la batería de Chrome).
-    const desglose = leccion(desgloseDelEjercicioLSG({ ejercicio: "1/7 + 5/7 = ?", conResultado: false }));
+    const crudo = desgloseDelEjercicioLSG({ ejercicio: "1/7 + 5/7 = ?", conResultado: false });
+    const desglose = leccion(crudo);
     const reanudada = reanudarTrasAclaracion(desglose, {
       faseActual: "practica",
-      pregunta: { tipo: "preguntar", texto: "¿Cuánto es 1/7 + 5/7?", respuesta: "6/7" },
+      pregunta: preguntaFinal(desglose),
+      transicion: null,
     });
     const piden = enunciadosParaResolver(reanudada);
     check(
-      "tras «No entendí» en la práctica, ninguna línea del desglose —tampoco su cierre— pasa por enunciado de la pregunta devuelta",
-      piden.size === 0,
+      "tras «No entendí» en la práctica, ninguna línea del desglose —tampoco su cierre— pasa por enunciado: sólo el ejercicio nuevo",
+      piden.size === 1 && piden.has(crudo.nuevaPractica.enunciado),
       JSON.stringify([...piden]),
     );
     check(
@@ -1477,10 +1703,12 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
         dichoPrac.some((t) => /Resultado final: 11\/10/.test(t)),
       JSON.stringify(prac.directivas.filter((d) => d.tipo === "pizarra").map((d) => d.contenido)),
     );
+    const escritoPrac = prac.directivas.filter((d) => d.tipo === "pizarra").map((d) => d.contenido);
     check(
-      "y le devuelve la palabra al alumno para que lo escriba él",
-      /escríbelo tú/i.test(dichoPrac.at(-1) ?? ""),
-      dichoPrac.at(-1),
+      "y después le pasa la palabra con un ejercicio NUEVO y parecido, no con el que ya está resuelto",
+      /te toca a ti con uno nuevo/i.test(dichoPrac.at(-1) ?? "") && /^\d+\/\d+ \+ \d+\/\d+ = \?$/.test(escritoPrac.at(-1) ?? "") &&
+        escritoPrac.at(-1) !== "3/5 + 1/2 = ?" && prac.directivas.at(-1)?.tipo === "preguntar",
+      `${dichoPrac.at(-1)} · ${escritoPrac.at(-1)}`,
     );
     for (const [ej, final, tema] of [
       ["2(x + 4) = 3x - 1", "x = 9", ""],
@@ -1698,8 +1926,8 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     );
     const aulaSrc = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
     check(
-      "y la pizarra animada no lo anima —ni en la tarjeta ni si cae en el desarrollo—: no le hace el primer paso al alumno",
-      /if \(ejercicio\?\.texto && !paraResolver\.has\(ejercicio\.texto\)\) pasos\.push\(pasoDeLinea\(ejercicio\)\)/.test(aulaSrc) &&
+      "y la pizarra animada no lo anima —ni en la tarjeta ni si cae en el desarrollo—: no le hace el primer paso al alumno (salvo si él pidió que se lo resolvieran)",
+      /if \(ejercicio\?\.texto && \(!paraResolver\.has\(ejercicio\.texto\) \|\| ejercicio\.texto === enunciadoExplicado\)\) \{\s*pasos\.push\(pasoDeLinea\(ejercicio\)\);/.test(aulaSrc) &&
         /if \(linea\.aclaracion \|\| paraResolver\.has\(linea\.texto\)\) continue;/.test(aulaSrc),
     );
     check(
@@ -2104,7 +2332,7 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
   check(
     "y el aula la lee ANTES de pedir la explicación",
     /const preguntaPendiente = opciones\.soloExplicacion/.test(aulaTsx) &&
-      /conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaPendiente\)/.test(aulaTsx),
+      /conPreguntaPendiente\(sinPreguntas\(recortada\), preguntaDeVuelta, transicion\)/.test(aulaTsx),
   );
 
   // 4b. EL MODO PROYECCIÓN NO DESAPARECE.

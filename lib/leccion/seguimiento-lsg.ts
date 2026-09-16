@@ -173,9 +173,12 @@ export function enunciadoTrasPeticion(opciones: {
 export function conPreguntaPendiente<T extends LSGConModulos>(
   lsg: T,
   pregunta: { tipo?: string; texto?: string } | null | undefined,
+  // La frase con la que se le pasa la palabra; `null` cuando la explicación ya trae la suya (la del
+  // ejercicio nuevo que sigue a una práctica resuelta en la pizarra).
+  transicion: string | null = "Ahora inténtalo tú.",
 ): T {
   if (!lsg || typeof lsg !== "object" || !pregunta?.texto) return lsg;
-  const vuelta = [{ tipo: "hablar", texto: "Ahora inténtalo tú." }, { ...pregunta, tipo: "preguntar" }];
+  const vuelta = [...(transicion ? [{ tipo: "hablar", texto: transicion }] : []), { ...pregunta, tipo: "preguntar" }];
 
   if (Array.isArray(lsg.modulos) && lsg.modulos.length > 0) {
     const modulos = lsg.modulos.map((m) => ({ ...m, directivas: [...(m?.directivas ?? [])] }));
@@ -240,6 +243,8 @@ export function reanudarTrasAclaracion<T extends LSGConModulos>(
     pregunta?: { tipo?: string; texto?: string } | null;
     mismaFase?: unknown[];
     siguientes?: Modulo[];
+    /** Ver `conPreguntaPendiente`: `null` si la explicación ya pasa la palabra por sí misma. */
+    transicion?: string | null;
   },
 ): T {
   const propias = [
@@ -247,9 +252,10 @@ export function reanudarTrasAclaracion<T extends LSGConModulos>(
     ...(Array.isArray(aclaracion?.modulos) ? aclaracion.modulos.flatMap((m) => m?.directivas ?? []) : []),
   ].filter((d) => (d as { tipo?: string })?.tipo !== "preguntar");
   const siguientes = (opciones.siguientes ?? []).filter((m) => (m?.directivas?.length ?? 0) > 0);
+  const transicion = opciones.transicion === undefined ? "Ahora inténtalo tú." : opciones.transicion;
   const vuelta: unknown[] = opciones.pregunta?.texto
     ? [
-        { tipo: "hablar", texto: "Ahora inténtalo tú." },
+        ...(transicion ? [{ tipo: "hablar", texto: transicion }] : []),
         { ...opciones.pregunta, tipo: "preguntar" },
         ...(opciones.mismaFase ?? []),
       ]
@@ -263,6 +269,38 @@ export function reanudarTrasAclaracion<T extends LSGConModulos>(
     ...siguientes,
   ];
   return copia as T;
+}
+
+/**
+ * La ÚLTIMA pregunta de una lección, tal como llegó del servidor: la del
+ * ejercicio nuevo con que termina el desglose de una práctica.
+ */
+export function preguntaFinal(
+  lsg: LSGConModulos | null | undefined,
+): ({ tipo: "preguntar"; texto: string } & Record<string, unknown>) | null {
+  const todas = [
+    ...(Array.isArray(lsg?.directivas) ? lsg.directivas : []),
+    ...(Array.isArray(lsg?.modulos) ? lsg.modulos.flatMap((m) => m?.directivas ?? []) : []),
+  ] as Array<{ tipo?: string; texto?: unknown } & Record<string, unknown>>;
+  for (let i = todas.length - 1; i >= 0; i--) {
+    const d = todas[i];
+    if (d?.tipo === "preguntar" && String(d.texto ?? "").trim()) {
+      return { ...d, tipo: "preguntar", texto: String(d.texto) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Lo que sigue a la PRIMERA pregunta de una lista de directivas —nada, si no
+ * hay ninguna—. Cuando una ayuda cambia de ejercicio antes de que el alumno
+ * llegara a su pregunta, lo que quedaba de la fase empieza por esa pregunta
+ * vieja, que ya no toca.
+ */
+export function trasLaPrimeraPregunta(directivas: readonly unknown[] | null | undefined): unknown[] {
+  const lista = Array.isArray(directivas) ? directivas : [];
+  const i = lista.findIndex((d) => (d as { tipo?: string })?.tipo === "preguntar");
+  return i < 0 ? [] : lista.slice(i + 1);
 }
 
 /**

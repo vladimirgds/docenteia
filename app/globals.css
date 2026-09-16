@@ -814,6 +814,24 @@
   color: hsl(45 96% 62%);
 }
 
+/* LA TARJETA DE LA REGLA, EN PROPORCIÓN CON EL PANEL DE AL LADO. Heredaba el
+   tamaño de las fórmulas sueltas —hasta 64 px— y, compuesta en display, sus
+   fracciones doblaban en altura a las notas del Ambiente 2: el cliente la vio
+   desproporcionada en «Fracciones equivalentes». Va al tamaño exacto de la
+   fórmula de una nota (48 px, el mínimo de aula), su nombre al del texto de
+   las notas, y con el mismo aire que el lienzo deja a los lados. */
+.modo-proyeccion .pz-regla-formula .katex {
+  font-size: 3rem;
+}
+
+.modo-proyeccion .pz-tarjeta-regla {
+  padding: clamp(1rem, 1.4vw, 1.5rem) clamp(1.25rem, 1.8vw, 2rem);
+}
+
+.modo-proyeccion .pz-tarjeta-regla .katex-display {
+  margin: 0.15em 0;
+}
+
 /* EL DIBUJO DE CONCEPTO, con contraste de aula. El cliente fotografió "juntar
    dos cantidades da el total" en gris oscuro sobre fondo oscuro: los rótulos
    del dibujo pasan a blanco y a ámbar de tiza (contraste muy por encima de

@@ -131,6 +131,7 @@ export function Pizarra({
   reglaDetectada = null,
   tema,
   paraResolver,
+  enunciadoExplicado = null,
   animacion = null,
   className,
 }: {
@@ -163,6 +164,11 @@ export function Pizarra({
    * que resolver él.
    */
   paraResolver?: ReadonlySet<string>;
+  /**
+   * El de la práctica que el tutor está RESOLVIENDO en voz alta, tras «Explicar
+   * regla» o «No entendí este paso»: ése sí se anima, al compás de la voz.
+   */
+  enunciadoExplicado?: string | null;
   /** El estado de la animación: qué paso está recorriendo la voz. */
   animacion?: AnimacionDePizarra | null;
   className?: string;
@@ -227,7 +233,8 @@ export function Pizarra({
     if (!actual || !planteaEjercicio || !ejercicio) return [];
 
     const pideAlAlumno =
-      Boolean(paraResolver?.has(ejercicio.texto)) || esEnunciadoParaResolver(ejercicio.texto);
+      ejercicio.texto !== enunciadoExplicado &&
+      (Boolean(paraResolver?.has(ejercicio.texto)) || esEnunciadoParaResolver(ejercicio.texto));
     const enColumna = leerSumaOResta(sinRayasDibujadas(ejercicio.texto)) != null;
 
     const lista: { linea: LineaPizarra; papel: PapelDelPaso }[] = [
@@ -284,7 +291,7 @@ export function Pizarra({
 
     const ambientes = repartirEnAmbientes(conEscena.map(({ papel, gesto }) => ({ papel, gesto })));
     return conEscena.map((e, i) => ({ ...e, ambiente: ambientes[i] }));
-  }, [actual, planteaEjercicio, ejercicio, desarrollo, paraResolver, animacion?.escenas]);
+  }, [actual, planteaEjercicio, ejercicio, desarrollo, paraResolver, enunciadoExplicado, animacion?.escenas]);
 
   /**
    * La fracción en curso, y si ya se han dicho "numerador" / "denominador":

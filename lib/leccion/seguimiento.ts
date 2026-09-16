@@ -131,7 +131,7 @@ export interface PeticionQuery {
    * tiene delante.
    */
   aclaracion?: {
-    regla?: { nombre: string; formula: string } | null;
+    regla?: { nombre: string; formula: string; descripcion?: string } | null;
     /** El ejercicio de la TARJETA; vacío en Concepto y Reglas. */
     ejercicio?: string;
     tema?: string;

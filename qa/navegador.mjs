@@ -1074,14 +1074,23 @@ async function contestar(pagina, estado) {
   if (salir) await pagina.getByRole("button", { name: /Salir de proyección/ }).first().click();
   await pagina.waitForTimeout(400);
 
-  // 4a. "No entendí este paso" en mitad de la práctica: tras explicar, vuelve la pregunta.
+  // 4a. "No entendí este paso" en mitad de la práctica: tras explicar, vuelve a
+  // preguntar —por un ejercicio NUEVO: el suyo acaba de resolverse en la pizarra
+  // (segunda ronda del cliente)—.
+  const antesDeExplicar = await estadoVisible(pagina);
   await pagina.getByRole("button", { name: /No entendí este paso/ }).first().click();
   await pagina.waitForTimeout(1500);
   const trasExplicar = await esperar(pagina, (e) => Boolean(e.pregunta) || e.completada, 90_000, 500);
   check(
-    'tras explicar, la pregunta vuelve: la lección no se da por "completada" sin contestar',
+    'tras explicar, la práctica vuelve a preguntar: la lección no se da por "completada" sin contestar',
     Boolean(trasExplicar.pregunta) && !trasExplicar.completada,
     trasExplicar.completada ? "dijo ¡Lección completada! sin pregunta" : "",
+  );
+  check(
+    "…por un ejercicio NUEVO, que se lleva la tarjeta con la pizarra limpia: no el que acaba de resolverse",
+    Boolean(antesDeExplicar.tarjetaLatex) && trasExplicar.tarjetaLatex !== antesDeExplicar.tarjetaLatex &&
+      trasExplicar.pregunta !== antesDeExplicar.pregunta && trasExplicar.desarrollo.length === 0,
+    `${antesDeExplicar.tarjetaLatex} → ${trasExplicar.tarjetaLatex} · ${trasExplicar.desarrollo.length} pasos`,
   );
   if (trasExplicar.pregunta) {
     const dada = await contestar(pagina, trasExplicar);

@@ -292,7 +292,9 @@ velocidad, área, división, fracciones, lo que sea). Reglas ESTRICTAS:
 ════════ FORMATO ════════
 - Devuelve SOLO JSON, sin markdown.
 - Notación en TEXTO PLANO (NADA de LaTeX ni "$"): usa Unicode (x², √, ·, ⇒, fracciones "a/b").
-  NO uses "\\frac", "\\implies", "\\sqrt", "^{}".
+  NO uses "\\frac", "\\implies", "\\sqrt", "^{}". Si el numerador o el denominador tienen más de
+  un término o factor, van ENTRE PARÉNTESIS: "(a×k)/(b×k)", nunca "ak/bk" ni "a×k/b×k" (la pizarra
+  compone cada fracción en vertical y necesita saber dónde empieza y dónde acaba cada parte).
 - Elige el FORMATO según la intención:
   · Si la intención es "aprender" o "practicar" → FORMATO MODULAR.
   · Si la intención es "resolver" o "explicar" → FORMATO SECUENCIAL.
@@ -841,9 +843,23 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
   if (!ej) return null;
   const base = { escena: "desglose_ejercicio", intencion: "explicar", duracion_estimada: 60, _mock: true };
   const abre = (que) => ({ tipo: "hablar", texto: que });
-  // ¿Es el ejercicio que tiene que contestar el alumno? Entonces, tras el cierre, se le pasa la palabra.
+  // ¿Es el ejercicio que tiene que contestar el alumno? Entonces el desglose lo resuelve igual —ningún
+  // ejercicio queda inconcluso—, pero después NO se le devuelve la misma pregunta: tendría la respuesta
+  // escrita delante. El cliente: "pide resolver lo que ya está resuelto". Se le propone uno NUEVO,
+  // parecido (mismo tipo y nivel), y su enunciado se lleva la pizarra, que queda limpia.
   const practica = !conResultado;
+  const nueva = practica ? practicaParecida(ej, tema) : null;
   const devuelve = "Ahora escríbelo tú en la casilla de respuesta para comprobarlo.";
+  const pasaLaPalabra = () =>
+    nueva
+      ? [
+          abre("Ahora te toca a ti con uno nuevo, parecido a este."),
+          { ...PAUSA_LECTURA },
+          { tipo: "pizarra", accion: "escribir", contenido: nueva.enunciado },
+          { tipo: "preguntar", texto: nueva.pregunta, respuesta: nueva.respuesta, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
+        ]
+      : [abre(devuelve)];
+  const conNueva = (lsg) => (nueva ? { ...lsg, nuevaPractica: nueva } : lsg);
 
   // 1) SUMA DE FRACCIONES (el caso de la captura).
   const inst = extraerFraccionSuma(ej);
@@ -861,9 +877,9 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
       // En la práctica el enunciado ya está en la tarjeta, tal como se le preguntó: no se reescribe.
       ...(practica ? [] : [{ tipo: "pizarra", accion: "escribir", contenido: A.texto }]),
       ...pasosDeFraccion(A, { explica }),
-      abre(practica ? devuelve : `Así queda resuelto ${A.texto}, de principio a fin.`),
+      ...(practica ? pasaLaPalabra() : [abre(`Así queda resuelto ${A.texto}, de principio a fin.`)]),
     ];
-    return { ...base, directivas: dir };
+    return conNueva({ ...base, directivas: dir });
   }
 
   // 2) ECUACIÓN LINEAL: el despeje del propio ejercicio, con el reparto del paréntesis foco a foco.
@@ -890,8 +906,8 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
         dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
       }
     });
-    dir.push(abre(practica ? devuelve : `Así llegamos a la solución de ${lin.original}.`));
-    return { ...base, directivas: dir };
+    dir.push(...(practica ? pasaLaPalabra() : [abre(`Así llegamos a la solución de ${lin.original}.`)]));
+    return conNueva({ ...base, directivas: dir });
   }
 
   // 3) ARITMÉTICA: la misma cuenta, columna a columna (o por partes, en × y ÷).
@@ -915,16 +931,108 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
     });
     dir.push(
       ...cierreDelEjercicio(`${E.texto} ${eq} ${E.answer}`, String(E.answer), `Así, ${E.texto} ${eq} ${E.answer}. Resultado final: ${E.answer}.`),
-      ...(practica ? [abre(devuelve)] : []),
+      ...(practica ? pasaLaPalabra() : []),
     );
-    return { ...base, directivas: dir };
+    return conNueva({ ...base, directivas: dir });
   }
 
   // 4) DERIVADAS Y FACTORIZACIÓN: el desglose de siempre, sin su cierre de "otro ejemplo".
   const desglose = buildStepByStepLSG(ej, "", tema, { conResultado, cierre: false });
   if (desglose && desglose.directivas.filter((d) => d.tipo === "pizarra").length >= 2) {
     const [, , ...resto] = desglose.directivas;
-    return { ...base, directivas: [{ tipo: "avatar", accion: "sonreir" }, abre(`Sin problema. Vamos con el MISMO ejercicio, ${ej}, paso a paso y más despacio.`), ...resto] };
+    // Su "Ahora escríbelo tú…" se sustituye por el ejercicio nuevo.
+    const sinDevolver = resto.filter((d) => !(d.tipo === "hablar" && d.texto === devuelve));
+    return conNueva({
+      ...base,
+      directivas: [
+        { tipo: "avatar", accion: "sonreir" },
+        abre(`Sin problema. Vamos con el MISMO ejercicio, ${ej}, paso a paso y más despacio.`),
+        ...sinDevolver,
+        ...(practica ? pasaLaPalabra() : []),
+      ],
+    });
+  }
+  return null;
+}
+
+// ════════ UN EJERCICIO NUEVO, PARECIDO AL QUE SE ACABA DE EXPLICAR ════════
+//
+// Tras resolverle en la pizarra el ejercicio de la PRÁCTICA («Explicar regla», «No entendí este paso»),
+// pedirle la MISMA respuesta es pedirle que copie lo que tiene delante. Éste es el ejercicio nuevo que
+// se le propone en su lugar: del mismo TIPO y del mismo NIVEL —el siguiente de la misma lista del
+// catálogo—, distinto del explicado, con la pregunta y la respuesta calculadas por el motor, como en
+// cualquier práctica. `null` si el ejercicio no es de ningún tipo que el motor sepa resolver.
+function vecinoEnLista(listas, clave, forma) {
+  for (const nivel of NIVELES) {
+    const lista = listas[nivel] ?? [];
+    const i = lista.findIndex((e) => forma(e) === clave);
+    if (i < 0) continue;
+    for (let k = 1; k < lista.length; k++) {
+      const e = lista[(i + k) % lista.length];
+      if (forma(e) !== clave) return e;
+    }
+  }
+  return null;
+}
+
+export function practicaParecida(ejercicio, tema = "") {
+  const ej = String(ejercicio ?? "")
+    .replace(/^\s*¿?\s*cu[aá]nto\s+(es|vale)\s+/i, "")
+    .replace(/^\s*ejercicio\s*\d*\s*:\s*/i, "")
+    .replace(/\s*=\s*\?\s*$/, "")
+    .trim();
+  if (!ej) return null;
+
+  // 1) SUMA DE FRACCIONES: la misma forma (igual o distinto denominador).
+  const inst = extraerFraccionSuma(ej);
+  if (inst) {
+    const clave = canonExpr(textoFrac(inst));
+    const e = vecinoEnLista(FRACCIONES, clave, (x) => canonExpr(textoFrac(x)))
+      ?? (inst.length === 4 ? FRACCIONES.dificil : FRACCIONES.normal).find((x) => canonExpr(textoFrac(x)) !== clave);
+    if (!e) return null;
+    const B = e.length === 4 ? distintoDen(e) : mismoDen(e);
+    return { enunciado: `${B.texto} = ?`, pregunta: `¿Cuánto es ${B.texto}? Escríbelo en su forma más simple.`, respuesta: B.final };
+  }
+
+  // 2) ECUACIÓN LINEAL.
+  const lin = solveLinearSteps(ej);
+  if (lin) {
+    const clave = canonExpr(lin.original);
+    const e = vecinoEnLista(LINEALES, clave, canonExpr) ?? LINEALES.normal.find((x) => canonExpr(x) !== clave);
+    const solP = e ? solveLinearSteps(e) : null;
+    if (!solP) return null;
+    return { enunciado: solP.original, pregunta: `¿Cuánto vale ${solP.varName} en ${solP.original}? Escribe solo el número.`, respuesta: String(solP.answer) };
+  }
+
+  // 3) ARITMÉTICA: la misma operación y el mismo número de cifras.
+  const op = extraerOperacion(ej);
+  const cfg = op && ARIT[op.op];
+  if (cfg && !/[a-z]\s*[²³⁴⁵⁶⁷⁸⁹^]|\bx\b/i.test(ej)) {
+    const clave = canonExpr(`${op.a} ${SIGNO_ARIT[op.op]} ${op.b}`);
+    const cifrasDe = (x) => parseAB(x).map((n) => String(n).length).join(",");
+    const forma = `${String(op.a).length},${String(op.b).length}`;
+    const todas = NIVELES.flatMap((n) => cfg.lista[n] ?? []);
+    const e = vecinoEnLista(cfg.lista, clave, canonExpr)
+      ?? todas.find((x) => canonExpr(x) !== clave && cifrasDe(x) === forma)
+      ?? todas.find((x) => canonExpr(x) !== clave);
+    if (!e) return null;
+    const P = cfg.pasos(...parseAB(e));
+    return { enunciado: `${P.texto} = ?`, pregunta: pregArit(P), respuesta: String(P.answer) };
+  }
+
+  // 4) FACTORIZACIÓN y DERIVADAS: la lectura la decide el tema (la misma expresión vale para las dos).
+  const t = String(tema ?? "").toLowerCase();
+  const clave = canonExpr(ej.replace(/^\s*(la\s+)?derivada\s+de\s+/i, ""));
+  const enLista = (listas) => NIVELES.some((n) => (listas[n] ?? []).some((x) => canonExpr(x) === clave));
+  if (/factoriz|cuadrad/.test(t) || (!/deriv/.test(t) && enLista(FACTORIZ))) {
+    const e = vecinoEnLista(FACTORIZ, clave, canonExpr) ?? FACTORIZ.normal.find((x) => canonExpr(x) !== clave);
+    const fac = e ? computeFactorization(e) : null;
+    if (fac) return { enunciado: e, pregunta: `¿Cómo se factoriza ${e}? ${comoEscribirla(e)}`, respuesta: fac };
+  }
+  if (/deriv/.test(t) || enLista(DERIVADAS)) {
+    const e = vecinoEnLista(DERIVADAS, clave, canonExpr) ?? DERIVADAS.normal.find((x) => canonExpr(x) !== clave);
+    const der = e ? computeDerivative(`derivada de ${e}`) : null;
+    if (der) return { enunciado: e, pregunta: `¿Cuál es la derivada de ${e}?`, respuesta: der };
   }
   return null;
 }

@@ -2183,3 +2183,83 @@ cierre, la fracción de palabras, las fuentes por rol); las demás baterías
 sesiones 126, aceptación 24, matemáticas 100, frontend 10 y el barrido de 200
 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`,
 limpios.
+
+## 33. Segunda ronda del cliente: las ayudas en la práctica, la fracción vertical y la tarjeta proyectada
+
+Cuatro observaciones para cerrar el hito, con sus capturas (1e–4e). Las cuatro se
+resuelven como reglas generales —ningún caso por ejercicio— y se verifican en
+Chrome con la batería del informe, ampliada.
+
+### 1. «Explicar regla» anima el ejercicio (1e)
+
+En la práctica de 678 + 145 el avatar contaba «Ahora sumamos las decenas: 7 + 4,
+más el 1 que nos llevamos…» mientras la pizarra seguía quieta en el «?». Dos
+causas: «Explicar regla» se redactaba como prosa del modelo, sin pasos que
+animar, y el planteamiento de una práctica es estático por diseño (animarlo es
+hacerle al alumno su ejercicio). Ahora, con un ejercicio en la tarjeta, las dos
+ayudas —«No entendí este paso» y «Explicar regla»— lo desglosan con el motor
+determinista (`queryCore.js`: `reglaSobreElEjercicio`); «Explicar regla» abre
+nombrando la regla y contándola («La regla que estamos aplicando es «Suma con
+llevada». …») y sigue sobre el ejercicio. Mientras el tutor lo resuelve porque
+el alumno lo pidió, su planteamiento se anima como el de un ejemplo
+(`enunciadoExplicado` en el aula y en la pizarra): la columna que se nombra se
+enciende y cada cifra del resultado se escribe cuando la voz llega a ella. Sin
+ejercicio en la tarjeta (Concepto, Reglas) la regla la sigue explicando el
+modelo.
+
+### 2. La práctica no pregunta lo que ya está resuelto (2e)
+
+Tras explicar «3/5 + 1/2», la pizarra enseñaba el desarrollo entero con el 11/10
+y la casilla volvía a preguntar «¿Cuánto es 3/5 + 1/2?». Ahora el desglose llega
+a su resultado enmarcado —ningún ejercicio queda inconcluso— y termina con «Ahora
+te toca a ti con uno nuevo, parecido a este» y un ejercicio NUEVO del mismo tipo
+(`practicaParecida` en `lsgPrompt.js`: sumas y restas con el mismo número de
+cifras, fracciones con igual o distinto denominador según el original,
+ecuaciones, derivadas y factorizaciones). El enunciado nuevo se lleva la tarjeta
+y deja la pizarra limpia; su pregunta sustituye a la pendiente
+(`preguntaFinal`, sin un segundo «Ahora inténtalo tú»); desde ese momento es el
+que se corrige; y lo que quedaba de la fase tras la pregunta vieja sigue
+después de la nueva (`trasLaPrimeraPregunta`). Con la práctica ya contestada no
+hay ejercicio nuevo: sólo se explica.
+
+Encontrado al hacerlo: la primera línea que escribe un desglose se anotaba como
+enunciado de la fase («MCM(5, 2): 5 × 2 = 10»), y a la segunda pulsación de una
+ayuda se habría llevado la tarjeta. La fase conserva ahora su ejercicio —o el
+nuevo que cierra el desglose—.
+
+### 3. Fracción vertical también con letras (4e)
+
+La propiedad de amplificación salía «a/b = (a×k)/(b×k)»: `planoALatex` pasaba a
+raya los paréntesis y los números, pero no una letra suelta. Ahora compone
+`\frac{a}{b} = \frac{a \times k}{b \times k}`, y lo mismo «x/2», «2x/3» o
+«x²/4»; «±» pasa a `\pm`. Se respeta lo que no es una fracción de letras
+(«km/h», «y/o», `d/dx`). Y el modelo recibe la instrucción de escribir entre
+paréntesis cualquier numerador o denominador compuesto.
+
+### 4. La tarjeta de la regla, en proporción con el panel (3e)
+
+Proyectada, la tarjeta de «Fracciones equivalentes» heredaba el tamaño de las
+fórmulas sueltas —hasta 64 px— y, en modo display, sus fracciones doblaban en
+altura a las notas del Ambiente 2. Ahora su fórmula va al tamaño exacto de la de
+una nota (48 px, el mínimo de aula), el nombre al del texto de las notas, y con
+el mismo aire que el lienzo deja a los lados.
+
+### Comprobado
+
+`qa/observaciones.mjs` crece con las ayudas: da **cinco clases enteras** en Chrome
+—aritmética básica y avanzada, fracciones hasta el nivel difícil, fracciones a
+**1920 × 1080** y ecuaciones— y, en cada práctica, pulsa «Explicar regla» y «No
+entendí este paso», sigue la explicación muestra a muestra y comprueba que la
+columna se enciende, que cada cifra del resultado sale con su locución —ni antes
+ni después—, que después la clase sigue con un ejercicio nuevo y la pizarra
+limpia, y que ese ejercicio se corrige y se cierra enmarcado: **61.878
+comprobaciones y 0 fallos**, con 126 capturas de evidencia. Con el **motor de voz
+real** del sistema, el caso exacto de la captura —678 + 145 con las dos
+ayudas—: **30.727 comprobaciones y 0 fallos**. `qa/hito2.mjs`: **639** (bloque
+nuevo A00h: el desglose con la regla, el ejercicio parecido de cada motor, la
+vuelta con la pregunta nueva, la fracción de letras y la escala de la tarjeta);
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**; las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, qa 1.462,
+sesiones 126, aceptación 24, matemáticas 100, frontend 10 y el barrido de 200
+sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`,
+limpios.

@@ -33,6 +33,19 @@
 //           punta de flecha de tamaño fijo y el "× 2" debajo sin tocar nada.
 //   Y en proyección: fórmulas ≥ 48 px, notas y rótulos ≥ 24 px.
 //
+// Y LA SEGUNDA RONDA DEL CLIENTE, las ayudas en la práctica:
+//
+//   R2-01  «Explicar regla» (y «No entendí este paso») anima el ejercicio a la
+//          vez que se explica: la columna que se nombra se enciende y las cifras
+//          del resultado se escriben al decirlas, ni antes ni después.
+//   R2-02  Tras explicarla, la práctica NO pregunta lo que ya está resuelto en
+//          la pizarra: sigue con un ejercicio nuevo, con la pizarra limpia, que
+//          se corrige y se cierra como cualquier otro.
+//   R2-03  Fracción vertical en toda fórmula y propiedad: ninguna "a/b".
+//   R2-04  En proyección, la tarjeta de la regla en proporción con el panel de
+//          al lado: su fórmula al tamaño de la de las notas, entera y con margen.
+//          Se mide también a 1920 × 1080, el tamaño de una pantalla de aula.
+//
 // En cada momento clave se para la lección, se fotografía en pantalla y
 // proyectada, y las dos capturas quedan en la carpeta de salida como evidencia.
 //
@@ -52,6 +65,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
+import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
 import { iniciarSesion, registrarAlumno } from "./sesion.mjs";
 
@@ -162,6 +176,15 @@ function instalarMedidor() {
     c.querySelectorAll(".katex-mathml, style, script, [hidden]").forEach((n) => n.remove());
     return (c.textContent ?? "").replace(/\s+/g, " ").trim();
   };
+  const fuenteTex = (el) => {
+    if (!el) return "";
+    const c = el.cloneNode(true);
+    c.querySelectorAll(".katex").forEach((k) => {
+      const tex = k.querySelector(".katex-mathml annotation")?.textContent ?? k.textContent ?? "";
+      k.replaceWith(document.createTextNode(` ${tex} `));
+    });
+    return (c.textContent ?? "").replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2").replace(/\s+/g, " ").trim();
+  };
   const luminancia = (rgb) => {
     const [r, g, b] = rgb.map((v) => {
       const c = v / 255;
@@ -225,6 +248,15 @@ function instalarMedidor() {
       tarjetaRegla: Boolean(document.querySelector(".pz-tarjeta-regla")),
       practicaColumna: null,
       mcm: null,
+      preguntaTexto: textoVisible(document.querySelector(".pz-pregunta")),
+      // La misma pregunta, con cada fórmula en su TeX: el texto visible de una
+      // fracción de KaTeX pone el denominador ANTES que el numerador.
+      preguntaFuente: fuenteTex(document.querySelector(".pz-pregunta")),
+      veredicto: textoVisible(document.querySelector(".pz-veredicto")),
+      tarjeta: null,
+      notaFormula: [],
+      notaTexto: [],
+      planteamiento: null,
     };
 
     // OBS-06: el encabezado.
@@ -412,6 +444,41 @@ function instalarMedidor() {
     for (const t of document.querySelectorAll(".pz-pie")) if (visible(t)) out.tam.pie.push(px(t));
     for (const t of document.querySelectorAll(".pz-encabezado-rotulo")) if (visible(t)) out.tam.rotulo.push(px(t));
 
+    // R2-04: la tarjeta de la regla frente a las notas del panel de al lado.
+    for (const k of document.querySelectorAll(".pz-nota .katex")) if (visible(k) && !k.closest(".pz-pie")) out.notaFormula.push(px(k));
+    for (const n of document.querySelectorAll(".pz-nota")) if (visible(n)) out.notaTexto.push(px(n));
+    const tarjeta = document.querySelector(".pz-tarjeta-regla");
+    if (tarjeta && visible(tarjeta)) {
+      const formulas = [...tarjeta.querySelectorAll(".pz-regla-formula .katex")].filter(visible);
+      const amb = tarjeta.closest(".pz-ambiente");
+      const marco = document.querySelector(".pz-tablero-caja");
+      out.tarjeta = {
+        formula: Math.max(0, ...formulas.map(px)),
+        nombre: px(tarjeta.querySelector(".pz-tarjeta-regla-nombre") ?? tarjeta),
+        // Una fórmula que no cabe se desplaza dentro de su caja: se vería cortada.
+        recortada: [...tarjeta.querySelectorAll(".katex-display, .pz-regla-formula")].some((d) => d.scrollWidth > d.clientWidth + 1),
+        margenDerecho: amb ? R(amb).x + R(amb).w - (R(tarjeta).x + R(tarjeta).w) : 0,
+        altoRelativo: marco ? R(tarjeta).h / R(marco).h : 0,
+        fracciones: tarjeta.querySelectorAll(".katex .mfrac").length,
+        conFraccion: [...tarjeta.querySelectorAll(".katex-mathml annotation")].some((a) => (a.textContent ?? "").includes("\\frac")),
+      };
+    }
+
+    // R2-01: el planteamiento del ejercicio —¿se anima?, ¿qué cifras del
+    // resultado se ven ya bajo la raya?—.
+    const elPlan = document.querySelector('.pz-elemento[data-papel="planteamiento"]');
+    if (elPlan && visible(elPlan)) {
+      const k = elPlan.querySelector(".katex");
+      const raya = k?.querySelector(".hline");
+      const gl = k ? glifos(k) : [];
+      const bajoLaRaya = raya ? gl.filter((g) => !g.raya && /^\d+$/.test(g.t) && g.b.y + g.b.h / 2 > R(raya).y + R(raya).h) : [];
+      out.planteamiento = {
+        estado: elPlan.getAttribute("data-estado"),
+        foco: [...elPlan.querySelectorAll(".pz-resaltado")].some(visible),
+        cifrasResultado: bajoLaRaya.reduce((n, g) => n + g.t.length, 0),
+      };
+    }
+
     // OBS-02: el contraste de los rótulos del dibujo.
     for (const t of document.querySelectorAll(".pz-diagrama text")) {
       if (!visible(t) || !(t.textContent ?? "").trim()) continue;
@@ -542,7 +609,7 @@ const erroresDeConsola = [];
 const capturas = [];
 let vozUsada = null;
 
-async function abrirClase({ etapa, curso, tema, nivel }) {
+async function abrirClase({ etapa, curso, tema, nivel, viewport = { width: 1366, height: 900 } }) {
   const correo = `qa.obs.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}@mentoriamath.local`;
   const clave = "Alumno-2026";
   const alta = await registrarAlumno(BASE, { email: correo, password: clave, nombre: "QA Observaciones" });
@@ -573,7 +640,7 @@ async function abrirClase({ etapa, curso, tema, nivel }) {
     }
   }
   const sesion = (await iniciarSesion(BASE, correo, clave)) ?? alta.sesion;
-  const ctx = await navegador.newContext({ viewport: { width: 1366, height: 900 } });
+  const ctx = await navegador.newContext({ viewport });
   await ctx.addCookies(
     sesion.split(";").map((par) => {
       const [name, ...r] = par.trim().split("=");
@@ -688,6 +755,19 @@ function comprobarProyeccion(m, momento) {
   verificar("SUB-PRJ-03", "proyección: la frase del tutor ≥ 24 px", min(m.tam.pie) >= 24, `${momento}: ${min(m.tam.pie).toFixed(1)} px`);
   verificar("OBS-06", "proyección: «Ejercicio:» ≥ 24 px", min(m.tam.rotulo) >= 24, `${momento}: ${min(m.tam.rotulo).toFixed(1)} px`);
   for (const d of m.diagrama) verificar("OBS-02", "proyección: rótulos del dibujo con contraste ≥ 4,5:1", d.ratio >= 4.5, `«${d.texto}» ${d.ratio.toFixed(2)}:1`);
+  if (m.tarjeta) {
+    // La fórmula de las notas de al lado; sin notas, la de cualquier nota (48 px).
+    const deLasNotas = m.notaFormula.length ? Math.max(...m.notaFormula) : 48;
+    const textoNotas = m.notaTexto.length ? Math.max(...m.notaTexto) : m.tarjeta.nombre;
+    medida("proyeccion_tarjeta_formula_px_max", m.tarjeta.formula, "max");
+    medida("proyeccion_tarjeta_alto_relativo_max", m.tarjeta.altoRelativo, "max");
+    verificar("R2-04", "proyección: la fórmula de la tarjeta, al tamaño de la de las notas (no mayor)", m.tarjeta.formula <= deLasNotas + 0.5, `${m.tarjeta.formula.toFixed(1)} px frente a ${deLasNotas.toFixed(1)} px (${momento})`);
+    verificar("R2-04", "proyección: …y nunca por debajo de los 48 px de aula", m.tarjeta.formula >= 47.5, `${m.tarjeta.formula.toFixed(1)} px (${momento})`);
+    verificar("R2-04", "proyección: el nombre de la regla, al tamaño del texto de las notas", Math.abs(m.tarjeta.nombre - textoNotas) <= 1, `${m.tarjeta.nombre.toFixed(1)} / ${textoNotas.toFixed(1)} px (${momento})`);
+    verificar("R2-04", "proyección: la tarjeta cabe entera (ninguna fórmula cortada ni desplazable)", !m.tarjeta.recortada, momento);
+    verificar("R2-04", "proyección: la tarjeta no toca el borde de su ambiente", m.tarjeta.margenDerecho >= 0, `${m.tarjeta.margenDerecho.toFixed(1)} px (${momento})`);
+    if (m.tarjeta.conFraccion) verificar("R2-03", "la tarjeta compone sus fracciones con raya horizontal", m.tarjeta.fracciones > 0, momento);
+  }
 }
 
 /**
@@ -728,11 +808,131 @@ async function momento(p, clase, nombre) {
   return { a, b };
 }
 
-async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reiniciar = false, disparadores }) {
+// ── Segunda ronda: las ayudas en la práctica ─────────────────────────────────
+
+/** Las cifras de un texto, para reconocer un ejercicio dentro de una frase. */
+const cifrasDe = (t) => String(t ?? "").replace(/=\s*\?\s*$/, "").replace(/\D+/g, "");
+/** El lugar de cada columna, por su nombre: la voz dice cuál está sumando. */
+const COLUMNAS = { unidades: 0, decenas: 1, centenas: 2 };
+
+/**
+ * PULSA UN BOTÓN DE AYUDA CON LA PREGUNTA DE LA PRÁCTICA DELANTE y sigue la
+ * explicación muestra a muestra hasta que la práctica vuelve a preguntar.
+ *
+ * R2-01: mientras se explica, el ejercicio se anima al compás de la voz.
+ * R2-02: al terminar, un ejercicio NUEVO, con la pizarra limpia y su pregunta.
+ */
+async function pedirAyuda(p, clase, boton) {
+  const antes = await p.evaluate(() => window.__obs());
+  const viejo = antes.encabezado?.enunciado ?? "";
+  const enColumna = Boolean(antes.practicaColumna?.columna);
+  const b = p.getByRole("button", { name: boton }).first();
+  if (!viejo || !(await b.count())) {
+    check("R2-01", `«${boton}» con la práctica delante`, false, `${clase}: sin ejercicio o sin botón`);
+    return null;
+  }
+  console.log(`  · ${clase}: «${boton}» sobre ${viejo}`);
+  await b.click();
+  for (let j = 0; j < 40 && (await p.evaluate(() => window.__obs().pregunta)); j++) await p.waitForTimeout(150);
+
+  const explicacion = [];
+  let fin = null;
+  let capturada = false;
+  const t0 = Date.now();
+  while (Date.now() - t0 < PRESUPUESTO) {
+    const m = await p.evaluate(() => window.__obs());
+    comprobarSiempre(m, clase);
+    const enunciado = m.encabezado?.enunciado ?? "";
+    if (m.pregunta) {
+      fin = m;
+      break;
+    }
+    if (enunciado === viejo) {
+      explicacion.push({
+        sub: String(m.sub ?? "").trim(),
+        plan: m.planteamiento,
+        activa: /:activa\b/.test(m.estados),
+        elementos: m.estados ? m.estados.split("|").length : 0,
+      });
+      // La evidencia: la columna a medio escribir con la voz en las decenas o,
+      // si el ejercicio no va en columna, un paso animándose.
+      const enPlenaAnimacion = enColumna
+        ? m.planteamiento?.foco && /^Sumamos las decenas/.test(String(m.sub ?? "").trim())
+        : /:activa\b/.test(m.estados) && m.estados.split("|").length >= 3;
+      if (!capturada && enPlenaAnimacion) {
+        capturada = true;
+        await momento(p, clase, `${boton.replace(/\W+/g, "-").toLowerCase()}-animando`);
+      }
+    }
+    await p.waitForTimeout(110);
+  }
+
+  const etiqueta = `${clase}, «${boton}», ${viejo}`;
+  verificar("R2-01", "la explicación llega a desarrollarse en la pizarra", explicacion.length > 3, etiqueta);
+  if (/regla/i.test(boton)) {
+    verificar("R2-01", "«Explicar regla» nombra la regla y la explica sobre el ejercicio", explicacion.some((s) => /regla/i.test(s.sub)), etiqueta);
+  }
+  if (enColumna) {
+    const cifras = explicacion.map((s) => s.plan?.cifrasResultado ?? 0);
+    const distintas = [...new Set(cifras)].sort((x, y) => x - y);
+    verificar("R2-01", "la cuenta en columna se anima (deja de estar quieta en el «?»)", explicacion.some((s) => s.plan && s.plan.estado !== "estatica"), etiqueta);
+    verificar("R2-01", "…la columna que se explica se enciende", explicacion.some((s) => s.plan?.foco), etiqueta);
+    verificar("R2-01", "…y las cifras del resultado se escriben de una en una", distintas.length >= 3 && Math.max(...cifras) >= cifrasDe(resolverEjercicio(viejo)).length, `${etiqueta}: ${distintas.join(" → ")}`);
+    // AL COMPÁS DE LA VOZ: con "Sumamos las decenas" en el subtítulo, la cifra de
+    // las unidades ya está escrita y la de las centenas todavía no.
+    let comparadas = 0;
+    for (const s of explicacion) {
+      const col = s.sub.match(/^Sumamos las (unidades|decenas|centenas)\b/)?.[1];
+      if (!col || !s.plan) continue;
+      const k = COLUMNAS[col];
+      comparadas++;
+      verificar("R2-01", "cada cifra del resultado sale cuando la voz llega a su columna, ni antes ni después", s.plan.cifrasResultado >= k && s.plan.cifrasResultado <= k + 1, `${etiqueta}: «${s.sub.slice(0, 40)}» con ${s.plan.cifrasResultado} cifras`);
+    }
+    verificar("R2-01", "…comprobado con la voz en cada columna", comparadas >= 3, `${etiqueta}: ${comparadas} muestras`);
+  } else {
+    const cuantos = [...new Set(explicacion.map((s) => s.elementos))];
+    verificar("R2-01", "los pasos se animan mientras se explican", explicacion.some((s) => s.activa), etiqueta);
+    verificar("R2-01", "…y se escriben uno tras otro, no todos de golpe", cuantos.length >= 3, `${etiqueta}: ${cuantos.join(" → ")}`);
+  }
+
+  verificar("R2-02", "tras la explicación, la práctica vuelve a preguntar", Boolean(fin), etiqueta);
+  if (!fin) return null;
+  const nuevo = fin.encabezado?.enunciado ?? "";
+  const a1 = fin.ambientes.find((a) => a.n === "1")?.elementos ?? 0;
+  const a2 = fin.ambientes.find((a) => a.n === "2")?.elementos ?? 0;
+  verificar("R2-02", "…con un ejercicio NUEVO, no el que acaba de resolverse", Boolean(nuevo) && nuevo !== viejo, `${etiqueta} → ${nuevo}`);
+  verificar("R2-02", "…con la pizarra limpia: sólo su enunciado, sin el desarrollo resuelto", a1 === 1 && a2 === 0 && fin.capsulas.length === 0, `${etiqueta} → ${nuevo}: ${a1} + ${a2} elementos, ${fin.capsulas.length} cápsulas`);
+  verificar("R2-02", "…y el enunciado nuevo, quieto: se lo resuelve el alumno", !fin.planteamiento || fin.planteamiento.estado === "estatica", `${etiqueta} → ${fin.planteamiento?.estado}`);
+  verificar("R2-02", "la casilla pregunta por el ejercicio nuevo", cifrasDe(fin.preguntaFuente).includes(cifrasDe(nuevo)) && !cifrasDe(fin.preguntaFuente).includes(cifrasDe(viejo)), `«${fin.preguntaFuente}» con ${nuevo}`);
+  // Sin pausar (la pausa retira la casilla): la pregunta nueva, a la vista.
+  await p.screenshot({ path: `${SALIDA}/${clase}-${boton.replace(/\W+/g, "-").toLowerCase()}-pregunta.png` });
+  await momento(p, clase, `${boton.replace(/\W+/g, "-").toLowerCase()}-nuevo`);
+  return fin;
+}
+
+/** Contesta bien la práctica en curso y comprueba que se corrige y se cierra. */
+async function contestarBien(p, clase) {
+  const m = await p.evaluate(() => window.__obs());
+  const enunciado = m.encabezado?.enunciado ?? "";
+  const respuesta = resolverEjercicio(enunciado);
+  await p.locator("input[placeholder*='respuesta' i]").fill(respuesta ?? "0");
+  await p.getByRole("button", { name: /Responder/ }).click();
+  let ultimo = null;
+  for (let j = 0; j < 160; j++) {
+    ultimo = await p.evaluate(() => window.__obs());
+    if (/Correcto/.test(ultimo.veredicto) && ultimo.capsulas.length > 0) break;
+    await p.waitForTimeout(250);
+  }
+  verificar("R2-02", "el ejercicio nuevo se corrige contra SU resultado", /Correcto/.test(ultimo?.veredicto ?? ""), `${clase}: ${enunciado} → ${respuesta} («${ultimo?.veredicto ?? ""}»)`);
+  verificar("R2-02", "…y se cierra en la pizarra con su respuesta enmarcada", (ultimo?.capsulas.length ?? 0) > 0, `${clase}: ${enunciado}`);
+  comprobarSiempre(ultimo, clase);
+}
+
+async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reiniciar = false, disparadores, ayudas = [], viewport }) {
   // QA_CLASES=aritmetica,fracciones da sólo esas clases.
   if (process.env.QA_CLASES && !process.env.QA_CLASES.split(",").includes(clase)) return;
-  console.log(`\n── ${clase} (${etapa} ${curso}${nivel ? `, ${nivel}` : ""}, ${masDificil}× «Más difícil») ──`);
-  const { p, ctx } = await abrirClase({ etapa, curso, tema, nivel });
+  console.log(`\n── ${clase} (${etapa} ${curso}${nivel ? `, ${nivel}` : ""}, ${masDificil}× «Más difícil»${viewport ? `, ${viewport.width}×${viewport.height}` : ""}) ──`);
+  const { p, ctx } = await abrirClase({ etapa, curso, tema, nivel, viewport });
   const hechos = new Set();
   let ejercicio = "";
   let ambiente1 = 0;
@@ -784,6 +984,15 @@ async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reinicia
       await p.waitForTimeout(800);
       await correr(PRESUPUESTO, "reinicio");
     }
+  }
+  // Las ayudas, con la pregunta de la práctica delante; después se contesta bien
+  // el último ejercicio nuevo.
+  if (ayudas.length) {
+    const delante = await p.evaluate(() => window.__obs());
+    if (!(delante.pregunta && /practica/i.test(delante.fase))) await correr(PRESUPUESTO, "ayudas");
+    let seguimos = true;
+    for (const boton of ayudas) if (seguimos) seguimos = Boolean(await pedirAyuda(p, clase, boton));
+    if (seguimos) await contestarBien(p, clase);
   }
   console.log(`  (${muestras} muestras de la pizarra)`);
   await ctx.close();
@@ -841,6 +1050,8 @@ await darClase({
   tema: /aritm|suma|n[uú]meros naturales/i,
   masDificil: 0,
   disparadores: disparadoresDeAritmetica,
+  // La captura del cliente: «Explicar regla» en la práctica de 678 + 145.
+  ayudas: ["Explicar regla", "No entendí este paso"],
 });
 
 await darClase({
@@ -872,6 +1083,25 @@ await darClase({
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
+  ayudas: ["No entendí este paso", "Explicar regla"],
+});
+
+// A 1920 × 1080, la pantalla del aula: la tarjeta de «Fracciones equivalentes»
+// proyectada junto a las notas (la captura del cliente), y la práctica del
+// nivel de partida —3/5 + 1/2— con sus dos ayudas.
+await darClase({
+  clase: "fracciones-1920",
+  etapa: "PRIMARIA",
+  curso: 6,
+  tema: /fracci/i,
+  masDificil: 0,
+  viewport: { width: 1920, height: 1080 },
+  disparadores: [
+    ["reglas", (m) => /regla/i.test(m.fase) && m.tarjeta != null],
+    ["reglas-notas", (m) => /regla/i.test(m.fase) && m.tarjeta != null && m.ambientes.some((a) => a.n === "2" && a.elementos > 1)],
+    ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
+  ],
+  ayudas: ["No entendí este paso", "Explicar regla"],
 });
 
 await darClase({
@@ -890,12 +1120,13 @@ await darClase({
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
+  ayudas: ["Explicar regla"],
 });
 
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

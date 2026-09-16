@@ -54,11 +54,13 @@ import {
   enunciadoTrasPeticion,
   conPreguntaPendiente,
   esEnunciadoParaResolver,
+  preguntaFinal,
   presentacionDe,
   reanudarTrasAclaracion,
   recortarParaSeguimiento,
   restoDeLeccion,
   sinPreguntas,
+  trasLaPrimeraPregunta,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
 import {
@@ -182,7 +184,7 @@ export function Aula({
   // narrando. Ésta mira la lección entera, porque el alumno pulsa "Explicar
   // regla" cuando ya está en Práctica, y lo que hay que explicarle es la regla
   // que le enseñaron, no ninguna de la fase en la que está.
-  const reglaEnCursoRef = useRef<{ nombre: string; enunciado: string } | null>(null);
+  const reglaEnCursoRef = useRef<{ nombre: string; enunciado: string; descripcion?: string } | null>(null);
 
   /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
   const narrado = useRef<string[]>([]);
@@ -241,6 +243,18 @@ export function Aula({
   const [paraResolver, setParaResolver] = useState<Set<string>>(() => new Set());
   /** Su espejo, para leerlo desde los callbacks sin esperar al render. */
   const paraResolverRef = useRef<Set<string>>(new Set());
+  /**
+   * EL ENUNCIADO DE LA PRÁCTICA QUE EL TUTOR ESTÁ RESOLVIENDO EN VOZ ALTA.
+   *
+   * Tras «Explicar regla» o «No entendí este paso» en la práctica, el tutor
+   * resuelve ESE ejercicio paso a paso, y su planteamiento se anima como el de
+   * un ejemplo: la columna que se nombra se enciende y las cifras del resultado
+   * se escriben mientras se dicen. El cliente lo vio en 678 + 145: la voz
+   * contaba "7 + 4, más el 1 que nos llevamos" y la pizarra seguía quieta en el
+   * «?». Va atado al TEXTO: en cuanto el ejercicio nuevo se lleva la tarjeta,
+   * el suyo vuelve a estar quieto, que es el que tiene que resolver el alumno.
+   */
+  const [enunciadoExplicado, setEnunciadoExplicado] = useState<string | null>(null);
 
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
@@ -833,12 +847,14 @@ export function Aula({
       const enTarjeta = ejercicioRef.current?.texto ?? null;
       const tarjetaParaResolver =
         enTarjeta != null && (paraResolverRef.current.has(enTarjeta) || esEnunciadoParaResolver(enTarjeta));
-      const desgloseDelEjemplo =
-        Boolean(opciones.soloExplicacion) &&
-        opciones.parte === "resolucion" &&
-        enTarjeta != null &&
-        faseConEjercicio() &&
-        !tarjetaParaResolver;
+      // «NO ENTENDÍ ESTE PASO» Y «EXPLICAR REGLA», con un ejercicio en la
+      // tarjeta, lo desglosan los dos: la regla se explica SOBRE ese ejercicio,
+      // y cada paso se escribe y se anima a la vez que se dice. «Explicar regla»
+      // llegaba como prosa suelta del modelo, sin pasos que animar, y la pizarra
+      // se quedaba quieta en el enunciado mientras la voz resolvía la cuenta.
+      const desgloseDeLaTarjeta =
+        Boolean(opciones.soloExplicacion) && enTarjeta != null && faseConEjercicio();
+      const desgloseDelEjemplo = desgloseDeLaTarjeta && !tarjetaParaResolver;
 
       setCargando(true);
       setError(null);
@@ -852,12 +868,7 @@ export function Aula({
       // puede quedar inconcluso"—, así que sus pasos son el desarrollo de la
       // tarjeta y se animan como tales, en el ejemplo y en la práctica. Como
       // aclaración aparte sólo queda la que no desglosa el ejercicio.
-      const desgloseDeLaPractica =
-        Boolean(opciones.soloExplicacion) &&
-        opciones.parte === "resolucion" &&
-        enTarjeta != null &&
-        faseConEjercicio() &&
-        tarjetaParaResolver;
+      const desgloseDeLaPractica = desgloseDeLaTarjeta && tarjetaParaResolver;
       esAclaracion.current =
         Boolean(opciones.soloExplicacion) && !desgloseDelEjemplo && !desgloseDeLaPractica;
 
@@ -900,7 +911,9 @@ export function Aula({
           // derivadas", que es lo que el modelo entendía sin este contexto.
           const activa = reglaEnCursoRef.current;
           cuerpo.aclaracion = {
-            regla: activa ? { nombre: activa.nombre, formula: activa.enunciado } : null,
+            regla: activa
+              ? { nombre: activa.nombre, formula: activa.enunciado, descripcion: activa.descripcion }
+              : null,
             // EL EJERCICIO DE LA TARJETA, no el "activo" de la conversación. El
             // activo es la última línea escrita de la lección —el enunciado de
             // la práctica—, así que en el ejemplo se desglosaba un ejercicio que
@@ -938,9 +951,26 @@ export function Aula({
         // su resultado final enmarcado— se anima como desarrollo de la tarjeta.
         // Si la aclaración la redactó el modelo, sigue siendo una aclaración
         // aparte: de ella no se sabe dónde termina.
-        if (desgloseDeLaPractica && datos?.lsg?.escena !== "desglose_ejercicio") {
+        // Lo mismo con «Explicar regla» en el ejemplo: sin desglose, es prosa.
+        const llegoElDesglose = datos?.lsg?.escena === "desglose_ejercicio";
+        if (
+          !llegoElDesglose &&
+          (desgloseDeLaPractica || (desgloseDelEjemplo && opciones.parte === "concepto"))
+        ) {
           esAclaracion.current = true;
         }
+        setEnunciadoExplicado(desgloseDeLaPractica && llegoElDesglose ? enTarjeta : null);
+
+        // TRAS RESOLVERLE LA PRÁCTICA, OTRA NUEVA. El desglose de la práctica
+        // llega hasta su resultado enmarcado; devolverle después la MISMA
+        // pregunta era pedirle que copiara lo que tiene escrito en la pizarra
+        // —el cliente lo vio en 3/5 + 1/2, con el 11/10 a la vista—. El servidor
+        // cierra el desglose con un ejercicio parecido, que se lleva la tarjeta
+        // y deja la pizarra limpia, y su pregunta sustituye a la pendiente.
+        const preguntaNueva = datos?.nuevaPractica ? preguntaFinal(datos.lsg) : null;
+        const preguntaDeVuelta = preguntaNueva ?? preguntaPendiente;
+        // El desglose ya le pasa la palabra ("Ahora te toca a ti con uno nuevo").
+        const transicion = preguntaNueva ? null : undefined;
 
         const estado = conversacion.current;
 
@@ -1035,11 +1065,19 @@ export function Aula({
             ? resto && faseAlPedir
               ? reanudarTrasAclaracion(recortada, {
                   faseActual: faseAlPedir,
-                  pregunta: preguntaPendiente,
-                  mismaFase: preguntaPendiente ? resto.mismaFase : [],
+                  pregunta: preguntaDeVuelta,
+                  // Lo que venía tras la pregunta. Si el alumno aún no la tenía
+                  // delante, lo que viene empieza por ella: con un ejercicio
+                  // nuevo, esa pregunta vieja se salta.
+                  mismaFase: preguntaPendiente
+                    ? resto.mismaFase
+                    : preguntaNueva
+                      ? trasLaPrimeraPregunta(resto.mismaFase)
+                      : [],
                   siguientes: resto.siguientes,
+                  transicion,
                 })
-              : conPreguntaPendiente(sinPreguntas(recortada), preguntaPendiente)
+              : conPreguntaPendiente(sinPreguntas(recortada), preguntaDeVuelta, transicion)
             : recortada
         ) as LSG;
         fasesAReanudar.current = new Set(
@@ -1050,7 +1088,23 @@ export function Aula({
 
         // Se anota el enunciado de cada fase antes de reproducir nada, para
         // poder mostrarlo en cuanto se entra en ella.
-        enunciadoPorFase.current = enunciadosDeLeccion(lsg);
+        //
+        // Salvo el de la fase en la que se pidió la ayuda: la primera línea que
+        // escribe un desglose es un paso —"MCM(5, 2): 5 × 2 = 10"—, no el
+        // enunciado, y a la siguiente pulsación se habría llevado la tarjeta. La
+        // fase sigue con su ejercicio, o con el nuevo que cierra el desglose.
+        const enunciados = enunciadosDeLeccion(lsg);
+        if (opciones.soloExplicacion && faseAlPedir) {
+          const pizarrasDeLaAyuda = (Array.isArray(datos.pasos) ? datos.pasos : [])
+            .filter((p: { tipo?: string; contenido?: string }) => p?.tipo === "pizarra" && String(p.contenido ?? "").trim())
+            .map((p: { contenido: string }) => String(p.contenido).trim());
+          const propio = preguntaNueva
+            ? (pizarrasDeLaAyuda[pizarrasDeLaAyuda.length - 1] ?? null)
+            : (enunciadoPorFase.current.get(faseAlPedir) ?? enTarjeta);
+          if (propio) enunciados.set(faseAlPedir, propio);
+          else enunciados.delete(faseAlPedir);
+        }
+        enunciadoPorFase.current = enunciados;
         // Y qué enunciados se le piden al alumno: esos no se animan. Una ayuda
         // añade los suyos a los de la lección que continúa; una lección nueva
         // empieza de cero.
@@ -1059,7 +1113,7 @@ export function Aula({
           ? new Set([...paraResolverRef.current, ...piden])
           : piden;
         setParaResolver(paraResolverRef.current);
-        if (!opciones.soloExplicacion) {
+        if (!opciones.soloExplicacion || preguntaNueva) {
           practicaResuelta.current = false;
           pasoEnPantalla.current = null;
         }
@@ -1086,7 +1140,8 @@ export function Aula({
         const pizarras = pasos
           .filter((p: { tipo: string }) => p.tipo === "pizarra")
           .map((p: { contenido: string }) => p.contenido);
-        if (!opciones.soloExplicacion && pizarras.length > 0) {
+        // Salvo la que cierra con un ejercicio nuevo: ése es ya el que se corrige.
+        if ((!opciones.soloExplicacion || preguntaNueva) && pizarras.length > 0) {
           estado.ejercicio = pizarras[pizarras.length - 1];
         }
 
@@ -1280,14 +1335,17 @@ export function Aula({
     const pasos: PasoSemantico[] = [];
     if (!esFaseDeEjemplo(faseAbierta) && !esFaseDePractica(faseAbierta)) return pasos;
     // EL EJERCICIO QUE SE LE PIDE AL ALUMNO NO SE ANIMA: animarlo es que la
-    // pizarra le haga el primer paso. El ejemplo que resuelve el tutor sí.
-    if (ejercicio?.texto && !paraResolver.has(ejercicio.texto)) pasos.push(pasoDeLinea(ejercicio));
+    // pizarra le haga el primer paso. El ejemplo que resuelve el tutor sí, y
+    // también la práctica cuando el alumno pidió que se la explicaran.
+    if (ejercicio?.texto && (!paraResolver.has(ejercicio.texto) || ejercicio.texto === enunciadoExplicado)) {
+      pasos.push(pasoDeLinea(ejercicio));
+    }
     for (const linea of desarrollo) {
       if (linea.aclaracion || paraResolver.has(linea.texto)) continue;
       pasos.push(pasoDeLinea(linea));
     }
     return pasos;
-  }, [faseAbierta, ejercicio, desarrollo, paraResolver]);
+  }, [faseAbierta, ejercicio, desarrollo, paraResolver, enunciadoExplicado]);
 
   /** "Este paso", para el botón «No entendí este paso»: el que la animación tiene delante. */
   const alProgresarAnimacion = useCallback(({ texto }: { terminado: boolean; texto?: string | null }) => {
@@ -1529,6 +1587,7 @@ export function Aula({
                 reglaDetectada={reglaEnCurso}
                 tema={tema.tema}
                 paraResolver={paraResolver}
+                enunciadoExplicado={enunciadoExplicado}
                 animacion={animacion}
               />
             )}

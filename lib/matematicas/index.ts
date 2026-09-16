@@ -169,6 +169,7 @@ export function planoALatex(expresion: string): string {
     .replace(/·/g, " \\cdot ")
     .replace(/×|\*/g, " \\times ")
     .replace(/÷/g, " \\div ")
+    .replace(/±/g, " \\pm ")
     .replace(/≠/g, " \\neq ")
     .replace(/≤/g, " \\leq ")
     .replace(/≥/g, " \\geq ")
@@ -193,6 +194,17 @@ export function planoALatex(expresion: string): string {
   // Fracciones NUMÉRICAS: "1/2" → "\frac{1}{2}". Sólo dígito/dígito, para no
   // estropear "d/dx", que no es una fracción sino una notación de derivada.
   s = s.replace(/(?<![\w}])(\d+)\s*\/\s*(\d+)(?![\w{])/g, "\\frac{$1}{$2}");
+
+  // Y las LITERALES: "a/b" → \frac{a}{b}, "x/2", "2x/3", "x^{2}/4". El cliente
+  // lo fotografió en la propiedad de amplificación, "a/b = (a×k)/(b×k)": los
+  // paréntesis ya pasaban a raya y la "a/b" suelta se quedaba con la barra. Cada
+  // lado es UNA letra —con su coeficiente o su exponente— o un número, nunca el
+  // final de una palabra ("km/h") ni una orden de LaTeX. "y/o" es prosa.
+  s = s.replace(
+    /(?<![\w}\\])(\d*[a-zA-Z](?:\^\{[^{}]*\})?|\d+(?:\^\{[^{}]*\})?)\s*\/\s*(\d*[a-zA-Z](?:\^\{[^{}]*\})?|\d+)(?![\w{])/g,
+    (todo, arriba: string, abajo: string) =>
+      arriba.toLowerCase() === "y" && abajo.toLowerCase() === "o" ? todo : `\\frac{${arriba}}{${abajo}}`,
+  );
 
   // Nombres de función (MVP 2). Sin la barra delante, KaTeX compone "ln(x)"
   // como el producto de tres variables en cursiva —l·n·x—, que es exactamente
