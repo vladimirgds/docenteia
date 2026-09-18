@@ -42,6 +42,11 @@
 //          la equivalencia se escribe con su factor, no sólo con su resultado.
 //   R3-03  Las notas del Ambiente 2 van al paso de la voz: mientras se suman las
 //          decenas, la nota de la derecha explica las decenas.
+//   R4-01  La pizarra no adelanta pasos: lo que el tutor no ha explicado no está
+//          escrito (el cliente fotografió el Ambiente 2 con las tres ecuaciones
+//          del ejercicio a la vez, y varias barras de desplazamiento encima).
+//   R4-02  El tachado rojo de la cancelación llega CON su frase, no antes.
+//   R4-03  Ninguna barra gris de desplazamiento dentro de la pizarra.
 //   R3-04  Los dos ambientes se aprovechan: las dos conversiones de una suma de
 //          fracciones no caen en el mismo lado.
 //
@@ -274,6 +279,15 @@ function instalarMedidor() {
         gesto: e.querySelector("[data-gesto]")?.getAttribute("data-gesto") ?? "",
       })),
       cancelaciones: [],
+      // R4-01: lo que la pizarra pinta sin haberlo explicado todavía. El cliente
+      // fotografió el Ambiente 2 con las tres ecuaciones del ejercicio a la vez.
+      pendientes: [...document.querySelectorAll('.pz-elemento[data-estado="pendiente"]')].filter(visible).length,
+      terminada: Boolean(document.querySelector("[data-terminada='si']")),
+      // R4-02: si hay tachado en la pizarra, con qué frase se está diciendo.
+      tachados: [...document.querySelectorAll('.pz-elemento[data-estado="activa"] .pz-resaltado[data-tipo="tachado"]')].filter(visible).length,
+      pieActivo: textoVisible(document.querySelector(".pz-elemento[data-estado='activa'] .pz-pie")),
+      // R4-03: ninguna barra gris nativa dentro de la pizarra.
+      barrasScroll: [],
       // La misma pregunta, con cada fórmula en su TeX: el texto visible de una
       // fracción de KaTeX pone el denominador ANTES que el numerador.
       preguntaFuente: fuenteTex(document.querySelector(".pz-pregunta")),
@@ -283,6 +297,26 @@ function instalarMedidor() {
       notaTexto: [],
       planteamiento: null,
     };
+
+    // R4-03: UNA BARRA GRIS ES UN DEFECTO. Se cuenta como barra visible todo lo
+    // que dentro de la pizarra desborda a lo ancho con `overflow-x` abierto y sin
+    // esconder el raíl, y también lo que ya le está robando alto a su caja (que
+    // es exactamente lo que se ve en la foto del cliente).
+    // Sólo las cajas que pueden desplazarse —no todo el árbol—: esta medida se
+    // toma cada pocos milisegundos y recorrerlo entero ralentizaba el muestreo
+    // hasta perderse fotogramas de la animación.
+    const desplazables = ".pz-tablero-cuerpo, .pz-ambiente, .pz-elemento, .pz-linea-formula, .pz-regla-formula, .pz-animada-formula, .pz-animada, .katex-display, .pz-tarjeta-regla, .pz-encabezado-formula, .pz-nota";
+    for (const el of document.querySelectorAll(desplazables)) {
+      if (!visible(el)) continue;
+      const cs = getComputedStyle(el);
+      const desborda = el.scrollWidth - el.clientWidth > 1;
+      const abierto = /auto|scroll/.test(cs.overflowX) && cs.scrollbarWidth !== "none";
+      const borde = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      const roba = el.offsetHeight - el.clientHeight - borde > 2 && desborda;
+      if ((desborda && abierto) || roba) {
+        out.barrasScroll.push(`${(el.className || el.tagName).toString().slice(0, 42)} (${el.scrollWidth}>${el.clientWidth})`);
+      }
+    }
 
     // OBS-06: el encabezado.
     const rotulo = document.querySelector(".pz-encabezado-rotulo");
@@ -459,7 +493,7 @@ function instalarMedidor() {
         const esperada = enFormula
           ? /KaTeX/
           : rol === "TUTOR_DIALOG"
-            ? /^"?Segoe Print/
+            ? /^"?(Inter|Segoe UI)/
             : rol === "BOARD_LABEL" || el.closest(".pz-palabra")
               ? /^"?Chalkboard SE/
               : /KaTeX/;
@@ -739,7 +773,7 @@ const pulsar = async (p, nombre) => {
 function comprobarSiempre(m, clase) {
   verificar("OBS-13", "ni «/» ni «*» en el texto visible", m.barras.length === 0, m.barras.join(" · "));
   verificar("OBS-05", "todo texto de la pizarra lleva su rol semántico", m.sinRol.length === 0, m.sinRol.slice(0, 4).join(" · "));
-  verificar("OBS-05", "cada rol en su fuente (Segoe Print · Chalkboard SE · KaTeX)", m.fuenteMala.length === 0, m.fuenteMala.slice(0, 3).join(" · "));
+  verificar("OBS-05", "cada rol en su fuente (sans limpia · Chalkboard SE · KaTeX)", m.fuenteMala.length === 0, m.fuenteMala.slice(0, 3).join(" · "));
   for (const e of m.etiquetas) medida("rotulo_a_cifra_px_min", e.sep);
   for (const l of m.llevadas) medida("llevo1_sobre_su_llevada_px_min", l.encima);
   for (const c of m.conectores) {
@@ -819,6 +853,36 @@ function comprobarSiempre(m, clase) {
   if (/ejemplo|practica/i.test(m.fase) && enUno + enDos >= 4) {
     verificar("R3-04", "con el procedimiento avanzado, los dos ambientes llevan contenido", enUno >= 1 && enDos >= 1, `${enUno} / ${enDos} (${clase})`);
   }
+
+  // R4-01: LA PIZARRA NO ADELANTA NADA. Mientras la clase no ha terminado, no
+  // puede haber en la pizarra una línea que el tutor todavía no ha explicado:
+  // eso es lo que llenaba el Ambiente 2 de ecuaciones y lo llenaba de barras.
+  verificar(
+    "R4-01",
+    "no hay pasos futuros pintados en la pizarra: sólo lo ya explicado",
+    m.terminada || m.pendientes === 0,
+    `${m.pendientes} pendientes a la vista (${clase})`,
+  );
+
+  // R4-02: EL TACHADO LLEGA CON SU FRASE. En la línea que se está explicando no
+  // puede haber un aspa roja mientras la voz aún no ha dicho que se cancela: el
+  // paso se cuenta en dos tiempos —se escribe la resta, y después se tacha—.
+  if (m.tachados > 0) {
+    verificar(
+      "R4-02",
+      "el tachado rojo sólo aparece cuando el tutor está diciendo que se cancela",
+      /cancel/i.test(m.pieActivo ?? ""),
+      `«${(m.pieActivo ?? "").slice(0, 70)}» (${clase})`,
+    );
+  }
+
+  // R4-03: ninguna barra gris nativa, ni en pantalla ni proyectando.
+  verificar(
+    "R4-03",
+    "ninguna barra de desplazamiento horizontal dentro de la pizarra",
+    m.barrasScroll.length === 0,
+    `${m.barrasScroll.slice(0, 3).join(" · ")} (${clase})`,
+  );
 }
 
 /** En proyección: sin textos de interfaz y a tamaño de aula. */
@@ -982,7 +1046,21 @@ async function pedirAyuda(p, clase, boton) {
   } else {
     const cuantos = [...new Set(explicacion.map((s) => s.elementos))];
     verificar("R2-01", "los pasos se animan mientras se explican", explicacion.some((s) => s.activa), etiqueta);
-    verificar("R2-01", "…y se escriben uno tras otro, no todos de golpe", cuantos.length >= 3, `${etiqueta}: ${cuantos.join(" → ")}`);
+    // NO TODOS DE GOLPE: la pizarra empieza con menos de lo que acaba, y va
+    // creciendo. Se cuenta lo que se VE, y desde R4-01 lo que se ve es lo ya
+    // explicado —no lo ya escrito—: una línea que el guion escribe mientras la
+    // voz sigue en la anterior espera su turno, así que dos líneas seguidas
+    // pueden destaparse casi a la vez si la voz las alcanza juntas. Lo que no
+    // puede pasar —y es lo que fotografió el cliente— es que la explicación
+    // aparezca entera desde el primer fotograma.
+    const primero = explicacion[0]?.elementos ?? 0;
+    const ultimo = explicacion.at(-1)?.elementos ?? 0;
+    verificar(
+      "R2-01",
+      "…y se escriben uno tras otro, no todos de golpe",
+      cuantos.length >= 2 && primero < ultimo,
+      `${etiqueta}: ${cuantos.join(" → ")}`,
+    );
   }
 
   verificar("R2-02", "tras la explicación, la práctica vuelve a preguntar", Boolean(fin), etiqueta);

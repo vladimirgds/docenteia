@@ -20,6 +20,15 @@
    El informe sustituye a lo acordado en rondas anteriores (entonces el habla
    iba en la letra de la interfaz): ahora cada rol tiene la suya.
 
+   LA LETRA DEL TUTOR SE CAMBIÓ A UNA SANS LIMPIA (petición del cliente, ronda
+   de septiembre): "el bloque inferior donde habla el Avatar está en cursiva
+   manuscrita (Segoe Print), lo que genera fatiga visual en párrafos largos".
+   Y es cierto: una manuscrita se lee bien en un rótulo de tres palabras y mal
+   en un párrafo de cuarenta. La manuscrita queda RESERVADA a lo que se escribe
+   dentro del lienzo de la pizarra —notas y rótulos breves, BOARD_LABEL—, que
+   es donde imita la tiza. Los tres roles siguen viéndose distintos: sans para
+   la voz, manuscrita para la pizarra, KaTeX para las fórmulas.
+
    SON FUENTES DEL SISTEMA, A PROPÓSITO: son tipos con derechos de Microsoft y
    de Apple, sin versión abierta que pueda auto-alojarse. "Chalkboard SE" es de
    macOS/iPadOS; en Windows no existe, y su equivalente es "Comic Sans MS" (el
@@ -27,7 +36,7 @@
    de Segoe Print: los tres roles se ven distintos también en Windows.
    "Segoe Print" es de Windows; en un Mac cae en "Bradley Hand". */
 :root {
-  --fuente-tutor: "Segoe Print", "Bradley Hand", "Noteworthy", "Comic Sans MS", cursive;
+  --fuente-tutor: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --fuente-pizarra: "Chalkboard SE", "Chalkboard", "Comic Sans MS", "Comic Neue", cursive;
   --fuente-formula: KaTeX_Main, "Cambria Math", "Times New Roman", serif;
   /* El color con el que se destaca lo que se está operando (el factor y el
@@ -38,6 +47,21 @@
 [data-rol="TUTOR_DIALOG"] {
   @apply font-tutor;
   font-style: normal;
+  /* Párrafos largos: cuerpo de lectura y renglones aireados. Las utilidades de
+     tamaño que traiga el componente mandan sobre esto (van con más
+     especificidad), y el pie de cada paso sigue siendo pequeño a propósito. */
+  letter-spacing: 0;
+}
+
+/* El bloque donde habla el avatar es un párrafo, y se lee como un párrafo. */
+.pz-subtitulo {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: hsl(215 25% 27%);
+}
+
+.dark .pz-subtitulo {
+  color: hsl(214 32% 91%);
 }
 
 [data-rol="BOARD_LABEL"] {
@@ -395,11 +419,45 @@
 }
 
 /* Una fórmula larga nunca debe ensanchar la página: se desplaza dentro de su
-   propia caja. */
+   propia caja.
+
+   SIN BARRA VISIBLE. El cliente fotografió las barras grises nativas bajo la
+   suma en columna y bajo la caja de resultado: en una pizarra no hay barras de
+   desplazamiento, y además ya no hacen falta —las fórmulas que no caben se
+   parten en renglones o se encogen (lib/leccion/ajuste.ts)—. El desplazamiento
+   se conserva como red de seguridad para móviles muy estrechos (se arrastra con
+   el dedo), pero la barra no se pinta. */
 .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 0.25rem 0;
+}
+
+.katex-display,
+.pz-regla-formula,
+.pz-linea-formula,
+.pz-animada-formula,
+.pz-tablero-caja [class*="overflow-x"] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.katex-display::-webkit-scrollbar,
+.pz-regla-formula::-webkit-scrollbar,
+.pz-linea-formula::-webkit-scrollbar,
+.pz-animada-formula::-webkit-scrollbar,
+.pz-tablero-caja [class*="overflow-x"]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Y en proyección no hay dedo que arrastre: lo que no quepa se ha partido
+   antes, así que la caja se cierra y no deja ni el hueco de la barra. */
+.modo-proyeccion .katex-display,
+.modo-proyeccion .pz-regla-formula,
+.modo-proyeccion .pz-linea-formula {
+  overflow-x: hidden;
 }
 
 /* Coeficiente y exponente resaltados en el ejemplo paso a paso.

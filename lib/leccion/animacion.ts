@@ -572,11 +572,22 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   // estaba —los dos se tachan, y los dos están del mismo lado del igual—; a la
   // derecha, como la resta que hay que hacer, sin tachar: es la que da el número
   // de la línea siguiente.
+  //
+  // Y lo que se escribe en los dos miembros lleva SU PROPIA marca —una caja por
+  // miembro, `pz-uniforme-izq` y `pz-uniforme-der`—, que es la del primer
+  // tiempo del paso: enseña DÓNDE se ha escrito la resta, sin tachar nada. El
+  // tachado llega después, en el segundo tiempo, y sobre otros dos términos.
   const opuesto = `${b > 0 ? "-" : "+"} ${Math.abs(b)}`;
   const compensacionIzquierda = cancela
-    ? ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-opuesto", String(Math.abs(b)))}`)}`
+    ? ` ${marcar(
+        `pz-rev-0`,
+        marcar(
+          "pz-uniforme pz-uniforme-izq",
+          `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-opuesto", String(Math.abs(b)))}`,
+        ),
+      )}`
     : "";
-  const compensacionDerecha = cancela ? ` ${marcar(`pz-rev-0`, opuesto)}` : "";
+  const compensacionDerecha = cancela ? ` ${marcar(`pz-rev-0`, marcar("pz-uniforme pz-uniforme-der", opuesto))}` : "";
 
   /** El miembro izquierdo, con sus marcas y sólo las suyas. */
   const izquierda = `${coefLatex}${variable}${terminoLatex}${compensacionIzquierda}`;
@@ -586,7 +597,8 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
 
   // La solución se destapa en el último foco: la ecuación no puede empezar con
   // el resultado escrito, eso es dar la respuesta antes de la pregunta.
-  const pasoSolucion = (cancela ? 1 : 0) + (divide ? 1 : 0);
+  // Cancelar son DOS focos —escribir la resta y tachar—, y la solución va detrás.
+  const pasoSolucion = (cancela ? 2 : 0) + (divide ? 1 : 0);
   // LA SOLUCIÓN, EN SU PROPIO RENGLÓN, alineada por el igual:
   //
   //   x + 3 = 8 − 3
@@ -604,6 +616,23 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
 
   const focos: Foco[] = [];
   if (cancela) {
+    // PRIMERO SE ESCRIBE LA OPERACIÓN UNIFORME; SE TACHA DESPUÉS.
+    //
+    // El cliente lo pidió con estas palabras: "primero se proyecta la operación
+    // uniforme completa sin tachar —2x + 6 − 6 = 16 − 6—; cuando la voz
+    // pronuncie «a la izquierda se cancela +6 con −6», se dispara la animación
+    // que aplica el tachado rojo". Antes los tachados estaban puestos desde el
+    // segundo cero, antes de que el avatar explicara nada.
+    //
+    // Este primer foco destapa la resta en los dos miembros y la enmarca —una
+    // caja por miembro, ninguna cruza el igual—, SIN TACHAR: sostiene su frase
+    // en el pie mientras la voz cuenta que se resta lo mismo a los dos lados.
+    focos.push({
+      clase: "pz-uniforme",
+      piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
+      tipo: "caja",
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: lo escribimos en los dos miembros.`,
+    });
     focos.push({
       clase: "pz-cancela",
       // Una caja por término, y las dos DENTRO DEL MISMO MIEMBRO: el término que
@@ -616,7 +645,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       // Y sin un "y" pegado a un signo ("+6 y -6"): esa "y" es prosa, pero la
       // composición de fórmulas dentro de la frase leía "y - 6" como expresión y
       // la escribía en cursiva matemática.
-      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: a la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
+      narracion: `A la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
       etiqueta: "se cancelan",
     });
   }
@@ -1640,7 +1669,10 @@ function clavesDeFoco(foco: Foco): string[] {
       ? [foco.pista, "llevo", "llevada", "llevamos", "acarreo"]
       : [foco.pista];
   }
-  if (foco.tipo === "tachado") return ["cancel", "quitamos", "restamos", "ambos lados", "los dos lados"];
+  // Tachar se dispara con "se cancela", y sólo con eso: "restamos 6 en ambos
+  // lados" es el paso ANTERIOR —escribir la resta—, y con él se tachaba ya.
+  if (foco.tipo === "tachado") return ["cancel"];
+  if (foco.clase === "pz-uniforme") return ["restamos", "sumamos", "quitamos", "los dos lados", "ambos lados"];
   if (foco.clase === "pz-final") return ["resultado final", "respuesta final"];
   if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
   if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];

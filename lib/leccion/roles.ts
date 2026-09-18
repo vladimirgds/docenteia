@@ -6,7 +6,8 @@
  *
  *   · TUTOR_DIALOG     — lo que DICE el tutor: subtítulos, la frase bajo el paso
  *                        animado, la retroalimentación y el estado del avatar.
- *                        Segoe Print.
+ *                        una sans limpia (Inter / la del sistema): son
+ *                        párrafos, y una manuscrita cansa al leerlos.
  *   · BOARD_LABEL      — lo que se ESCRIBE en la pizarra: notas, "Ejercicio:",
  *                        "MCM(2, 3):", "numeradores", "llevo 1", los rótulos del
  *                        diagrama. Chalkboard SE.

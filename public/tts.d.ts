@@ -20,8 +20,14 @@ export class TTS {
   voice: SpeechSynthesisVoice | null;
   rate: number;
   pitch: number;
-  /** ¿Hay una voz en español instalada? */
+  /** `true` si hay voz neuronal en el servidor; `null` mientras no se sabe. */
+  neural: boolean | null;
+  /** Qué proveedor sirve la voz neuronal ("google", "elevenlabs") o `null`. */
+  proveedor: string | null;
+  /** ¿Puede hablar? Una voz española instalada, o la neuronal del servidor. */
   hasSpanishVoice(): boolean;
+  /** Pregunta UNA vez al servidor si hay voz neuronal configurada. */
+  listaLaVoz(): Promise<boolean>;
   /** Descripción legible del estado de la voz, para la interfaz. */
   describe(): string;
   speak(texto: string, opciones?: { signal?: AbortSignal }): Promise<void>;

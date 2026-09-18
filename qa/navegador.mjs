@@ -1261,11 +1261,13 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     };
   });
   console.log(`  · fuentes computadas: ${JSON.stringify(fuentes)}`);
-  // El informe del cliente (SUB-TIP-01) fijó una fuente por ROL: lo que dice
-  // el tutor, Segoe Print; lo que se escribe en la pizarra, Chalkboard SE.
+  // El informe del cliente (SUB-TIP-01) fijó una fuente por ROL: lo que se
+  // escribe en la pizarra, Chalkboard SE; lo que DICE el tutor, una sans limpia
+  // (la manuscrita cansaba en párrafos largos: ronda de septiembre).
   check(
-    "el subtítulo del tutor es TUTOR_DIALOG: Segoe Print",
-    Boolean(fuentes.subtitulo) && /^"?Segoe Print/.test(fuentes.subtitulo),
+    "el subtítulo del tutor es TUTOR_DIALOG: sans limpia, sin cursiva manuscrita",
+    Boolean(fuentes.subtitulo) && /^"?(Inter|Segoe UI)/.test(fuentes.subtitulo) &&
+      !/Segoe Print|Bradley Hand|Comic Sans|Chalkboard|cursive/.test(fuentes.subtitulo),
   );
   check(
     "la etiqueta ESCRITA sobre la pizarra es BOARD_LABEL: Chalkboard SE",
@@ -1497,7 +1499,7 @@ console.log("\n── Revisión daa127d: sincronía voz-pizarra, «No entendí e
   console.log(`  · rótulo proyectado: ${conRotulo ? `${conRotulo.rotulo.px}px · ${conRotulo.rotulo.fuente.slice(0, 40)}` : "—"} · fórmula: ${conRotulo?.formulaPx ?? "—"}px`);
   check(
     "en proyección el rótulo mide al menos text-2xl (24 px) y va en letra de pizarra",
-    Boolean(conRotulo) && conRotulo.rotulo.px >= 24 && /Chalkboard SE|Segoe Print/.test(conRotulo.rotulo.fuente),
+    Boolean(conRotulo) && conRotulo.rotulo.px >= 24 && /Chalkboard SE|Comic Sans/.test(conRotulo.rotulo.fuente),
   );
   check(
     "y la fórmula de la nota va un escalón por encima del rótulo",

@@ -71,6 +71,7 @@ import {
   fraccionResueltaLSG,
   linealResueltaLSG,
   locucionesDistributiva,
+  locucionCancelacion,
   multiplicacionResueltaLSG,
   practicaParecida,
   reexplicacionDeConceptoLSG,
@@ -691,16 +692,37 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       /pz-cancela-termino/.test(izq) && /pz-cancela-opuesto/.test(izq) && !/pz-cancela/.test(der),
       `izq: ${/pz-cancela/.test(izq)} · der: ${/pz-cancela/.test(der)}`,
     );
+    // EL PASO SE CUENTA EN DOS TIEMPOS (petición del cliente, ronda de
+    // septiembre): "primero se proyecta la operación uniforme completa SIN
+    // TACHAR; cuando la voz pronuncie «a la izquierda se cancela +6 con -6», se
+    // dispara el tachado". Antes el tachado estaba puesto desde el segundo cero.
     check(
-      "…el foco tacha ese par de opuestos, y nada más",
-      e.focos[0]?.tipo === "tachado" &&
-        JSON.stringify(e.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      "…el PRIMER tiempo sólo escribe la resta en los dos miembros: una caja por miembro, sin tachar",
+      e.focos[0]?.tipo === "caja" && e.focos[0]?.clase === "pz-uniforme" &&
+        JSON.stringify(e.focos[0].piezas) === JSON.stringify(["pz-uniforme-izq", "pz-uniforme-der"]),
       JSON.stringify(e.focos[0]),
     );
     check(
-      "…y lo dicho lo cuenta igual: a la izquierda se cancelan, a la derecha se resta",
-      /a la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(e.focos[0]?.narracion ?? ""),
+      "…y lo dice sin cancelar todavía: «restamos 6 en los dos lados»",
+      /^Restamos 6 en los dos lados/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
       e.focos[0]?.narracion,
+    );
+    check(
+      "…el SEGUNDO tiempo tacha ese par de opuestos, y nada más",
+      e.focos[1]?.tipo === "tachado" &&
+        JSON.stringify(e.focos[1].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      JSON.stringify(e.focos[1]),
+    );
+    check(
+      "…y lo dicho lo cuenta igual: a la izquierda se cancelan, a la derecha se resta",
+      /^A la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(e.focos[1]?.narracion ?? ""),
+      e.focos[1]?.narracion,
+    );
+    check(
+      "…y las cajas del primer tiempo no cruzan el igual: una en cada miembro",
+      /pz-uniforme-izq/.test(izq) && !/pz-uniforme-izq/.test(der) &&
+        /pz-uniforme-der/.test(der) && !/pz-uniforme-der/.test(izq),
+      `izq: ${/pz-uniforme/.test(izq)} · der: ${/pz-uniforme/.test(der)}`,
     );
     const resta = escenaDeDespeje("2x - 6 = 16", "e");
     check(
@@ -1677,9 +1699,10 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   {
     const paso = escenaDeLinea({ latex: "2x + 6 = 16", operacion: { tipo: "cancelacion", terminosFoco: ["6"] } }, "p");
     check(
-      "sobre 2x + 6 = 16 hay UN foco: el tachado del +6 y del −6, cada uno con su marca",
-      paso.focos.length === 1 && paso.focos[0].tipo === "tachado" &&
-        JSON.stringify(paso.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      "sobre 2x + 6 = 16 hay DOS focos: se escribe la resta y, después, se tacha el par de opuestos",
+      paso.focos.length === 2 && paso.focos[0].tipo === "caja" && paso.focos[0].clase === "pz-uniforme" &&
+        paso.focos[1].tipo === "tachado" &&
+        JSON.stringify(paso.focos[1].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
       JSON.stringify(paso.focos),
     );
     check(
@@ -1701,13 +1724,40 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       escenasFinales.length === 1 && escenasFinales[0] === "x = 5",
       JSON.stringify(escenasFinales),
     );
+    // LA SECUENCIA CON EL AUDIO, QUE ES LO QUE PIDIÓ EL CLIENTE: mientras el
+    // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
+    // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
+    // tachado rojo. Dos frases, dos tiempos, en ese orden.
     const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 en ambos lados/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "y cuando el tutor dice «restamos 6 en ambos lados», la pizarra está en ese tachado",
-      enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "tachado",
-      `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco}`,
+      "cuando el tutor dice «restamos 6 en ambos lados», la pizarra ESCRIBE la resta y NO tacha nada",
+      enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
+        focoResta?.clase === "pz-uniforme",
+      `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
+    );
+    const iCancela = ev.findIndex((e) => e.d.tipo === "hablar" && /A la izquierda se cancela \+6 con -6/.test(e.d.texto));
+    const enCancela = ev[iCancela];
+    const focoCancela = enCancela?.escenas[enCancela.escena]?.focos[enCancela.foco];
+    check(
+      "y sólo al decir «a la izquierda se cancela +6 con −6» se dispara el tachado, sobre esa misma línea",
+      iCancela > iResta && enCancela?.escenas[enCancela.escena]?.texto === "2x + 6 = 16" &&
+        focoCancela?.tipo === "tachado",
+      `${enCancela?.escenas[enCancela.escena]?.texto} foco ${enCancela?.foco} (${focoCancela?.tipo})`,
+    );
+    check(
+      "la frase que tacha es la MISMA en el motor y en la pizarra: si no, se tacharía a destiempo",
+      locucionCancelacion("2x + 6 = 16") ===
+        escenaDeDespeje("2x + 6 = 16", "e").focos.find((f) => f.tipo === "tachado")?.narracion,
+      `${locucionCancelacion("2x + 6 = 16")} ≠ ${escenaDeDespeje("2x + 6 = 16", "e").focos.find((f) => f.tipo === "tachado")?.narracion}`,
+    );
+    check(
+      "y en ningún momento anterior la pizarra estuvo en el tachado de esa línea",
+      ev.slice(0, iCancela).every((e) => {
+        const f = e.escenas?.[e.escena]?.focos?.[e.foco];
+        return !(e.escenas?.[e.escena]?.texto === "2x + 6 = 16" && f?.tipo === "tachado");
+      }),
     );
     const iDivide = ev.findIndex((e) => e.d.tipo === "hablar" && /Dividimos ambos lados entre 2/.test(e.d.texto));
     const enDivide = ev[iDivide];
@@ -2348,14 +2398,25 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
     !/\.pz-manuscrita\b/.test(estilos) && !/pz-manuscrita/.test(aulaTsx) && !/pz-manuscrita/.test(pizarraTsx),
   );
   // EL INFORME DEL CLIENTE SUSTITUYE ESTA RONDA (SUB-TIP-01): tres roles, cada
-  // uno con su fuente —el tutor en Segoe Print, la pizarra en Chalkboard SE, las
-  // fórmulas en KaTeX—, aplicada por el ROL de cada elemento y no a mano.
+  // uno con su fuente —la pizarra en Chalkboard SE, las fórmulas en KaTeX—,
+  // aplicada por el ROL de cada elemento y no a mano. Y la del tutor la corrigió
+  // la ronda de septiembre: era manuscrita y cansaba en párrafos largos, así que
+  // ahora es una sans limpia y la manuscrita queda para el lienzo.
   const tutorTsx = readFileSync(new URL("../components/leccion/texto-tutor.tsx", import.meta.url), "utf8");
   const tailwind = readFileSync(new URL("../tailwind.config.ts", import.meta.url), "utf8");
   check(
-    "el subtítulo del tutor es TUTOR_DIALOG: Segoe Print, puesta por su rol",
+    "el subtítulo del tutor es TUTOR_DIALOG: sans limpia, puesta por su rol",
     /<TextoTutor\s+como="p"\s+className="pz-subtitulo/.test(aulaTsx) && /\{\.\.\.rol\(ROL\.TUTOR\)\}/.test(tutorTsx) &&
-      /--fuente-tutor: "Segoe Print"/.test(estilos) && /\[data-rol="TUTOR_DIALOG"\] \{\s*@apply font-tutor;/.test(estilos),
+      /--fuente-tutor: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui/.test(estilos) &&
+      /\[data-rol="TUTOR_DIALOG"\] \{\s*@apply font-tutor;/.test(estilos),
+  );
+  check(
+    "y NINGUNA cursiva manuscrita en la voz del tutor: la fatiga visual que pidió quitar el cliente",
+    !/--fuente-tutor:[^;]*(Segoe Print|Bradley Hand|Comic Sans|Chalkboard|cursive)/.test(estilos),
+  );
+  check(
+    "el párrafo del avatar se lee como párrafo: cuerpo de 1rem y renglón holgado",
+    /\.pz-subtitulo \{[^}]*font-size: 1rem;[^}]*line-height: 1\.65;/.test(estilos),
   );
   check(
     "el pie de la pizarra animada —lo que dice el foco encendido— también es voz del tutor",
@@ -3305,8 +3366,9 @@ titulo("A2. Polinomios, despejes y prosa");
 {
   const escena = escenaDeDespeje("3x + 5 = 20", "e");
   check("3x + 5 = 20 se anima como despeje", escena?.clase === "despeje");
-  check("el primer foco es la cancelación", escena.focos[0].tipo === "tachado");
-  check("y se rotula como tal", escena.focos[0].etiqueta === "se cancelan");
+  check("el primer foco escribe la resta en los dos miembros, sin tachar", escena.focos[0].tipo === "caja" && escena.focos[0].clase === "pz-uniforme");
+  check("y el segundo es la cancelación", escena.focos[1].tipo === "tachado");
+  check("y se rotula como tal", escena.focos[1].etiqueta === "se cancelan");
   check(
     "el término se tacha en los DOS lados, cada uno con su marca",
     marcada(escena.latex, "pz-cancela-termino") && marcada(escena.latex, "pz-cancela-opuesto"),
@@ -3314,15 +3376,16 @@ titulo("A2. Polinomios, despejes y prosa");
   );
   check(
     "la resta del otro lado está bien contada",
-    /20 menos 5 son 15/.test(escena.focos[0].narracion),
-    escena.focos[0].narracion,
+    /20 menos 5 son 15/.test(escena.focos[1].narracion),
+    escena.focos[1].narracion,
   );
   // UN PASO, UNA OPERACIÓN (revisión del cliente sobre la build daa127d): en
   // "3x + 5 = 20" se quita el 5 de los dos lados y ahí acaba la escena. Dividir
   // entre 3 es la línea siguiente, "3x = 15", con su propia escena.
   check(
-    "sobre 3x + 5 = 20 sólo se cancela: ni se divide ni se adelanta la solución",
-    escena.focos.length === 1 && !escena.latex.includes("pz-coef-despeje") && !escena.latex.includes("Rightarrow"),
+    "sobre 3x + 5 = 20 sólo se cancela —en dos tiempos—: ni se divide ni se adelanta la solución",
+    escena.focos.length === 2 && escena.focos.every((f) => f.tipo !== "resultado") &&
+      !escena.latex.includes("pz-coef-despeje") && !escena.latex.includes("Rightarrow"),
     escena.latex,
   );
 
@@ -3359,8 +3422,13 @@ titulo("A2. Polinomios, despejes y prosa");
     escena.latex,
   );
   check(
-    "la solución se destapa en el último paso",
-    escena.latex.includes(`\\htmlClass{pz-rev-${escena.focos.length - 1}}`),
+    "y donde la línea llega a la solución, ésta se destapa en el último paso",
+    // En "3x + 5 = 20" no hay solución escrita —la x sigue con su 3—, así que
+    // el único destape es el de la resta. Donde sí la hay, va tras el último foco.
+    !/pz-solucion/.test(escena.latex) &&
+      [escenaDeDespeje("x + 3 = 8", "e"), escenaDeDespeje("3x = 15", "e")].every((e) =>
+        e.latex.includes(`\\htmlClass{pz-rev-${e.focos.length - 1}}`),
+      ),
     escena.latex,
   );
   check(
@@ -4609,6 +4677,109 @@ if (!vivo) {
       orden.map((b) => `${b.rotulo}@${b.pos}`).join(" · "),
     );
   }
+}
+
+// ── LA RONDA DE SEPTIEMBRE DEL CLIENTE (R4) ─────────────────────────────────
+//
+// Cuatro puntos, y cada uno con su comprobación:
+//   1. la pizarra no acumula pasos futuros al navegar con los botones;
+//   2. el tachado de la cancelación va DESPUÉS de proyectar la operación;
+//   3. ninguna barra gris de desplazamiento;
+//   4. la voz del tutor en letra de leer, y audio neuronal con red de seguridad.
+{
+  const pizarraSrc = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+  const ttsSrc = readFileSync(new URL("../public/tts.js", import.meta.url), "utf8");
+  const vozSrc = readFileSync(new URL("../app/api/voz/route.ts", import.meta.url), "utf8");
+  const ejemplo = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  // R4-01. LO QUE NO SE HA EXPLICADO, NO ESTÁ ESCRITO. El cliente fotografió el
+  // segundo ambiente con las tres ecuaciones del ejercicio a la vez —pasadas y
+  // futuras— y varias barras de desplazamiento encima.
+  check(
+    "la pizarra sólo pinta lo ya explicado: filtra por el estado del guion antes de repartir",
+    /const visibles = useMemo\(/.test(pizarraSrc) &&
+      /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(pizarraSrc),
+  );
+  check(
+    "y los DOS ambientes se dibujan desde ese filtro, no desde la lista entera",
+    (pizarraSrc.match(/visibles\.filter\(\(e\) => e\.ambiente === \d\)/g) || []).length === 2,
+  );
+  check(
+    "al terminar la lección sí se ve todo: el repaso no se queda a medias",
+    /animacion\?\.terminada \|\| estadoDe/.test(pizarraSrc),
+  );
+
+  // R4-03. NINGUNA BARRA GRIS. Se desplaza si hace falta (móvil estrecho), pero
+  // la barra nativa no se pinta.
+  check(
+    "las cajas de fórmula esconden la barra nativa de desplazamiento",
+    /scrollbar-width: none;/.test(css) && /::-webkit-scrollbar[\s\S]{0,200}display: none;/.test(css),
+  );
+  check(
+    "y en proyección directamente no hay desplazamiento horizontal: lo que no cabe se ha partido antes",
+    /\.modo-proyeccion \.katex-display,[\s\S]{0,160}overflow-x: hidden;/.test(css),
+  );
+
+  // R4-04a. LA VOZ DEL TUTOR SE LEE, NO SE DESCIFRA.
+  check(
+    "la letra del tutor es una sans limpia; la manuscrita queda para el lienzo de la pizarra",
+    /--fuente-tutor: Inter,/.test(css) && /--fuente-pizarra: "Chalkboard SE"/.test(css),
+  );
+
+  // R4-04b. VOZ NEURONAL, CON RED DE SEGURIDAD.
+  check(
+    "hay un endpoint de voz que sintetiza en el servidor y devuelve MP3",
+    /export async function POST/.test(vozSrc) && /audio\/mpeg/.test(vozSrc),
+  );
+  check(
+    "acepta los dos proveedores que pidió el cliente: Google Neural2 y ElevenLabs",
+    /texttospeech\.googleapis\.com/.test(vozSrc) && /api\.elevenlabs\.io/.test(vozSrc),
+  );
+  check(
+    "sin clave configurada responde 503 y NO deja la clase muda: el navegador vuelve a su voz",
+    /status: 503/.test(vozSrc) && /if \(r\.status === 503\) this\.neural = false;/.test(ttsSrc) &&
+      /_hablarLocal\(spoken, \{ signal, onStart \}, 0\)/.test(ttsSrc),
+  );
+  check(
+    "la clave vive sólo en el servidor: ninguna variable de voz es NEXT_PUBLIC_",
+    !/NEXT_PUBLIC_[A-Z_]*(TTS|VOZ|ELEVEN)/.test(vozSrc + ttsSrc + ejemplo),
+  );
+  check(
+    "y no hay ninguna clave escrita en el repositorio: sólo el hueco documentado",
+    /# GOOGLE_TTS_API_KEY=""/.test(ejemplo) && /# ELEVENLABS_API_KEY=""/.test(ejemplo) &&
+      !/GOOGLE_TTS_API_KEY=".+"/.test(ejemplo) && !/ELEVENLABS_API_KEY=".+"/.test(ejemplo),
+  );
+  check(
+    "el arranque del resaltado sigue siendo el momento REAL en que empieza a sonar",
+    /addEventListener\("playing", \(\) => \{ try \{ onStart\?\.\(\); \} catch \{\} \}/.test(ttsSrc),
+  );
+  check(
+    "si la voz neuronal se cae a media frase, se termina por donde iba, sin repetir lo dicho",
+    /_hablarLocal\(spoken, \{ signal, onStart: null \}, dichos\)/.test(ttsSrc) &&
+      /speakNext\(desde\);/.test(ttsSrc),
+  );
+  check(
+    "callar calla también el audio neuronal",
+    /cancel\(\) \{[\s\S]{0,240}this\._audioActual\.pause\(\)/.test(ttsSrc),
+  );
+  check(
+    "con la voz apagada por el alumno no suena ninguna de las dos",
+    /if \(!this\.enabled\) return null;/.test(ttsSrc),
+  );
+  // El endpoint, de verdad: sin claves en el entorno dice que no hay voz.
+  const { configuracionDeVoz } = await import("../lib/voz/config.ts");
+  check(
+    "sin claves, la configuración de voz es nula (y con una, la elige)",
+    configuracionDeVoz({}) === null &&
+      configuracionDeVoz({ GOOGLE_TTS_API_KEY: "x" })?.proveedor === "google" &&
+      configuracionDeVoz({ ELEVENLABS_API_KEY: "x" })?.proveedor === "elevenlabs" &&
+      configuracionDeVoz({ GOOGLE_TTS_API_KEY: "x", ELEVENLABS_API_KEY: "y", VOZ_PROVEEDOR: "elevenlabs" })?.proveedor === "elevenlabs",
+  );
+  check(
+    "la voz por defecto del tutor sigue siendo masculina, como en toda la plataforma",
+    configuracionDeVoz({ GOOGLE_TTS_API_KEY: "x" })?.voz === "es-US-Neural2-B",
+  );
 }
 
 console.log("\n═══════════════════════════════════════════════════════════");

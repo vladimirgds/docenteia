@@ -158,10 +158,34 @@ export function chunkForSpeech(text) {
 const VOZ_MASCULINA = /\b(pablo|[áa]lvaro|ra[úu]l|jorge|diego|juan|carlos|enrique|miguel|gonzalo|andr[ée]s|crist[íi]an|liberto|arnau|el[íi]as|mateo|tom[áa]s|luciano|male|hombre|masculin)\b/i;
 const VOZ_FEMENINA = /\b(helena|sabina|elvira|dalia|m[óo]nica|paulina|luc[íi]a|laura|marisol|catalina|isabela|salom[ée]|camila|ver[óo]nica|pen[ée]lope|esperanza|tania|sof[íi]a|valentina|renata|larissa|yolanda|paloma|estrella|female|mujer|femenin)\b/i;
 
+/**
+ * LA VOZ NEURONAL, Y LA DEL NAVEGADOR COMO RED.
+ *
+ * El cliente pidió quitar el sonido "robótico y metálico" de
+ * `window.speechSynthesis` conectando la síntesis a un endpoint de voz neuronal
+ * (`app/api/voz/route.ts`). Aquí está el lado del navegador:
+ *
+ *   · se pregunta UNA vez si hay voz neuronal configurada;
+ *   · si la hay, cada trozo se pide como MP3 y se reproduce con un <audio>;
+ *   · el aviso de arranque —`onStart`, lo que enciende el foco de la pizarra—
+ *     se dispara con el evento `playing` REAL del audio, igual que antes se
+ *     disparaba con el `onstart` de la locución: la sincronía no cambia;
+ *   · y si falta la clave, falla la red o el navegador no deja sonar el audio,
+ *     la frase se termina con la voz del navegador. La clase no se queda muda.
+ */
+const RUTA_VOZ = "/api/voz";
+
 export class TTS {
   constructor() {
     this.synth = typeof window !== "undefined" ? window.speechSynthesis : null;
     this.enabled = !!this.synth;
+    /** `null` mientras no se sabe; `true`/`false` cuando el servidor contesta. */
+    this.neural = null;
+    this.proveedor = null;
+    this._sonda = null;
+    /** Frase → URL del audio ya descargado (una clase repite mucho). */
+    this._audios = new Map();
+    this._audioActual = null;
     this.voice = null;
     this.masculina = false;
     this._fijada = false;   // una vez que ha empezado a hablar, la voz YA NO se cambia
@@ -198,12 +222,38 @@ export class TTS {
   }
 
   hasSpanishVoice() {
-    return !!this.voice;
+    return !!this.voice || this.neural === true;
+  }
+
+  /**
+   * ¿Hay voz neuronal? Se pregunta una sola vez por sesión y se recuerda la
+   * promesa: la lección la espera al montar para poder anunciar qué voz suena.
+   */
+  listaLaVoz() {
+    if (this._sonda) return this._sonda;
+    if (typeof fetch !== "function") {
+      this.neural = false;
+      this._sonda = Promise.resolve(false);
+      return this._sonda;
+    }
+    this._sonda = fetch(RUTA_VOZ, { method: "GET" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        this.neural = Boolean(d?.disponible);
+        this.proveedor = d?.proveedor ?? null;
+        return this.neural;
+      })
+      .catch(() => {
+        this.neural = false;
+        return false;
+      });
+    return this._sonda;
   }
 
   // Describe el estado para la UI (audio real vs. subtítulos temporizados).
   describe() {
     if (!this.enabled) return "sin TTS (subtítulos)";
+    if (this.neural) return `voz neuronal (${this.proveedor ?? "servidor"})`;
     if (!this.voice) return "voz del sistema (sin es-ES)";
     return `voz: ${this.voice.name}${this.masculina ? " (masculina)" : " (tono grave)"}`;
   }
@@ -223,13 +273,115 @@ export class TTS {
     // dispare `onvoiceschanged`, el tutor no cambiará de voz a mitad de la lección.
     if (this.voice) this._fijada = true;
 
+    // LA VOZ NEURONAL VA PRIMERO. Devuelve cuántos trozos quedaron sin decir:
+    // 0 si los dijo todos, y los que falten se terminan abajo con la voz del
+    // navegador (frase entera si la neuronal no estaba, o la cola si se cayó a
+    // medias, que es lo que evita repetir lo ya dicho).
+    return this._hablarNeural(spoken, { signal, onStart }).then((dichos) =>
+      dichos === null ? this._hablarLocal(spoken, { signal, onStart }, 0)
+        : dichos >= 0 ? this._hablarLocal(spoken, { signal, onStart: null }, dichos)
+        : undefined,
+    );
+  }
+
+  /**
+   * Habla con la voz neuronal del servidor.
+   *
+   * Devuelve `null` si no hay voz neuronal (hay que decirlo todo con la del
+   * navegador), `-1` si lo dijo entero, o el índice del primer trozo que NO
+   * llegó a sonar, para que la voz del navegador siga justo por ahí.
+   */
+  async _hablarNeural(spoken, { signal, onStart }) {
+    // Con la voz apagada por el alumno no suena NADA: ni la del navegador ni
+    // ésta. El interruptor de la lección es uno solo.
+    if (!this.enabled) return null;
+    if (this.neural === false || typeof fetch !== "function" || typeof Audio !== "function") return null;
+    if (this.neural === null && !(await this.listaLaVoz())) return null;
+    if (signal?.aborted) return -1;
+    const trozos = chunkForSpeech(spoken);
+    for (let i = 0; i < trozos.length; i++) {
+      if (signal?.aborted) return -1;
+      const url = await this._audioDe(trozos[i], signal);
+      if (!url) return i === 0 ? null : i;
+      // Mientras suena éste se va pidiendo el siguiente: sin esto queda un
+      // silencio entre frase y frase, del tamaño de la red.
+      if (trozos[i + 1]) this._audioDe(trozos[i + 1], signal).catch(() => {});
+      const sono = await this._reproducir(url, signal, i === 0 ? onStart : null);
+      if (!sono) return i === 0 ? null : i;
+    }
+    return -1;
+  }
+
+  /** El MP3 de una frase, del servidor o de lo ya descargado. `null` si no hay. */
+  async _audioDe(texto, signal) {
+    const guardado = this._audios.get(texto);
+    if (guardado) return guardado;
+    try {
+      const r = await fetch(RUTA_VOZ, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ texto }),
+        signal,
+      });
+      if (!r.ok) {
+        // 503 es "esta instalación no tiene voz neuronal": no se vuelve a pedir.
+        if (r.status === 503) this.neural = false;
+        return null;
+      }
+      const url = URL.createObjectURL(await r.blob());
+      this._audios.set(texto, url);
+      // Una clase no necesita más: al pasarse, se suelta la más antigua.
+      while (this._audios.size > 80) {
+        const vieja = this._audios.keys().next().value;
+        if (vieja === undefined) break;
+        try { URL.revokeObjectURL(this._audios.get(vieja)); } catch {}
+        this._audios.delete(vieja);
+      }
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reproduce un MP3 y resuelve al acabar. `false` si no llegó a sonar —el
+   * navegador puede negarse a reproducir audio sin un gesto del usuario—, y
+   * entonces la frase se dice con la voz del navegador.
+   */
+  _reproducir(url, signal, onStart) {
+    return new Promise((resolve) => {
+      let acabado = false;
+      const audio = new Audio(url);
+      this._audioActual = audio;
+      audio.preload = "auto";
+      const fin = (ok) => {
+        if (acabado) return;
+        acabado = true;
+        signal?.removeEventListener?.("abort", abortar);
+        if (this._audioActual === audio) this._audioActual = null;
+        resolve(ok);
+      };
+      const abortar = () => { try { audio.pause(); } catch {} fin(true); };
+      // El foco de la pizarra se enciende cuando el audio EMPIEZA A SONAR.
+      audio.addEventListener("playing", () => { try { onStart?.(); } catch {} }, { once: true });
+      audio.addEventListener("ended", () => fin(true), { once: true });
+      audio.addEventListener("error", () => fin(false), { once: true });
+      signal?.addEventListener?.("abort", abortar, { once: true });
+      const intento = audio.play();
+      if (intento?.catch) intento.catch(() => fin(false));
+    });
+  }
+
+  /** La voz del navegador, desde el trozo `desde` en adelante. */
+  _hablarLocal(spoken, { signal, onStart }, desde = 0) {
     // Sin voz real: retardo proporcional (subtítulos temporizados). Aquí no hay
     // evento que esperar, así que el "arranque" es inmediato: el resaltado se
     // enciende a la vez que aparece el subtítulo.
     if (!this.enabled || !this.voice) {
       try { onStart?.(); } catch {}
+      const pendiente = desde > 0 ? chunkForSpeech(spoken).slice(desde).join(" ") : spoken;
       return new Promise((resolve) => {
-        const ms = Math.min(22000, Math.max(1200, spoken.length * 60));
+        const ms = Math.min(22000, Math.max(1200, pendiente.length * 60));
         const t = setTimeout(resolve, ms);
         signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
       });
@@ -239,6 +391,7 @@ export class TTS {
     // "saltándose" texto (no se entiende la explicación). Solución: hablar FRASE POR FRASE (trozos
     // cortos), en secuencia, con un "keepalive" (pause+resume) que evita que Chrome detenga la voz.
     const chunks = chunkForSpeech(spoken);
+    if (desde >= chunks.length) return Promise.resolve();
     return new Promise((resolve) => {
       let aborted = false;
       signal?.addEventListener("abort", () => { aborted = true; try { this.synth.cancel(); } catch {} }, { once: true });
@@ -246,11 +399,11 @@ export class TTS {
         if (aborted || i >= chunks.length) return resolve();
         // El arranque se avisa una sola vez, con el primer trozo: los demás son
         // continuación de la misma frase.
-        this._speakOne(chunks[i], () => aborted, i === 0 ? onStart : null).then(() =>
+        this._speakOne(chunks[i], () => aborted, i === desde ? onStart : null).then(() =>
           speakNext(i + 1),
         );
       };
-      speakNext(0);
+      speakNext(desde);
     });
   }
 
@@ -299,5 +452,10 @@ export class TTS {
 
   cancel() {
     if (this.synth) this.synth.cancel();
+    // Y el MP3 que estuviera sonando: callar es callar del todo.
+    if (this._audioActual) {
+      try { this._audioActual.pause(); } catch {}
+      this._audioActual = null;
+    }
   }
 }

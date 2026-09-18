@@ -637,6 +637,8 @@ export function Aula({
     const tts = new TTS();
     ttsRef.current = tts;
     setEstadoVoz(tts.describe());
+    // Y cuando el servidor conteste si hay voz neuronal, se dice cuál suena.
+    tts.listaLaVoz().then(() => setEstadoVoz(tts.describe())).catch(() => {});
 
     // EL SINTETIZADOR ES UNO Y SE REPARTE POR TURNOS.
     //
@@ -1261,7 +1263,9 @@ export function Aula({
     if (!tts) return;
     const activar = !vozActiva;
     setVozActiva(activar);
-    tts.enabled = activar && Boolean(tts.voice);
+    // Con voz neuronal del servidor puede no haber ninguna voz española
+    // instalada en el equipo y sonar igualmente: manda si PUEDE hablar.
+    tts.enabled = activar && tts.hasSpanishVoice();
     if (!activar) tts.cancel();
   }, [vozActiva]);
 

@@ -1356,10 +1356,13 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
     /\{planteaEjercicio && \(\s*<EncabezadoEjercicio/.test(fuentePizarra2) &&
       /const planteaEjercicio =\s*actual != null && \(esFaseDeEjemplo\(actual\.id\) \|\| esFaseDePractica\(actual\.id\)\);/.test(fuentePizarra2),
   );
-  // Y el Ambiente 2 no enseña nada mientras ningún paso llegue a él.
+  // Y el Ambiente 2 no enseña nada mientras ningún paso llegue a él: se dibuja
+  // desde lo VISIBLE —lo ya explicado—, no desde la lista entera del guion, que
+  // es lo que lo llenaba de ecuaciones futuras (ronda de septiembre, R4-01).
   check(
     "el Ambiente 2 no enseña nada hasta que un paso llega a él",
-    /elementos\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(fuentePizarra2),
+    /visibles\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(fuentePizarra2) &&
+      /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
   check(

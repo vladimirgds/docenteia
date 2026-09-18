@@ -341,10 +341,30 @@ export function Pizarra({
   const notasAmbiente1 = conVisual ? [] : notas.slice(0, 1);
   const notasAmbiente2 = conVisual ? notas : notas.slice(1);
 
+  /**
+   * LA PIZARRA ENSEÑA LO EXPLICADO HASTA EL PASO EN CURSO, NI UNA LÍNEA MÁS.
+   *
+   * Al retroceder con la botonera —"Paso 1 de 4"— las líneas de los pasos
+   * siguientes seguían pintadas: el Ambiente 2 mostraba de golpe todas las
+   * ecuaciones intermedias y futuras, cada una con su barra de scroll. El
+   * cliente lo fotografió en 2(x + 4) = 3x − 1: "cuando quiero ver el paso a
+   * paso, la pizarra se desordena".
+   *
+   * Lo que aún no ha contado la voz no está escrito. Al avanzar reaparece, y al
+   * terminar la lección se enseña todo otra vez: los dos ambientes conservan el
+   * procedimiento entero, que es lo que pidió el informe.
+   */
+  const visibles = useMemo(
+    () => elementos.filter((e) => animacion?.terminada || estadoDe(e.indiceGuion) !== "pendiente"),
+    // `estadoDe` sólo depende de la escena en curso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [elementos, animacion?.escena, animacion?.terminada],
+  );
+
   // LA RESPUESTA SE ENMARCA UNA VEZ: en el cierre. Un paso anterior que ya
   // llegaba a ella —la cuenta en columna con su resultado— la deja subrayada,
   // sin una segunda cápsula con su visto.
-  const ultimoCierre = elementos.reduce((k, e, i) => (e.papel === "cierre" ? i : k), -1);
+  const ultimoCierre = visibles.reduce((k, e, i) => (e.papel === "cierre" ? i : k), -1);
 
   const renderElemento = (e: ElementoPizarra) => {
     const regla = esFaseDeEjemplo(actual?.id ?? "") && reglas.length ? identificarRegla(e.linea.texto, reglas) : null;
@@ -367,7 +387,7 @@ export function Pizarra({
             foco={estado === "activa" ? (animacion?.foco ?? -1) : -1}
             estado={estado}
             proyeccion={proyeccion}
-            marcoFinal={ultimoCierre < 0 || elementos.indexOf(e) >= ultimoCierre}
+            marcoFinal={ultimoCierre < 0 || visibles.indexOf(e) >= ultimoCierre}
           />
         ) : (
           <LineaRenderizada
@@ -396,6 +416,9 @@ export function Pizarra({
     <div
       className={cn("pz-pizarra space-y-3", proyeccion && "pz-pizarra-proyectada", className)}
       data-fase={actual?.id ?? ""}
+      // Al acabar la clase la pizarra sí enseña el ejercicio entero; mientras
+      // tanto, sólo lo explicado. Se declara para poder comprobarlo desde fuera.
+      data-terminada={animacion?.terminada ? "si" : "no"}
     >
       {/* La tira de fases es interfaz: no se proyecta. */}
       {!proyeccion && <Fases fases={fases} />}
@@ -446,7 +469,7 @@ export function Pizarra({
                 <div className="pz-ambientes">
                   <section className="pz-ambiente" data-ambiente="1" aria-label="Ambiente 1">
                     {planteaEjercicio
-                      ? elementos.filter((e) => e.ambiente === 1).map(renderElemento)
+                      ? visibles.filter((e) => e.ambiente === 1).map(renderElemento)
                       : (
                         <>
                           {diagrama && (
@@ -477,7 +500,7 @@ export function Pizarra({
                   </section>
                   <section className="pz-ambiente" data-ambiente="2" aria-label="Ambiente 2">
                     {planteaEjercicio
-                      ? elementos.filter((e) => e.ambiente === 2).map(renderElemento)
+                      ? visibles.filter((e) => e.ambiente === 2).map(renderElemento)
                       : notasAmbiente2.map(nota)}
                   </section>
                 </div>

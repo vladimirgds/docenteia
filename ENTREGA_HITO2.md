@@ -2498,3 +2498,127 @@ incorrectas**, con sus 29 autocomprobaciones cazadas. `qa/hito2.mjs`: **674**
 —diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
 aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 37. Cuarta ronda del cliente: la pizarra deja de adelantarse, el tachado espera a la voz, se van las barras y la voz se puede volver neuronal
+
+Cuatro puntos, con sus capturas. Van uno a uno.
+
+### 1. La pizarra escribía pasos que el tutor todavía no había explicado
+
+En la captura, el Ambiente 2 tenía a la vez las tres ecuaciones del ejercicio
+—`2x + 8 = 3x − 1`, `−x + 8 = −1`, `−x = −9`—: la pasada, la de ahora y la que
+aún no ha llegado, todas encima, con varias barras de desplazamiento para que
+cupieran. Al ir y venir con los botones de paso, se acumulaba todo.
+
+La pizarra repartía en los dos ambientes **todos** los elementos del guion y
+luego los pintaba en tres estados —completada, activa, pendiente—. Los
+pendientes eran, literalmente, el final del ejercicio escrito antes de tiempo.
+
+**Lo que se hace ahora** (`components/leccion/pizarra.tsx`): se filtra antes de
+repartir. Lo que sigue pendiente no se pinta —ni en el Ambiente 1 ni en el 2—,
+así que en el paso 1 sólo está la distribución inicial y el segundo ambiente
+está limpio; y el marco de cierre se calcula sobre lo visible, no sobre la lista
+entera. Cuando la clase termina sí se enseña el ejercicio completo, que es el
+repaso: para eso la pizarra declara `data-terminada`, y la batería distingue
+«todavía no explicado» de «clase terminada».
+
+### 2. El tachado rojo aparecía antes de que el avatar lo explicara
+
+En `2(x + 3) = 16 → 2x + 6 − 6 = 16 − 6` los tachados estaban puestos desde el
+segundo cero. La escena tenía **un solo foco** que hacía dos cosas a la vez:
+destapar la resta y tacharla.
+
+**Ahora el paso se cuenta en dos tiempos**, que es lo que pidió el cliente:
+
+1. se proyecta la operación uniforme completa, `2x + 6 − 6 = 16 − 6`, **sin
+   tachar nada** —una caja por miembro, ninguna cruza el igual—, mientras la voz
+   dice «restamos 6 en los dos lados»;
+2. y sólo cuando la voz dice **«a la izquierda se cancela +6 con −6, y a la
+   derecha 16 menos 6 son 10»** se dispara el aspa roja sobre los dos términos
+   opuestos.
+
+Para que el audio mande de verdad, el motor dice esa segunda frase —`locucionCancelacion`
+en `src/lsgPrompt.js`, tanto en la lección como en el desglose de «no entiendo»—
+y la pizarra la reconoce como la suya: la batería comprueba que la frase del
+motor y la narración del foco son **la misma, palabra por palabra**, porque si
+se separan el tachado volvería a llegar a destiempo.
+
+### 3. Las barras grises de desplazamiento
+
+Seguían saliendo bajo la suma en columna y bajo la caja de resultado. En una
+pizarra no hay barras de desplazamiento; y desde que las fórmulas que no caben
+se parten en renglones o se encogen (§36), tampoco hacen falta. Se esconde el
+raíl nativo (`scrollbar-width: none` y `::-webkit-scrollbar { display: none }`)
+conservando el arrastre con el dedo para móviles muy estrechos, y en proyección
+se cierra del todo el desbordamiento horizontal. La batería de Chrome mide ahora
+cada caja de la pizarra y falla si alguna desborda a lo ancho con el raíl
+abierto, o si ya le está robando alto a su caja —que es lo que se ve en la foto—.
+
+### 4. La tipografía del avatar, y la voz
+
+**La letra.** El bloque donde habla el avatar iba en manuscrita (Segoe Print).
+Se lee bien en un rótulo de tres palabras y mal en un párrafo de cuarenta, y el
+cliente lo dijo así: «genera fatiga visual en párrafos largos». Ahora la voz del
+tutor va en **una sans limpia** (Inter, y la del sistema si no está), a cuerpo
+de lectura y con el renglón holgado. La manuscrita queda **reservada al lienzo
+de la pizarra**: las notas y los rótulos breves, que es donde imita la tiza. Los
+tres roles se siguen viendo distintos —sans para la voz, manuscrita para la
+pizarra, KaTeX para las fórmulas— y la fuente la sigue poniendo el ROL, nunca un
+componente a mano (SUB-TIP-01).
+
+**La voz.** El audio venía de `window.speechSynthesis`, que suena metálico. Se
+añade `app/api/voz` (+ `lib/voz/config.ts`): recibe una frase y devuelve un MP3
+sintetizado con **voz neuronal en español**, con **Google Cloud Text-to-Speech
+(Neural2)** o **ElevenLabs**, el que tenga clave —`GOOGLE_TTS_API_KEY` o
+`ELEVENLABS_API_KEY`, documentadas en `.env.example`—. La clave vive sólo en el
+servidor: el navegador pide el audio a la aplicación y nunca la ve. Las frases
+se guardan en memoria, así que una clase repetida no se paga dos veces.
+
+Lo importante es que **la sincronía no cambia**: el aviso de arranque que
+enciende el foco de la pizarra sigue siendo el momento REAL en que empieza a
+sonar la frase (antes, el `onstart` de la locución; ahora, el `playing` del
+audio). Y hay red de seguridad en los tres sitios donde puede fallar: sin clave
+configurada el endpoint responde 503 y el navegador se queda con su voz de
+siempre; si el proveedor se cae a media frase, la frase **se termina por donde
+iba**, sin repetir lo ya dicho; y si el navegador no deja sonar un audio sin
+gesto del usuario, se vuelve a la voz del sistema. La clase no se queda muda por
+esto en ningún caso.
+
+> Para que suene la voz neuronal hace falta que el cliente contrate una de las
+> dos claves y la ponga en el servidor. Sin ella, todo lo demás de esta ronda
+> funciona igual: la aplicación arranca, habla con la voz del navegador y lo
+> dice en la interfaz («voz del sistema» / «voz neuronal»).
+
+### Una comprobación que cambió de significado
+
+`R2-01` («los pasos se escriben uno tras otro, no todos de golpe») contaba
+cuántas líneas se veían en cada fotograma y exigía **tres** conteos distintos.
+Con la corrección 1 eso dejó de medir lo que decía: antes contaba las líneas
+**escritas** —incluidas las que aún no se habían explicado, que es justo lo que
+el cliente pidió quitar— y ahora cuenta las **explicadas**. En Factorización,
+donde el guion escribe dos líneas seguidas mientras la voz sigue en la anterior,
+la pizarra las destapa casi a la vez y el conteo va `1 → 3`: no es que aparezcan
+de golpe, es que la voz las alcanza juntas.
+
+La comprobación ahora exige que la pizarra **empiece con menos de lo que acaba y
+vaya creciendo**, que es lo que el cliente fotografió al revés; y lo que ya no
+se puede colar —una línea pintada antes de explicarse— lo cierra `R4-01`, con
+5.744 comprobaciones en las siete clases. Queda dicho aquí porque relajar una
+comprobación sin contarlo es la forma más fácil de que un «0 fallos» no
+signifique nada.
+
+### Comprobado
+
+`qa/observaciones.mjs` con las siete clases (aritmética básica y avanzada,
+fracciones, fracciones a 1920 × 1080, ecuaciones, derivadas y factorización):
+**94.972 comprobaciones y 0 fallos**, con 166 capturas, de las cuales **11.639
+son de esta ronda** —R4-01 (5.744): ninguna línea pintada antes de explicarse;
+R4-02 (151): el tachado sólo mientras la voz dice que se cancela; R4-03
+(5.744): ninguna barra de desplazamiento dentro de la pizarra—. La batería de
+rigor: **31.476 afirmaciones matemáticas recalculadas, 0 incorrectas**.
+`qa/hito2.mjs`: **700** (bloque nuevo R4 con el endpoint de voz y sus tres
+redes de seguridad); `qa/qa.mjs`: **1.465**; `qa/navegador.mjs`: **87**;
+`qa/leccion.mjs`, diagnóstico, paso 1, hito 1, diagnóstico por nivel, sesiones,
+aceptación 24/24, matemáticas, frontend y el barrido de 200 sesiones y 1.800
+turnos: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.

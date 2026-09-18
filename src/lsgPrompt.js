@@ -904,6 +904,10 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
       if (enDuda < 0 || enDuda === k) dir.push(abre(andamiajeLineal(s.explica)), { ...PAUSA_LECTURA });
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
       if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      if (s.accion?.tipo === "cancelacion") {
+        const frase = locucionCancelacion(k === 0 ? lin.original : lin.steps[k - 1]?.escribe);
+        if (frase) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      }
       // La última línea es la solución, "x = 5": el cierre del ejercicio, enmarcado.
       if (k === lin.steps.length - 1) {
         dir.push(...cierreDelEjercicio(s.escribe, lin.answer, `¡Y listo! Resultado final: ${lin.varName} = ${lin.answer}.`));
@@ -1847,6 +1851,32 @@ export function locucionesDistributiva(texto) {
   frases.push(`Queda ${expandido}${m[3] && derecho ? ` = ${derecho}` : ""}.`);
   return frases;
 }
+/**
+ * LA FRASE QUE TACHA.
+ *
+ * El tachado rojo de la cancelacion no se pinta al escribir la resta: se pinta
+ * cuando la voz dice que se cancela. Por eso el paso de despeje se cuenta en
+ * DOS frases —"restamos 6 en ambos lados" y, despues de su pausa, esta— y la
+ * pizarra engancha cada una con su foco.
+ *
+ * Esta frase es la misma, palabra por palabra, que la narracion del foco de
+ * tachado de `escenaDeDespeje`: si dejaran de coincidir, la pizarra tacharia
+ * cuando el tutor ya esta en otra cosa. La bateria hito2 lo comprueba.
+ *
+ * Devuelve `null` si la linea no es "ax + b = c" con b distinto de cero: sin
+ * termino que cancelar no hay nada que tachar.
+ */
+export function locucionCancelacion(texto) {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)?=(-?\d+)$/);
+  if (!m) return null;
+  const b = m[3] ? Number(m[3]) : 0;
+  const c = Number(m[4]);
+  if (!b || !Number.isFinite(c)) return null;
+  const abs = Math.abs(b);
+  return `A la izquierda se cancela ${b > 0 ? "+" : "-"}${abs} con ${b > 0 ? "-" : "+"}${abs}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${abs} son ${c - b}.`;
+}
+
 export function linealResueltaLSG(opts = {}) {
   let { ejemplo, practica } = elegirBoton(LINEALES, opts, "lineal", formaLineal);
   // Si el EJEMPLO tiene x en AMBOS lados, la práctica debe ser del MISMO tipo (dos lados), elegida de forma
@@ -1903,6 +1933,13 @@ export function linealResueltaLSG(opts = {}) {
     // antes de escribir la siguiente.
     dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
     if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+    // El despeje se cuenta en dos tiempos: primero se escribe la resta en los dos
+    // lados (la frase de arriba) y, tras su pausa, se dice que se cancela — y es
+    // esa segunda frase la que dispara el tachado rojo sobre la línea a la vista.
+    if (s.accion?.tipo === "cancelacion") {
+      const frase = locucionCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe);
+      if (frase) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+    }
     // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
     if (k === sol.steps.length - 1) {
       dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
@@ -2460,10 +2497,16 @@ export function linealAplicadaLSG(opts = {}) {
     { tipo: "pizarra", accion: "escribir", contenido: sol.original },
     { tipo: "esperar", segundos: 1 },
   ];
-  for (const s of sol.steps) {
+  sol.steps.forEach((s, k) => {
     dir.push({ tipo: "hablar", texto: s.explica });
+    // También aquí el despeje se cuenta en dos tiempos: se escribe la resta en
+    // los dos lados y, con la frase siguiente, se tacha lo que se cancela.
+    if (s.accion?.tipo === "cancelacion") {
+      const frase = locucionCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe);
+      if (frase) dir.push({ tipo: "hablar", texto: frase });
+    }
     dir.push({ tipo: "pizarra", accion: "escribir", contenido: s.escribe });
-  }
+  });
   dir.push({ tipo: "hablar", texto: `Así, x vale ${sol.answer}: la ecuación nos dio el dato que faltaba. Ahora te toca a ti.` });
   dir.push({ tipo: "hablar", texto: `${c.histP} Resuélvela.` });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: solP.original });
