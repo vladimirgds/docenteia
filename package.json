@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "postinstall": "node scripts/despliegue.mjs",
     "vercel-build": "prisma generate && prisma migrate deploy && node --experimental-strip-types prisma/seed.ts && next build",
     "start": "next start",
     "lint": "next lint",
@@ -30,6 +31,7 @@
     "qa:barrido": "node qa/barrido.mjs",
     "qa:observaciones": "node qa/observaciones.mjs",
     "qa:voz": "node qa/voz.mjs",
+    "qa:despliegue": "node qa/despliegue.mjs",
     "qa:todo": "npm test",
     "legacy:start": "node server.js",
     "qa:paso1": "node qa/paso1.mjs",

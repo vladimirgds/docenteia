@@ -4901,6 +4901,33 @@ if (!vivo) {
     "y la pantalla de la lección enseña ese mismo build, para verlo sin consola",
     /build \{VERSION\}/.test(readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8")),
   );
+
+  // CORREGIR EL BLUEPRINT NO BASTA: una plataforma sólo lo relee si el servicio
+  // sigue enlazado a él, y el del cliente tiene sus ajustes puestos a mano —los
+  // del prototipo—. El único gancho que se ejecuta pase lo que pase es
+  // `postinstall`, que llama `npm install`: ahí se construye la aplicación.
+  const preparacion = readFileSync(new URL("../scripts/despliegue.mjs", import.meta.url), "utf8");
+  check(
+    "instalar dependencias construye la aplicación allí donde se despliega",
+    /scripts\/despliegue\.mjs/.test(String(paquete.scripts?.postinstall ?? "")) && /next build/.test(preparacion),
+    `postinstall: ${paquete.scripts?.postinstall}`,
+  );
+  check(
+    "…y no en un portátil ni en Vercel, donde sería compilar dos veces",
+    /enVercel[\s\S]{0,400}vercel-build/.test(preparacion) &&
+      /Instalación local: nada más que hacer/.test(preparacion),
+  );
+  check(
+    "la base de datos no puede tumbar un despliegue: migrar y sembrar avisan, compilar manda",
+    /ejecutar\("prisma migrate deploy", \{ obligatorio: false \}\)/.test(preparacion) &&
+      /seed\.ts", \{ obligatorio: false \}\)/.test(preparacion) &&
+      /ejecutar\("next build", \{ obligatorio: true \}\)/.test(preparacion),
+  );
+  check(
+    "y se puede comprobar desde fuera qué versión está viva, con una orden",
+    /qa\/despliegue\.mjs/.test(readFileSync(new URL("../package.json", import.meta.url), "utf8")) &&
+      /x-powered-by/.test(readFileSync(new URL("./despliegue.mjs", import.meta.url), "utf8")),
+  );
 }
 
 console.log("\n═══════════════════════════════════════════════════════════");

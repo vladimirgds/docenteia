@@ -2763,3 +2763,48 @@ secuencia de Vercel, que el Node fijado soporte la siembra, que el paquete
 declare ese mínimo, que los secretos estén pedidos y que la versión desplegada
 se publique en `/api/health` y en pantalla. Nueve comprobaciones que habrían
 convertido cinco rondas de «está igual» en un fallo de batería el primer día.
+
+### Y cuando corregir el blueprint no basta
+
+Con `render.yaml` ya corregido y fusionado (PR #57), el sitio **seguía sirviendo
+la versión de agosto**: `x-powered-by: Express`, `version: e96a544`. Era
+previsible y hay que decirlo: una plataforma sólo relee el blueprint si el
+servicio sigue enlazado a él. Si sus ajustes se editaron a mano —y los de este
+servicio son los del prototipo—, mandan los del panel, y desde el repositorio no
+se pueden cambiar.
+
+Pero sí hay un gancho que se ejecuta **siempre**, mande quien mande: el
+`postinstall` de npm, que corre con `npm install` y con `npm ci`. Ahí va ahora
+`scripts/despliegue.mjs`, que decide qué hacer según dónde esté:
+
+| Dónde | Qué hace |
+| --- | --- |
+| Un portátil (`npm install` normal) | sólo `prisma generate`: nadie quiere compilar por instalar una dependencia |
+| Vercel | sólo `prisma generate`; el resto lo hace `vercel-build`, y compilar dos veces es pagar el doble |
+| Render (o `CONSTRUIR_AL_INSTALAR=1`) | prepara la base **y compila** |
+
+Con esto, aunque el panel siga diciendo `npm install`, la aplicación se
+construye y `next start` tiene qué servir.
+
+Y una decisión deliberada, que es la lección de todo esto: **la base de datos no
+puede tumbar un despliegue**. Migrar y sembrar se intentan, y si fallan se avisa
+muy alto y se sigue; compilar, en cambio, es obligatorio. Un despliegue que no
+sale deja a todo el mundo mirando una versión vieja sin enterarse —cinco rondas—;
+uno que sale con la base a medias se ve en `/api/health` («sin_migrar»,
+«sin_sembrar») y se arregla en cinco minutos. Probado con la base apagada: migrar
+y sembrar avisan, `next build` termina y el despliegue sale.
+
+### Cómo se comprueba, en una orden
+
+```
+npm run qa:despliegue                                   # el sitio en vivo
+node qa/despliegue.mjs https://otra-direccion.com       # cualquier otra
+node qa/despliegue.mjs https://otra-direccion.com 8166d2e   # y qué commit se espera
+```
+
+Dice si contesta, si lo que sirve es la aplicación o el prototipo viejo, qué
+commit está vivo y si es el que toca. Hoy, contra el sitio en vivo, responde lo
+que hay que responder: **2 fallos** —«lo que sirve es la aplicación, no el
+prototipo de Express» y «la versión desplegada es la esperada»—. Cuando el
+cliente redespliegue, esa misma orden dará 5 de 5 y no hará falta discutir si se
+ven o no se ven los cambios.
