@@ -2,7 +2,7 @@
 
 import katex from "katex";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
 import { TextoTutor } from "@/components/leccion/texto-tutor";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/leccion/destacar";
 import { escenaDeLinea, identidadDeEscena, type Escena } from "@/lib/leccion/animacion";
 import { esCalculoAuxiliar, repartirEnAmbientes, type PapelDelPaso } from "@/lib/leccion/ambientes";
+import { partirLaMasLarga } from "@/lib/leccion/ajuste";
 import { ROL, rol } from "@/lib/leccion/roles";
 import { esEnunciadoParaResolver } from "@/lib/leccion/seguimiento-lsg";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
@@ -469,7 +470,7 @@ export function Pizarra({
                               )}
                             </div>
                           )}
-                          {tarjeta && <TarjetaRegla key={tarjeta.clave} regla={tarjeta} />}
+                          {tarjeta && <TarjetaRegla key={tarjeta.clave} regla={tarjeta} proyeccion={proyeccion} />}
                           {notasAmbiente1.map(nota)}
                         </>
                       )}
@@ -621,7 +622,104 @@ function esOperacionDispuesta(enunciado: string): boolean {
   return String(enunciado ?? "").includes("\\begin{array}");
 }
 
-function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
+/**
+ * ¿Se sale de su caja lo compuesto?
+ *
+ * No basta con mirar la caja: KaTeX compone en un bloque con su propio
+ * desplazamiento, así que la fórmula se sale DENTRO de él y el contenedor no se
+ * entera. Se mira el bloque de KaTeX y el ancho real de lo compuesto.
+ */
+/** Hasta dónde puede llegar lo compuesto, y hasta dónde llega. */
+function medidaDeAjuste(el: HTMLElement): { disponible: number; ancho: number } {
+  const ambiente = el.closest("[data-ambiente]") ?? el.parentElement;
+  const caja = el.getBoundingClientRect();
+  const limite = (ambiente?.getBoundingClientRect().right ?? caja.right) - 4;
+  const piezas = [...el.querySelectorAll<HTMLElement>(".katex-html *")];
+  const derecha = Math.max(caja.left, ...piezas.map((d) => d.getBoundingClientRect().right));
+  return { disponible: Math.max(0, limite - caja.left), ancho: Math.max(0, derecha - caja.left) };
+}
+
+/**
+ * UNA FÓRMULA DE LA TARJETA QUE CABE SIEMPRE EN SU MITAD DE LA PIZARRA.
+ *
+ * El catálogo trae reglas largas —"d/dx[x³] = 3x² \qquad d/dx[x⁵] = 5x⁴"— y a
+ * tamaño de aula no caben en medio lienzo: se cortaban por la mitad y dejaban un
+ * "d/dx" suelto colgando del borde (el cliente lo vio en Derivadas).
+ *
+ * Primero se parte en renglones por donde una fórmula se puede partir. Si aun
+ * así no cabe —"a² − b² = (a − b)(a + b)" no tiene un segundo igual por el que
+ * partir—, se encoge lo justo, y nunca por debajo del 80 %: una tarjeta un poco
+ * más pequeña se lee; una tarjeta cortada, no.
+ */
+function FormulaQueCabe({
+  latex,
+  className,
+  proyeccion = false,
+}: {
+  latex: string;
+  className?: string;
+  /** Proyectar cambia el tamaño de la letra: hay que volver a medir. */
+  proyeccion?: boolean;
+}) {
+  const caja = useRef<HTMLDivElement>(null);
+  const [filas, setFilas] = useState<string[]>([latex]);
+  const [escala, setEscala] = useState(1);
+  const estado = useRef({ filas: [latex], escala: 1 });
+
+  // Se intenta ENTERA cada vez que cambia la fórmula o el modo: en pantalla cabe
+  // en un renglón y proyectada no, y al revés.
+  useEffect(() => {
+    estado.current = { filas: [latex], escala: 1 };
+    setFilas([latex]);
+    setEscala(1);
+  }, [latex, proyeccion]);
+
+  const revisar = useCallback(() => {
+    const el = caja.current;
+    if (!el) return;
+    const { disponible, ancho } = medidaDeAjuste(el);
+    if (disponible <= 0 || ancho <= disponible) return;
+
+    const siguiente = partirLaMasLarga(estado.current.filas);
+    if (siguiente) {
+      estado.current = { ...estado.current, filas: siguiente };
+      setFilas(siguiente);
+      return;
+    }
+    // Ya no hay por dónde partir: se encoge lo justo para que quepa.
+    const propuesta = Math.max(0.8, estado.current.escala * (disponible / ancho));
+    if (propuesta < estado.current.escala - 0.01) {
+      estado.current = { ...estado.current, escala: propuesta };
+      setEscala(propuesta);
+    }
+  }, []);
+
+  // Tras CADA pintado, y también cuando cargan las fuentes de KaTeX, que es
+  // cuando la fórmula toma su ancho de verdad.
+  useLayoutEffect(revisar);
+  useEffect(() => {
+    const fuentes = (document as Document & { fonts?: FontFaceSet }).fonts;
+    fuentes?.ready?.then(revisar).catch(() => {});
+  }, [revisar, latex, proyeccion]);
+
+  return (
+    <div ref={caja} className={className}>
+      <div
+        style={
+          escala < 1
+            ? { transform: `scale(${escala})`, transformOrigin: "left center", width: `${100 / escala}%` }
+            : undefined
+        }
+      >
+        {filas.map((fila, i) => (
+          <Formula key={`${i}-${fila}`} latex={fila} display />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TarjetaRegla({ regla, proyeccion = false }: { regla: ReglaPizarra; proyeccion?: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -645,14 +743,14 @@ function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
           era el mismo texto por tercera vez. La pizarra es para la notación; la
           prosa, para la voz. La regla y su ejemplo van al mismo tamaño, en modo
           display y alineados a la izquierda, como el resto de la pizarra. */}
-      <div className="pz-regla-formula overflow-x-auto py-1">
-        <Formula latex={regla.enunciado} display />
-      </div>
+      <FormulaQueCabe latex={regla.enunciado} proyeccion={proyeccion} className="pz-regla-formula overflow-x-auto py-1" />
 
       {regla.ejemplo && (
-        <div className="pz-regla-formula mt-2 overflow-x-auto border-t pt-2">
-          <Formula latex={regla.ejemplo} display />
-        </div>
+        <FormulaQueCabe
+          latex={regla.ejemplo}
+          proyeccion={proyeccion}
+          className="pz-regla-formula mt-2 overflow-x-auto border-t pt-2"
+        />
       )}
     </motion.div>
   );

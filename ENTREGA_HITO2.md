@@ -2263,3 +2263,238 @@ vuelta con la pregunta nueva, la fracción de letras y la escala de la tarjeta);
 sesiones 126, aceptación 24, matemáticas 100, frontend 10 y el barrido de 200
 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`,
 limpios.
+
+## 34. Tercera ronda del cliente: rigor en la cancelación, la multiplicación a la vista, notas sin desfase y los dos ambientes
+
+Cuatro observaciones más, con sus capturas (a1–a4), sobre lo ya desplegado. Como
+siempre, resueltas como reglas generales y verificadas en Chrome.
+
+### 1. La cancelación ocurre DENTRO de su miembro (a4)
+
+La pizarra escribía «2x + 6 = 16 − 6» y tachaba el +6 de la izquierda contra el
+−6 de la derecha, cruzando el signo igual. El cliente, sin matices: «es
+matemáticamente incorrecto». Ahora la propiedad uniforme se aplica de verdad —el
+−6 se escribe en LOS DOS miembros— y el tachado va sólo sobre el par de opuestos
+del miembro en el que estaba:
+
+```
+2x + 6 − 6 = 16 − 6        (tachados el +6 y el −6, los dos a la izquierda)
+        2x = 10            (la resta del miembro derecho, en la línea siguiente)
+```
+
+A la derecha no se tacha nada: queda la resta simple, que es la que da el 10.
+Las dos marcas (`pz-cancela-termino` y `pz-cancela-opuesto`) viven en el mismo
+miembro, así que ninguna caja cruza el igual. La locución lo cuenta igual:
+«Quitamos 6 en los dos lados: a la izquierda se cancela +6 con −6, y a la
+derecha 16 menos 6 son 10» —sin la «y −6» de antes, que la composición de
+fórmulas dentro de la frase leía como expresión y escribía en cursiva
+matemática—.
+
+### 2. Lo que la voz multiplica, se ve multiplicado (a2)
+
+En Reglas de fracciones el tutor decía «si multiplicas arriba y abajo de 1/2 por
+2, sale 2/4» mientras la pizarra escribía sólo el resultado, «2/4 = 1/2». Ahora
+se escribe el paso entero, con el factor a la vista y en fracción vertical:
+`1/2 = (1 × 2)/(2 × 2) = 2/4`.
+
+### 3. Las notas del Ambiente 2, al paso de la voz (a1)
+
+El motor de aritmética hablaba primero y escribía después, así que la nota de
+las unidades aparecía cuando la voz ya iba por las decenas —el desfase que
+fotografió el cliente en 234 + 178—. Ahora cada línea se escribe al EMPEZAR la
+frase que la explica, como ya hacían el concepto y el desglose: mientras se
+suman las unidades, la nota de la derecha explica las unidades.
+
+### 4. Los dos ambientes, aprovechados (a3)
+
+En 1/2 + 1/3, el Ambiente 1 se quedaba con las dos conversiones y el Ambiente 2
+con el MCM y un hueco. La regla de reparto cambia en un punto: **un solo paso
+acompaña al planteamiento** en el Ambiente 1; el siguiente abre el Ambiente 2,
+aunque repita el mismo gesto. Así queda la primera conversión a la izquierda y,
+a la derecha, el MCM, la segunda conversión, la suma y la respuesta enmarcada
+—que es el reparto que dibujó el cliente—. Sigue siendo monótona: ninguna línea
+escrita cambia de lado cuando llega la siguiente.
+
+Con el Ambiente 2 más cargado, proyectar pedía sitio: en proyección se recorta
+lo que no es contenido —el relleno del panel, la fila del botón de salir, los
+mandos y los márgenes que KaTeX pone alrededor de cada fórmula— y el factor por
+anchura de las fórmulas baja de 3,6vw a 3,4vw, que en una pantalla de 1366
+deja las fórmulas en su suelo de 48 px. Los 24 px entre pasos, que pidió el
+informe, no se tocan. Con eso, los cuatro pasos de un ambiente caben en una
+pantalla y «−x + 8 − 8 = −1 − 8» cabe entera en su mitad.
+
+### Comprobado
+
+`qa/observaciones.mjs` mide ahora, en cada muestra de las cinco clases, lo que
+esta ronda exige: dónde cae cada marca de cancelación respecto al signo igual
+—y que lo tachado sea siempre el término y su opuesto—, qué nota está escrita
+mientras suena cada columna, que la pizarra enseñe la multiplicación cuando la
+voz la dice, y en qué ambiente entra cada paso. **62.721 comprobaciones y 0
+fallos**, con 126 capturas. Con el **motor de voz real** del sistema, la clase
+de aritmética entera —la de las notas y la cuenta en columna—: **30.715
+comprobaciones y 0 fallos**, que es la prueba de que la nota y la columna van al
+paso de la voz de verdad y no de un temporizador. `qa/hito2.mjs`: **652**
+(bloque nuevo A00g: la cancelación dentro de su miembro en todo el catálogo de
+ecuaciones, la equivalencia escrita con su factor y las notas sin desfase en los
+cuatro motores de aritmética); `qa/leccion.mjs`: **825**; `qa/navegador.mjs`:
+**87**; las demás baterías —diagnóstico 416, paso 1 72, hito 1 124, diagnóstico
+por nivel 94, qa 1.462, sesiones 126, aceptación 24, matemáticas 100, frontend
+10 y el barrido de 200 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y
+`npm run build`, limpios.
+
+## 35. Rigor de cálculo: cuatro errores matemáticos, y la batería que los habría cazado antes
+
+El cliente señaló errores de cálculo. Tenía razón: había cuatro, y ninguna de
+las baterías anteriores podía verlos, porque todas comprobaban la FORMA de la
+lección —sus fases, sus marcas, sus tamaños— y la calificación de un puñado de
+casos, pero ninguna recalculaba, una por una, las afirmaciones matemáticas que
+el alumno ve y oye.
+
+### 1. Una respuesta CORRECTA calificada como error (el rótulo del ejercicio)
+
+La tanda de práctica escribe en la pizarra `Ejercicio 1:  5x`, y esa línea es la
+que viaja a `/api/practica/corregir`. El `1:` del rótulo se pegaba al monomio
+—`1:  5x` se leía como `15x`— y el corrector esperaba 15 donde la derivada vale
+5: el alumno respondía bien, el tutor cantaba «¡Correcto!» y el servidor lo
+calificaba como error en la misma pantalla. Ahora `resolverEjercicio` quita el
+rótulo antes de resolver: el rótulo numera el ejercicio, no forma parte de él.
+
+### 2. Una ecuación resuelta como si fuera una cuenta suelta
+
+`computeAnswer("¿Cuánto vale x en x/2 + 5 = 12?")` devolvía **7**. La respuesta
+es 14: dentro de la ecuación hay un `2 + 5`, y el buscador de expresiones
+aritméticas lo evaluaba. Lo mismo con `x/3 + 7 = 12` (decía 10, es 15) y con
+`5x/2 - 3 = 2x + 6` (decía −1, es 18). Ahora una ecuación se resuelve con el
+solucionador exacto —que sabe quitar denominadores— antes de buscar ninguna
+cuenta suelta; y si hay incógnita y no se sabe resolver, se devuelve `null`:
+inventar un número es peor que no contestar.
+
+### 3. La pizarra decía «quitamos» mientras sumaba
+
+En `2x − 6 = 16` el pie decía «Quitamos 6 en los dos lados… y a la derecha 16
+más 6 son 22». Se está SUMANDO 6. Ahora el verbo lo decide el signo del término:
+resta con `+6`, suma con `−6`.
+
+### 4. El coeficiente de −3x⁴ no es 3
+
+Al derivar término a término, la pizarra decía «Miramos el término 2x elevado a
+5» —que se lee (2x)⁵, y el coeficiente multiplica, no se eleva— y «Su
+coeficiente es 3» en el término −3x⁴, cuyo coeficiente es −3: justo el signo que
+baja con la regla de la potencia hasta el −12x³ del resultado. Ahora se dice «el
+término 2 por x elevado a 5» y «su coeficiente es menos 3».
+
+### La batería que faltaba: `qa/rigor.mjs`
+
+Verifica CADA afirmación matemática con aritmética racional exacta y álgebra de
+polinomios **escritas en la propia batería**: si el motor y el verificador
+compartieran código, compartirían el error. Recorre 768 lecciones (8 motores × 4
+niveles × 8 vueltas del catálogo × 3 formas), los 640 desgloses de los 388
+ejercicios del banco, 224 lecciones de problemas aplicados y tandas de práctica,
+las 18 preguntas del diagnóstico y el catálogo de reglas. De cada una comprueba:
+
+- cada igualdad escrita en la pizarra, y cada eslabón de sus cadenas;
+- cada cuenta dicha por el tutor («4 más 8 son 12», «16 menos 6 son 10»);
+- **lo que la animación compone por su cuenta**: la compensación del despeje, el
+  reparto del paréntesis, la amplificación, la simplificación y la cuenta en
+  columna dibujada, fila a fila;
+- **cada pie de la pizarra**, contra la línea que está marcando: el factor que
+  dice multiplicar, el coeficiente y el exponente de cada término con su signo,
+  la cifra que escribe y la que se lleva, el préstamo de la resta, la operación
+  que dice hacer en el despeje, la solución que canta;
+- que **cada línea de un despeje conserva la solución** de la ecuación de la que
+  viene —es lo único que autoriza a escribirla debajo—;
+- la respuesta esperada de cada pregunta, recalculada, más el veredicto del
+  corrector sobre ella y sobre las formas equivalentes de escribirla;
+- las identidades del catálogo de reglas, con sustituciones numéricas.
+
+Y se comprueba a sí misma: antes de recorrer nada se le pasan **30 errores
+conocidos** —los cuatro de esta ronda entre ellos— y se exige que los cace
+todos. Una batería que no caza nada da siempre «0 fallos», que es justo lo que
+parece un éxito. Además cuenta cuántas veces dispara cada comprobación y falla
+si alguna no llegó a usarse nunca.
+
+### Comprobado
+
+`qa/rigor.mjs` (nuevo, en `npm test`): **58.677 afirmaciones matemáticas
+recalculadas, 0 incorrectas**, con sus 30 autocomprobaciones cazadas y las 16
+comprobaciones especializadas disparando todas (17 de las 18 preguntas del
+diagnóstico recalculadas —la de `ln(x)` queda fuera de un motor polinómico—, 12
+identidades del catálogo de reglas y 32 pistas de ayuda revisadas). `qa/hito2.mjs`: **666** (bloque
+nuevo A00f con las regresiones de los cuatro errores); `qa/qa.mjs`: **1.465**;
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**; `qa/observaciones.mjs`
+(Chrome, cinco clases): **62.203 comprobaciones y 0 fallos**, 126 capturas; las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
+aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
+turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.
+
+## 36. Revisión final: dos temas que ninguna batería había abierto, y lo que escondían
+
+La pregunta era si quedaba algo. Quedaba, y estaba donde no se había mirado: de
+los cinco motores que un alumno puede abrir, la batería de Chrome daba clase en
+tres —aritmética, fracciones y ecuaciones—. **Derivadas y Factorización no las
+había abierto nunca nadie**, y ahí vivía, entre otras cosas, la escena de
+polinomio que se acababa de corregir. Ahora son dos clases más de la batería
+(siete en total), con sus ayudas y su proyección. Al abrirlas apareció esto:
+
+### 1. La tarjeta de la regla se cortaba contra el borde (Derivadas)
+
+«Regla de la potencia» trae dos ejemplos —`d/dx[x³] = 3x²` y `d/dx[x⁵] = 5x⁴`— y
+a tamaño de aula no caben en media pizarra: la tarjeta los cortaba por la mitad
+y dejaba un «d/dx» suelto colgando del borde. Siete fórmulas del catálogo pasan
+del ancho disponible.
+
+**Lo que se hace ahora** (`lib/leccion/ajuste.ts`): la fórmula se parte en
+renglones por donde una fórmula se puede partir —primero por el separador entre
+ejemplos, luego por el signo de relación, nunca dentro de unas llaves—, y los
+renglones van arrimados a la izquierda, como se parte una cuenta larga en una
+pizarra de verdad. Si aun así no cabe —«a² − b² = (a − b)(a + b)» no tiene un
+segundo igual por el que partir—, se encoge lo justo y nunca por debajo del
+80 %: una tarjeta un poco más pequeña se lee; una tarjeta cortada, no.
+
+### 2. La respuesta enmarcada se salía de la pizarra (Factorización)
+
+El cierre «x² − 1 = (x − 1)(x + 1)», con su cápsula y su visto, se salía por el
+borde derecho en proyección: la cápsula se pinta POR ENCIMA de la fórmula, así
+que la caja no se enteraba de que su contenido ya no cabía. Ahora la pizarra
+animada mide hasta dónde llega de verdad lo compuesto —contra el borde de su
+ambiente, que es lo que se ve— y parte la línea en dos renglones. Y vuelve a
+medirlo cuando cargan las fuentes de KaTeX y cuando se entra o se sale de
+proyección, que es cuando cambia el tamaño de la letra.
+
+### 3. La etiqueta de la regla de la potencia nombraba un 1 que no está escrito
+
+Sobre «x²» la etiqueta decía «1 × 2 = 2»: en «x²» no hay ningún 1 escrito que
+multiplicar, y además la etiqueta quedaba a 6,5 px de una cifra (el informe
+exige 8). Ahora, sin coeficiente a la vista, la etiqueta es el gesto —«× 2»—,
+como la de una amplificación; con coeficiente escrito se sigue viendo la cuenta
+entera, «2 × 3 = 6».
+
+### 4. «2 · 1x¹⁻¹ = 2»
+
+El paso que enseña la regla aplicada escribía, para 2x, «2 · 1x¹⁻¹ = 2». Es
+cierto, pero se lee mal: escribe un coeficiente 1 que no está en el término y
+deja el exponente sin resolver. Ahora, con exponente 1, se escribe «2 · 1 = 2»,
+y en «x» a secas no se escribe paso intermedio: su derivada es 1 y no hay nada
+que enseñar en medio. Con exponente mayor no cambia nada: «3 · 4x⁴⁻¹ = 12x³».
+
+### Y la batería de rigor, contada honestamente
+
+`qa/rigor.mjs` decía «58.677 afirmaciones comprobadas». No era verdad: sumaba
+también las frases que no dicen ninguna matemática. Ahora **sólo cuenta lo que
+de verdad juzga**: 31.294 afirmaciones. El número es menor y es el bueno; un
+número inflado es justo lo que hace que un «0 fallos» no signifique nada.
+
+### Comprobado
+
+`qa/observaciones.mjs`, ahora con **siete clases** (aritmética básica y
+avanzada, fracciones, fracciones a 1920 × 1080, ecuaciones, **derivadas** y
+**factorización**), cada una con sus dos ayudas en la práctica: **80.866 comprobaciones y 0 fallos**, con 166 capturas. Con el
+**motor de voz real** del sistema, la clase de derivadas entera —la de los
+términos y sus coeficientes—: **28.695 comprobaciones y 0 fallos**. La
+batería de rigor: **31.294 afirmaciones matemáticas recalculadas, 0
+incorrectas**, con sus 29 autocomprobaciones cazadas. `qa/hito2.mjs`: **674**
+(bloque nuevo A00e con la partición de fórmulas); `qa/qa.mjs`: **1.465**;
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**; las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
+aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
+turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.

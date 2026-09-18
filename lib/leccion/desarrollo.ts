@@ -67,5 +67,13 @@ export function pasoIntermedioDerivada(expresion: string): string | null {
         : `${nuevoCoef === 1 ? "" : nuevoCoef === -1 ? "-" : nuevoCoef}x${aSuperindice(nuevoExp)}`;
 
   const coefVisible = coeficiente === 1 ? "" : coeficiente === -1 ? "-" : `${coeficiente} · `;
+
+  // CON EXPONENTE 1 NO HAY POTENCIA QUE ENSEÑAR. "2 · 1x¹⁻¹ = 2" es cierto, pero
+  // se lee mal: escribe un coeficiente 1 que no está en el término y deja el
+  // exponente sin resolver. Lo que se aplica ahí es el coeficiente por 1. Y en
+  // "x" a secas no hay nada intermedio que enseñar: su derivada es 1.
+  if (exponente === 1) {
+    return Math.abs(coeficiente) === 1 ? null : `${coefVisible}1 = ${resultado}`;
+  }
   return `${coefVisible}${exponente}x${aSuperindice(exponente)}⁻¹ = ${resultado}`;
 }

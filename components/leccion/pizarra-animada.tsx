@@ -21,6 +21,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { comoFilas, partirLaMasLarga, yaEstaDispuesta } from "@/lib/leccion/ajuste";
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import { NotaDePizarra } from "@/components/leccion/nota-pizarra";
 import { TextoTutor } from "@/components/leccion/texto-tutor";
@@ -155,10 +156,23 @@ export function PizarraAnimada({
   // `useId` trae dos puntos, que en un selector CSS significan otra cosa.
   const idPizarra = `pz-${useId().replace(/:/g, "")}`;
 
+  // LO QUE NO CABE SE PARTE EN RENGLONES (ver `lib/leccion/ajuste.ts`). La
+  // fórmula se recompone en un solo bloque alineado, así que las marcas del
+  // guion siguen donde estaban y la capa de resaltados las encuentra igual.
+  const [filas, setFilas] = useState<string[] | null>(null);
+  useEffect(() => {
+    setFilas(null);
+  }, [escena?.latex, proyeccion]);
+
+  const latexCompuesto = useMemo(() => {
+    const base = escena?.latex ?? "";
+    return filas && filas.length > 1 ? comoFilas(filas) : base;
+  }, [escena?.latex, filas]);
+
   const html = useMemo(() => {
-    if (!escena?.latex) return null;
+    if (!latexCompuesto) return null;
     try {
-      return katex.renderToString(escena.latex, {
+      return katex.renderToString(latexCompuesto, {
         displayMode: true,
         throwOnError: false,
         errorColor: "hsl(var(--destructive))",
@@ -171,7 +185,42 @@ export function PizarraAnimada({
     } catch {
       return null;
     }
-  }, [escena]);
+  }, [latexCompuesto]);
+
+  // ¿Se sale de su ambiente? Se mide lo COMPUESTO contra el ancho disponible: la
+  // caja de la fórmula es `inline-block`, así que crece con ella y no avisa.
+  const revisarAncho = useCallback(() => {
+    const raiz = contenedor.current;
+    const base = escena?.latex ?? "";
+    if (!raiz || !base || yaEstaDispuesta(base)) return;
+    // EL LÍMITE ES EL BORDE DE SU AMBIENTE, no la caja de la fórmula: la caja se
+    // recorta al ambiente, pero lo compuesto —y las marcas que salen de él, la
+    // cápsula y su visto— se pintan por encima y se van fuera de la pizarra. Se
+    // mide lo mismo que se ve: hasta dónde llega la pieza más a la derecha.
+    const ambiente = raiz.closest("[data-ambiente]") ?? raiz.parentElement;
+    const limite = ambiente?.getBoundingClientRect().right ?? 0;
+    if (!limite) return;
+    const piezas = [...raiz.querySelectorAll(".katex-html *, .pz-resaltado")];
+    const derecha = Math.max(
+      raiz.getBoundingClientRect().right,
+      ...piezas.map((el) => el.getBoundingClientRect().right),
+    );
+    if (derecha <= limite - 4) return;
+    setFilas((actuales) => {
+      const previas = actuales ?? [base];
+      if (previas.length >= 4) return actuales;
+      return partirLaMasLarga(previas) ?? actuales;
+    });
+  }, [escena?.latex]);
+
+  useLayoutEffect(revisarAncho);
+
+  // Las fuentes de KaTeX cargan después del primer pintado: hasta entonces la
+  // fórmula mide otra cosa y parecía caber.
+  useEffect(() => {
+    const fuentes = (document as Document & { fonts?: FontFaceSet }).fonts;
+    fuentes?.ready?.then(revisarAncho).catch(() => {});
+  }, [revisarAncho]);
 
   /** Mide las piezas del guion, las cifras de la fórmula y la letra de los rótulos. */
   const medir = useCallback(() => {

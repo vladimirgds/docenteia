@@ -144,8 +144,23 @@ export function resolverConDetalle(
  * con garantía. Devolver un veredicto inventado en ese caso sería exactamente
  * la alucinación que el validador determinista existe para evitar.
  */
+/**
+ * EL ENUNCIADO, SIN EL RÓTULO CON EL QUE SE ESCRIBE EN LA PIZARRA.
+ *
+ * La práctica escribe "Ejercicio 1:  5x", y eso es lo que llega a corregir. El
+ * "1:" del rótulo se pegaba al monomio —"1:  5x" se leía como "15x"— y la
+ * derivada daba 15 donde vale 5: la respuesta CORRECTA del alumno quedaba
+ * calificada como error, con el tutor cantando "¡Correcto!" y el servidor
+ * diciendo lo contrario. El rótulo numera el ejercicio; no forma parte de él.
+ */
+function sinRotulo(expresion: string): string {
+  return String(expresion ?? "")
+    .replace(/^\s*ejercicio\s*(?:n\.?[ºo]?\s*)?\d*\s*:\s*/i, "")
+    .trim();
+}
+
 export function resolverEjercicio(ejercicio: string, tema?: string): string | null {
-  const expresion = String(ejercicio ?? "").trim();
+  const expresion = sinRotulo(String(ejercicio ?? "").trim());
   if (!expresion) return null;
 
   const clave = String(tema ?? "").trim().toLowerCase();

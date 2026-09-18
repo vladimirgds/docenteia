@@ -746,8 +746,13 @@ export function fraccionResueltaLSG(opts) {
     // mismo denominador —de la equivalencia no decía una palabra—. Ahora cada propiedad se escribe y se
     // cuenta a la vez, una detrás de otra, y son las tres del catálogo de la tarjeta de reglas.
     dir.push(
-      { _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Fracciones equivalentes: 2/4 = 1/2" },
-      { tipo: "hablar", texto: "Primera propiedad: dos fracciones son EQUIVALENTES cuando valen lo mismo. 2/4 es igual que 1/2: si multiplicas arriba y abajo de 1/2 por 2, sale 2/4. Es la misma mitad, cortada en más trozos." },
+      // LO QUE SE DICE SE VE, TAMBIÉN LA MULTIPLICACIÓN. Se escribía el resultado
+      // ("2/4 = 1/2") mientras la voz contaba la operación que lleva a él, y el
+      // cliente lo marcó: "dice «multiplicas arriba y abajo por 2», pero en la
+      // pizarra no se observa tal multiplicación". Ahora se escribe el paso
+      // entero, con el factor a la vista, como en el ejemplo.
+      { _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Fracciones equivalentes: 1/2 = (1 × 2)/(2 × 2) = 2/4" },
+      { tipo: "hablar", texto: "Primera propiedad: dos fracciones son EQUIVALENTES cuando valen lo mismo. Si multiplicas arriba y abajo de 1/2 por 2, sale 2/4: 1 por 2 son 2 arriba, y 2 por 2 son 4 abajo. Es la misma mitad, cortada en más trozos." },
       { ...PAUSA_LECTURA },
       { tipo: "pizarra", accion: "escribir", contenido: "Igual denominador: 2/5 + 1/5 = 3/5" },
       { tipo: "hablar", texto: "Para SUMAR fracciones con el mismo denominador, se suman los numeradores y el denominador se mantiene: 2/5 + 1/5 = 3/5." },
@@ -1742,8 +1747,14 @@ function aritmeticaLSG(opts, cfg) {
     { tipo: "esperar", segundos: 1 },
   );
   for (const s of E.steps) {
-    dir.push({ tipo: "hablar", texto: s.explica });
+    // LA NOTA, ANTES DE SU FRASE. El motor hablaba y escribía después, así que la
+    // nota de las unidades aparecía cuando la voz ya iba por las decenas: el
+    // cliente lo fotografió en 234 + 178 —"el panel derecho recién despliega la
+    // nota de las unidades"— y pidió "sincronía estricta con la columna que se
+    // está remarcando". Se escribe al EMPEZAR la frase que la explica, como en
+    // el concepto y en el desglose.
     dir.push(escribePaso(s.escribe, s.foco ?? null, s.explica));
+    dir.push({ tipo: "hablar", texto: s.explica });
     // La columna recién contada se queda a la vista un segundo más antes de pasar a la siguiente.
     dir.push({ ...PAUSA_LECTURA });
   }
@@ -1933,7 +1944,15 @@ function focoDePotencia(pm) {
   if (!pm) return null;
   const a = Math.abs(pm.a);
   if (pm.n > 1) {
-    return foco("factor", [...(a !== 1 ? [a] : []), pm.n, a * pm.n], `${pm.a} × ${pm.n} = ${pm.a * pm.n}`);
+    // La etiqueta sólo puede hablar de lo que está ESCRITO. En "x²" no hay
+    // ningún 1 que multiplicar —el coeficiente no se escribe—, así que la
+    // etiqueta es el gesto, "× 2", como la de una amplificación; con
+    // coeficiente a la vista sí se muestra la cuenta entera, "2 × 3 = 6".
+    return foco(
+      "factor",
+      [...(a !== 1 ? [a] : []), pm.n, a * pm.n],
+      a !== 1 ? `${pm.a} × ${pm.n} = ${pm.a * pm.n}` : `× ${pm.n}`,
+    );
   }
   return a !== 1 ? foco("factor", [a]) : null;
 }

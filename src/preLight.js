@@ -555,6 +555,18 @@ export function computeAnswer(text) {
     .replace(/(\d)\s*entre\s*(\d)/gi, "$1 / $2")
     .replace(/\bmás\b/gi, " + ").replace(/\bmenos\b/gi, " - ");
 
+  // 0) ECUACIÓN CON INCÓGNITA: se resuelve COMO ECUACIÓN, con el solucionador
+  //    exacto —que sabe quitar denominadores—, y nunca evaluando el primer trozo
+  //    aritmético que aparezca dentro. "x/2 + 5 = 12" lleva dentro "2 + 5", y de
+  //    ahí salía un 7 donde la respuesta es 14: la respuesta correcta del alumno
+  //    se calificaba como error. Si hay ecuación y no se sabe resolver, se
+  //    devuelve null: inventar un número es peor que no contestar.
+  const ecuacion = solveLinearSteps(text);
+  if (ecuacion) return ecuacion.answer;
+  if (/=/.test(text) && /(?:\d\s*[a-z]|[a-z]\s*[/*^]\s*\d|[a-z]\s*[+\-]\s*\d+\s*=)/i.test(text.replace(/(?:por|entre|de|es|en|el|la|los|las|un|una|y|o|a|al|del|cu[aá]nto|vale|escribe|solo|n[uú]mero)/gi, " "))) {
+    return null;
+  }
+
   // 1) Expresión aritmética explícita (al menos un operador entre números; admite paréntesis).
   //    Admite un signo negativo INICIAL ("-5 + 3" = -2): se antepone un 0 para el menos unario.
   //    OJO: en un problema de FÓRMULA ("perímetro de un rectángulo de 5 por 3") NO se evalúa la

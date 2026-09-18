@@ -420,7 +420,16 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
       const exponente = t.exponente ? `^{${marcar(`pz-exp-${i}`, t.exponente)}}` : "";
       const cuerpo = `${coeficiente}${t.variable}${exponente}`;
 
-      const legible = `${t.coeficiente || ""}${t.variable}${t.exponente ? ` elevado a ${t.exponente}` : ""}`;
+      // EL TÉRMINO, DICHO COMO SE LEE. "2x elevado a 5" se oye como (2x)⁵, que es
+      // otra cosa: el coeficiente MULTIPLICA a la potencia, no se eleva con ella.
+      // Y el término de "- 3x⁴" es MENOS 3x⁴: el signo va con el término.
+      const negativo = t.signo === "-";
+      const legible = [
+        negativo ? "menos " : "",
+        t.coeficiente ? `${t.coeficiente}${t.variable ? " por " : ""}` : "",
+        t.variable,
+        t.exponente ? ` elevado a ${t.exponente}` : "",
+      ].join("");
       focos.push({
         clase: `pz-term-${i}`,
         tipo: "caja",
@@ -433,7 +442,9 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
         focos.push({
           clase: `pz-coef-${i}`,
           tipo: "caja",
-          narracion: `Su coeficiente es ${t.coeficiente}.`,
+          // CON SU SIGNO: el coeficiente de "- 3x⁴" es menos 3, y es ese menos el
+          // que baja con la regla de la potencia hasta el -12x³ del resultado.
+          narracion: `Su coeficiente es ${negativo ? "menos " : ""}${t.coeficiente}.`,
           etiqueta: "coeficiente",
         });
       }
@@ -466,11 +477,20 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
 // ── Despeje con cancelación ──────────────────────────────────────────────────
 
 /**
- * Una ecuación lineal con el término que se cancela TACHADO a los dos lados.
+ * Una ecuación lineal con la constante RESTADA A LOS DOS LADOS y cancelada
+ * dentro del miembro en el que estaba.
  *
- * La cancelación es el momento en que se entiende el despeje: el +5 y el −5 se
- * van juntos. Verlo tachado en los dos lados a la vez es exactamente lo que el
- * pliego pide con "cancelaciones".
+ * La cancelación es el momento en que se entiende el despeje: el +6 y el −6 se
+ * van juntos. Pero se van DENTRO DE SU MIEMBRO. El cliente lo corrigió con
+ * palabras que no admiten matiz: "es matemáticamente incorrecto tachar el +6 del
+ * lado izquierdo con el −6 del lado derecho a través del signo igual". Lo que se
+ * escribe, entonces, es la propiedad uniforme aplicada de verdad —el −6 en los
+ * dos miembros—, con el tachado sólo sobre el par opuesto de la izquierda:
+ *
+ *   2x + 6 − 6 = 16 − 6        (tachados el +6 y el −6 de la izquierda)
+ *          2x = 10             (la resta del miembro derecho, en la línea siguiente)
+ *
+ * A la derecha no se tacha nada: queda la resta simple, que es lo que da 10.
  */
 export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
@@ -511,10 +531,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const terminoLatex =
     b === 0
       ? ""
-      : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela pz-cancela-izq", String(Math.abs(b)))}`;
-
-  /** El miembro izquierdo, con sus marcas y sólo las suyas. */
-  const izquierda = `${coefLatex}${variable}${terminoLatex}`;
+      : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela pz-cancela-termino", String(Math.abs(b)))}`;
 
   const solucion = formatearRacional(c - b, coeficiente);
 
@@ -550,13 +567,22 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const divide = !cancela && !unitario;
   const llegaALaSolucion = !cancela || unitario;
 
-  // Lo que se resta a la derecha aparece en el momento de cancelar, no antes.
-  const compensacion = cancela
-    ? ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`
+  // LO QUE SE RESTA SE ESCRIBE EN LOS DOS MIEMBROS, y aparece en el momento de
+  // cancelar, no antes. A la izquierda, como el término OPUESTO que anula al que
+  // estaba —los dos se tachan, y los dos están del mismo lado del igual—; a la
+  // derecha, como la resta que hay que hacer, sin tachar: es la que da el número
+  // de la línea siguiente.
+  const opuesto = `${b > 0 ? "-" : "+"} ${Math.abs(b)}`;
+  const compensacionIzquierda = cancela
+    ? ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-opuesto", String(Math.abs(b)))}`)}`
     : "";
+  const compensacionDerecha = cancela ? ` ${marcar(`pz-rev-0`, opuesto)}` : "";
 
-  /** El miembro derecho: el número y, al cancelar, su compensación. */
-  const derecha = `${c}${compensacion}`;
+  /** El miembro izquierdo, con sus marcas y sólo las suyas. */
+  const izquierda = `${coefLatex}${variable}${terminoLatex}${compensacionIzquierda}`;
+
+  /** El miembro derecho: el número y, al cancelar, la misma resta sin tachar. */
+  const derecha = `${c}${compensacionDerecha}`;
 
   // La solución se destapa en el último foco: la ecuación no puede empezar con
   // el resultado escrito, eso es dar la respuesta antes de la pregunta.
@@ -580,11 +606,17 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   if (cancela) {
     focos.push({
       clase: "pz-cancela",
-      // Una caja por término: la del miembro izquierdo y la del derecho. Nunca
-      // una sola que las una pasando por encima del igual.
-      piezas: ["pz-cancela-izq", "pz-cancela-der"],
+      // Una caja por término, y las dos DENTRO DEL MISMO MIEMBRO: el término que
+      // estaba y su opuesto. Ninguna marca cruza el igual.
+      piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
       tipo: "tachado",
-      narracion: `Quitamos ${Math.abs(b)} en los dos lados: a la izquierda se cancela y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
+      // LO QUE SE HACE ES LO QUE SE DICE: con "+6" se RESTA 6 en los dos lados;
+      // con "-6" se SUMA 6. Decir "quitamos 6" y escribir "16 + 6" es contar una
+      // operación y hacer otra.
+      // Y sin un "y" pegado a un signo ("+6 y -6"): esa "y" es prosa, pero la
+      // composición de fórmulas dentro de la frase leía "y - 6" como expresión y
+      // la escribía en cursiva matemática.
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: a la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
       etiqueta: "se cancelan",
     });
   }

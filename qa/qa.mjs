@@ -2362,7 +2362,15 @@ async function unitTests() {
   check("calc: área rectángulo 7 y 4 = 28", computeAnswer("¿Área de un rectángulo con b = 7 y h = 4?") === "28");
   check("calc: velocidad 400 m / 8 s = 50", computeAnswer("Recorre 400 metros en 8 segundos, ¿velocidad?") === "50");
   check("calc: no inventa en pregunta no-matemática", computeAnswer("¿Entendiste la explicación?") === null);
-  check("calc: NO evalúa una ecuación como aritmética", computeAnswer("¿Cuánto vale x en 2x - 5 = 7?") === null);
+  // UNA ECUACIÓN SE RESUELVE COMO ECUACIÓN. Antes se exigía `null` para que no se
+  // evaluara a trozos; ahora la resuelve el solucionador exacto, que es lo que
+  // hacía falta: con denominador, el trozo suelto daba un número FALSO ("x/2 + 5
+  // = 12" lleva dentro "2 + 5", y respondía 7 donde vale 14), y con ese número se
+  // calificaba como error una respuesta correcta del alumno.
+  check("calc: una ecuación se resuelve como ecuación", computeAnswer("¿Cuánto vale x en 2x - 5 = 7?") === "6");
+  check("calc: con denominador también (x/2 + 5 = 12 → 14, no 7)", computeAnswer("¿Cuánto vale x en x/2 + 5 = 12?") === "14", computeAnswer("¿Cuánto vale x en x/2 + 5 = 12?"));
+  check("calc: con incógnita a los dos lados (5x/2 - 3 = 2x + 6 → 18)", computeAnswer("¿Cuánto vale x en 5x/2 - 3 = 2x + 6?") === "18", computeAnswer("¿Cuánto vale x en 5x/2 - 3 = 2x + 6?"));
+  check("calc: y nunca evalúa el trozo aritmético de dentro", computeAnswer("¿Cuánto vale x en x/3 + 7 = 12?") === "15", computeAnswer("¿Cuánto vale x en x/3 + 7 = 12?"));
   // ── Auditoría de calificación: fórmulas que "A por B" cortocircuitaba, y promedio con conteo ──
   check("calc: perímetro rectángulo 'de 5 por 3' = 16 (no 15/área)", computeAnswer("¿Cuál es el perímetro de un rectángulo de 5 por 3?") === "16");
   check("calc: área rectángulo 'de 5 por 3' = 15", computeAnswer("¿área de un rectángulo de 5 por 3?") === "15");

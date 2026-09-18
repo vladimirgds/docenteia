@@ -57,6 +57,7 @@ import {
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
   apareceComoTermino,
+  computeAnswer,
   processLSG,
   repararEquivalencias,
   sincronizarPasosConVoz,
@@ -79,6 +80,7 @@ import {
 import { manejarConsulta } from "../src/queryCore.js";
 import { esNotaRotulada, expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
 import { esCalculoAuxiliar, repartirEnAmbientes } from "../lib/leccion/ambientes.ts";
+import { comoFilas, partirFormula, partirLaMasLarga, yaEstaDispuesta } from "../lib/leccion/ajuste.ts";
 import { colocarEtiqueta, MARGEN_ANOTACION, seSolapan } from "../lib/leccion/etiquetas.ts";
 import { rotulosALatex } from "../lib/leccion/rotulos.ts";
 import { ROL, ROLES_TIPOGRAFICOS, rol } from "../lib/leccion/roles.ts";
@@ -499,14 +501,14 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   );
   check(
     "una por miembro: la de la izquierda y la de la derecha",
-    cancelacion.piezas.includes("pz-cancela-izq") &&
-      cancelacion.piezas.includes("pz-cancela-der"),
+    cancelacion.piezas.includes("pz-cancela-termino") &&
+      cancelacion.piezas.includes("pz-cancela-opuesto"),
   );
   check(
     "y cada una marca sólo su número en el LaTeX",
-    contenidoDe(escena.latex, "pz-cancela-izq") === "6" &&
-      contenidoDe(escena.latex, "pz-cancela-der") === "6",
-    `${contenidoDe(escena.latex, "pz-cancela-izq")} / ${contenidoDe(escena.latex, "pz-cancela-der")}`,
+    contenidoDe(escena.latex, "pz-cancela-termino") === "6" &&
+      contenidoDe(escena.latex, "pz-cancela-opuesto") === "6",
+    `${contenidoDe(escena.latex, "pz-cancela-termino")} / ${contenidoDe(escena.latex, "pz-cancela-opuesto")}`,
   );
   check(
     "el 16 y el signo igual quedan FUERA de toda marca",
@@ -536,6 +538,255 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
     "con el rótulo escrito una sola vez (y sólo en el paso activo)",
     panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
   );
+}
+
+titulo("A00e. Lo que no cabe se parte en renglones, no se corta");
+
+{
+  // La regla de la potencia trae DOS ejemplos; la diferencia de cuadrados, una
+  // igualdad larga. A tamaño de aula no caben en media pizarra, y se cortaban
+  // contra el borde dejando un trozo colgando (el cliente lo vio en Derivadas).
+  const dosEjemplos = "\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2} \\qquad \\frac{d}{dx}\\left[x^{5}\\right] = 5x^{4}";
+  check(
+    "una fórmula con dos ejemplos se parte por el separador, no por el igual",
+    JSON.stringify(partirFormula(dosEjemplos)) ===
+      JSON.stringify(["\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2}", "\\frac{d}{dx}\\left[x^{5}\\right] = 5x^{4}"]),
+    JSON.stringify(partirFormula(dosEjemplos)),
+  );
+  check(
+    "y una igualdad larga, por su igual, que se lleva el renglón siguiente",
+    JSON.stringify(partirFormula("a^{2} - b^{2} = (a - b)(a + b)")) === JSON.stringify(["a^{2} - b^{2}", "= (a - b)(a + b)"]),
+    JSON.stringify(partirFormula("a^{2} - b^{2} = (a - b)(a + b)")),
+  );
+  check(
+    "nunca por un igual que esté dentro de unas llaves (el numerador de una fracción)",
+    partirFormula("\\frac{a = b}{c}") === null,
+    JSON.stringify(partirFormula("\\frac{a = b}{c}")),
+  );
+  check(
+    "lo que no tiene por dónde partirse, no se parte",
+    partirFormula("2x") === null && partirLaMasLarga(["2x"]) === null,
+  );
+  check(
+    "las filas se componen ARRIMADAS A LA IZQUIERDA, en un solo bloque",
+    comoFilas(["x^{2} - 9", "= (x - 3)(x + 3)"]) === "\\begin{aligned} &x^{2} - 9 \\\\[0.15em] &= (x - 3)(x + 3) \\end{aligned}",
+    comoFilas(["x^{2} - 9", "= (x - 3)(x + 3)"]),
+  );
+  check(
+    "una cuenta ya dispuesta —una columna, un despeje alineado— no se toca",
+    yaEstaDispuesta("\\begin{array}{rcc} & 2 & 4 \\end{array}") &&
+      yaEstaDispuesta("\\begin{aligned} x &= 5 \\end{aligned}") &&
+      !yaEstaDispuesta("x^{2} - 9 = (x - 3)(x + 3)"),
+  );
+  // Y toda regla larga del catálogo tiene por dónde partirse para caber.
+  const catalogo = JSON.parse(readFileSync(new URL("../prisma/seed-data/reglas-matematicas.json", import.meta.url), "utf8"));
+  const reglasDelBanco = Array.isArray(catalogo) ? catalogo : Object.values(catalogo)[0];
+  const largasSinPartir = [];
+  for (const r of reglasDelBanco) {
+    for (const campo of ["enunciado", "ejemplo"]) {
+      const latex = String(r[campo] ?? "");
+      if (!latex || yaEstaDispuesta(latex)) continue;
+      const cuerpo = latex.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\s+/g, "");
+      if (cuerpo.length > 18 && !partirFormula(latex)) largasSinPartir.push(`${r.nombre} · ${campo}: ${latex}`);
+    }
+  }
+  check("toda regla larga del catálogo tiene por dónde partirse", largasSinPartir.length === 0, largasSinPartir.join(" · "));
+}
+
+titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecuación se resuelve como ecuación");
+
+{
+  // 1. EL RÓTULO NO ES PARTE DEL EJERCICIO. La tanda de práctica escribe
+  // "Ejercicio 1:  5x" en la pizarra, y eso es lo que llega al corrector: el "1:"
+  // se pegaba al monomio —se leía "15x"— y la derivada daba 15 donde vale 5. El
+  // alumno respondía bien y el servidor lo calificaba como error.
+  check(
+    "«Ejercicio 2:  5x» se corrige como 5x: la derivada es 5, no 25",
+    resolverEjercicio("Ejercicio 2:  5x", "derivadas") === "5",
+    String(resolverEjercicio("Ejercicio 2:  5x", "derivadas")),
+  );
+  check(
+    "«Ejercicio 1: 2x» → 2",
+    resolverEjercicio("Ejercicio 1: 2x", "derivadas") === "2",
+    String(resolverEjercicio("Ejercicio 1: 2x", "derivadas")),
+  );
+  check(
+    "…y lo que no lleva rótulo se sigue corrigiendo igual",
+    resolverEjercicio("5x", "derivadas") === "5" && resolverEjercicio("2x + 5 = 15") === "5" &&
+      resolverEjercicio("Ejercicio 1: 1/4 + 1/6") === "5/12",
+  );
+  check(
+    "el rótulo se quita en el CORRECTOR, que es por donde entra la pizarra",
+    /^\s*ejercicio\\s\*\(\?:n/.test("") ||
+      /sinRotulo\(String\(ejercicio \?\? ""\)\.trim\(\)\)/.test(readFileSync(new URL("../lib/leccion/correccion.ts", import.meta.url), "utf8")),
+  );
+
+  // 2. UNA ECUACIÓN SE RESUELVE COMO ECUACIÓN, nunca evaluando el primer trozo
+  // aritmético que lleve dentro.
+  for (const [pregunta, esperada] of [
+    ["¿Cuánto vale x en x/2 + 5 = 12? Escribe solo el número.", "14"],
+    ["¿Cuánto vale x en x/3 + 7 = 12? Escribe solo el número.", "15"],
+    ["¿Cuánto vale x en 5x/2 - 3 = 2x + 6? Escribe solo el número.", "18"],
+    ["¿Cuánto vale x en x/4 + x/2 = 9? Escribe solo el número.", "12"],
+    ["¿Cuánto vale x en 2(x + 3) = 16? Escribe solo el número.", "5"],
+  ]) {
+    check(`«${pregunta.slice(16, 40)}…» → ${esperada}`, computeAnswer(pregunta) === esperada, String(computeAnswer(pregunta)));
+  }
+  check("y una cuenta sigue siendo una cuenta", computeAnswer("¿Cuánto es 19 + 45?") === "64" && computeAnswer("¿Cuánto es 2/5 + 1/10?") === "1/2");
+
+  // 3. LO QUE SE DICE ES LO QUE SE HACE, en el despeje y en el polinomio.
+  const conMenos = escenaDeDespeje("2x - 6 = 16", "e");
+  check(
+    "con «2x − 6 = 16» el tutor SUMA 6 en los dos lados (no «quitamos»)",
+    /^Sumamos 6 en los dos lados/.test(conMenos.focos[0]?.narracion ?? ""),
+    conMenos.focos[0]?.narracion,
+  );
+  const conMas = escenaDeDespeje("2x + 6 = 16", "e");
+  check(
+    "y con «2x + 6 = 16» resta 6",
+    /^Restamos 6 en los dos lados/.test(conMas.focos[0]?.narracion ?? ""),
+    conMas.focos[0]?.narracion,
+  );
+  const poli = escenaDePolinomio("2x⁵ - 3x⁴ + x²", "e");
+  const dichos = poli.focos.map((f) => f.narracion);
+  check(
+    "el término «- 3x⁴» se nombra con su signo y su coeficiente es menos 3",
+    dichos.includes("Miramos el término menos 3 por x elevado a 4.") && dichos.includes("Su coeficiente es menos 3."),
+    JSON.stringify(dichos.slice(3, 6)),
+  );
+  check(
+    "y «2x⁵» se lee «2 por x elevado a 5», no «2x elevado a 5» (que sería (2x)⁵)",
+    dichos.includes("Miramos el término 2 por x elevado a 5.") && !dichos.some((d) => /término \d+x elevado/.test(d ?? "")),
+    JSON.stringify(dichos.slice(0, 3)),
+  );
+}
+
+titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, la multiplicación a la vista, notas sin desfase y los dos ambientes");
+
+{
+  const leccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
+  const visible = (latex) => {
+    const html = katex.renderToString(latex, { displayMode: true, throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlClass" });
+    return html
+      .replace(/<span class="katex-mathml">[\s\S]*?<\/math><\/span>/g, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/[​-‍﻿]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  // 1. RIGOR EN LA CANCELACIÓN. Tachar el +6 de la izquierda contra el -6 de la
+  // derecha, a través del igual, es falso: la propiedad uniforme escribe el -6 en
+  // LOS DOS miembros y la cancelación ocurre entre los opuestos del izquierdo.
+  {
+    const e = escenaDeDespeje("2x + 6 = 16", "e");
+    const [izq, der] = e.latex.split(/(?<!\\begin\{aligned\}[^=]*)=/);
+    check(
+      "«2x + 6 = 16»: se escribe la resta en los dos miembros — «2x + 6 − 6 = 16 − 6»",
+      visible(e.latex).replace(/\s/g, "") === "2x+6−6=16−6",
+      visible(e.latex),
+    );
+    check(
+      "…y las dos marcas de cancelación están DENTRO del miembro izquierdo",
+      /pz-cancela-termino/.test(izq) && /pz-cancela-opuesto/.test(izq) && !/pz-cancela/.test(der),
+      `izq: ${/pz-cancela/.test(izq)} · der: ${/pz-cancela/.test(der)}`,
+    );
+    check(
+      "…el foco tacha ese par de opuestos, y nada más",
+      e.focos[0]?.tipo === "tachado" &&
+        JSON.stringify(e.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      JSON.stringify(e.focos[0]),
+    );
+    check(
+      "…y lo dicho lo cuenta igual: a la izquierda se cancelan, a la derecha se resta",
+      /a la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(e.focos[0]?.narracion ?? ""),
+      e.focos[0]?.narracion,
+    );
+    const resta = escenaDeDespeje("2x - 6 = 16", "e");
+    check(
+      "«2x − 6 = 16»: el opuesto es +6, también en los dos miembros",
+      visible(resta.latex).replace(/\s/g, "") === "2x−6+6=16+6",
+      visible(resta.latex),
+    );
+    const unaLinea = escenaDeDespeje("x + 3 = 8", "e");
+    check(
+      "«x + 3 = 8»: se resta 3 en los dos miembros y la solución va debajo",
+      /x\+3−3/.test(visible(unaLinea.latex).replace(/\s/g, "")) && /8−3/.test(visible(unaLinea.latex).replace(/\s/g, "")),
+      visible(unaLinea.latex),
+    );
+    check(
+      "…y su cancelación sigue siendo del miembro izquierdo",
+      !/pz-cancela/.test(unaLinea.latex.split("&=").slice(1).join("&=")),
+    );
+    // En TODO el catálogo de ecuaciones: ninguna marca de cancelación a la derecha del igual.
+    const cruzan = [];
+    for (const nivel of ["facil", "normal", "dificil", "experto"]) {
+      const lsg = leccion(linealResueltaLSG({ nivel, concepto: true }));
+      for (const d of lsg.modulos.flatMap((m) => m.directivas)) {
+        if (d.tipo !== "pizarra" || !d.contenido) continue;
+        const escena = escenaDeLinea({ latex: d.contenido, ...(d.operacion ? { operacion: d.operacion } : {}) }, "x");
+        if (!escena?.latex) continue;
+        const partes = escena.latex.split("&=").join("=").split("=");
+        if (partes.slice(1).some((p) => /pz-cancela/.test(p))) cruzan.push(d.contenido);
+      }
+    }
+    check("en todo el catálogo de ecuaciones, ninguna cancelación cruza el igual", cruzan.length === 0, cruzan.join(" · "));
+  }
+
+  // 2. LA MULTIPLICACIÓN, A LA VISTA EN REGLAS DE FRACCIONES.
+  {
+    const lsg = leccion(fraccionResueltaLSG({ concepto: true }));
+    const dirs = lsg.modulos.flatMap((m) => m.directivas);
+    const i = dirs.findIndex((d) => d.tipo === "pizarra" && /Fracciones equivalentes/.test(String(d.contenido ?? "")));
+    const escrita = String(dirs[i]?.contenido ?? "");
+    const dicha = String(dirs[i + 1]?.texto ?? "");
+    check(
+      "Reglas de fracciones: la equivalencia se escribe con su multiplicación, «1/2 = (1 × 2)/(2 × 2) = 2/4»",
+      escrita === "Fracciones equivalentes: 1/2 = (1 × 2)/(2 × 2) = 2/4",
+      escrita,
+    );
+    check(
+      "…y es lo que el tutor está diciendo en esa misma frase",
+      dirs[i + 1]?.tipo === "hablar" && /multiplicas arriba y abajo de 1\/2 por 2/.test(dicha) && /sale 2\/4/.test(dicha),
+      dicha,
+    );
+    const [nota] = partirNota(escrita);
+    check(
+      "…compuesta con fracciones verticales y el factor visible, sin barras",
+      planoALatex(nota.cuerpo) === "\\frac{1}{2} = \\frac{1 \\times 2}{2 \\times 2} = \\frac{2}{4}",
+      planoALatex(nota.cuerpo),
+    );
+  }
+
+  // 3. LAS NOTAS DE CADA COLUMNA, SIN DESFASE: se escriben al EMPEZAR su frase.
+  {
+    const desfasadas = [];
+    for (const [nombre, gen] of [["suma", sumaResueltaLSG], ["resta", restaResueltaLSG], ["multiplicación", multiplicacionResueltaLSG], ["división", divisionResueltaLSG]]) {
+      for (const nivel of ["facil", "normal", "dificil"]) {
+        const dirs = leccion(gen({ nivel, concepto: true })).modulos.flatMap((m) => m.directivas);
+        for (let k = 0; k < dirs.length; k++) {
+          const d = dirs[k];
+          if (d.tipo !== "pizarra" || !d.narracion) continue;
+          // La frase que explica la línea tiene que ser la SIGUIENTE directiva que habla.
+          const siguienteHabla = dirs.slice(k + 1).find((x) => x.tipo === "hablar");
+          if (siguienteHabla?.texto !== d.narracion) desfasadas.push(`${nombre}/${nivel}: ${d.contenido}`);
+        }
+      }
+    }
+    check(
+      "cada línea de aritmética se escribe justo antes de la frase que la explica (nada de escribirla al terminar de hablar)",
+      desfasadas.length === 0,
+      desfasadas.slice(0, 3).join(" · "),
+    );
+    const dirs = leccion(sumaResueltaLSG({ nivel: "dificil", concepto: true })).modulos.flatMap((m) => m.directivas);
+    const iNota = dirs.findIndex((d) => d.tipo === "pizarra" && /^unidades:/.test(String(d.contenido ?? "")));
+    const iFrase = dirs.findIndex((d) => d.tipo === "hablar" && /unidades/i.test(String(d.texto ?? "")) && /=/.test(String(d.texto ?? "")));
+    check(
+      "la nota de las unidades está escrita ANTES de que la voz las sume",
+      iNota > 0 && iFrase > iNota && dirs.slice(iNota + 1, iFrase).every((d) => d.tipo !== "hablar"),
+      `nota ${iNota} · frase ${iFrase}`,
+    );
+  }
 }
 
 titulo("A00h. Segunda ronda del cliente: las ayudas en la práctica, a/b vertical y la tarjeta proyectada");
@@ -759,14 +1010,17 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
 
   // SUB-PIZ-02 — LOS DOS AMBIENTES, POR UNA REGLA MONÓTONA.
   const reparto = (pasos) => repartirEnAmbientes(pasos.map(([papel, gesto]) => ({ papel, gesto }))).join("");
+  // Una conversión a cada lado: el Ambiente 2 no puede quedarse con el MCM y un
+  // hueco mientras el 1 amplifica las dos fracciones (segunda ronda, a3.png).
   check(
-    "1/2 + 1/3: planteamiento y las dos conversiones a la izquierda; MCM, suma y respuesta a la derecha",
-    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]) === "121122",
+    "1/2 + 1/3: planteamiento y la PRIMERA conversión a la izquierda; MCM, la segunda, la suma y la respuesta a la derecha",
+    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]) === "121222",
     reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]),
   );
   check(
     "2(x + 3) = 16: el reparto a la izquierda; el despeje y la solución a la derecha",
     reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "despeje"], ["cierre", "resultado"]]) === "1222",
+    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "despeje"], ["cierre", "resultado"]]),
   );
   check(
     "una línea escrita no cambia de lado: abierto el Ambiente 2, lo que viene sigue en él",
@@ -1425,7 +1679,7 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     check(
       "sobre 2x + 6 = 16 hay UN foco: el tachado del +6 y del −6, cada uno con su marca",
       paso.focos.length === 1 && paso.focos[0].tipo === "tachado" &&
-        JSON.stringify(paso.focos[0].piezas) === JSON.stringify(["pz-cancela-izq", "pz-cancela-der"]),
+        JSON.stringify(paso.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
       JSON.stringify(paso.focos),
     );
     check(
@@ -2225,9 +2479,18 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
   );
 
   // 3. LA REGLA Y SU EJEMPLO, CENTRADOS Y DEL MISMO TAMAÑO.
+  // Los compone `FormulaQueCabe`, que además los parte en renglones —y, si aún
+  // no caben, los encoge lo justo— para que nunca se corten contra el borde.
   check(
     "el ejemplo de la regla se compone en modo display, no en línea",
-    /<Formula latex=\{regla\.ejemplo\} display \/>/.test(pizarraClasica),
+    /<FormulaQueCabe\s+latex=\{regla\.ejemplo\}/.test(pizarraClasica) &&
+      /<Formula key=\{`\$\{i\}-\$\{fila\}`\} latex=\{fila\} display \/>/.test(pizarraClasica),
+  );
+  check(
+    "y la regla, igual: las dos por la fórmula que se ajusta a su mitad de la pizarra",
+    (pizarraClasica.match(/<FormulaQueCabe/g) ?? []).length === 2 &&
+      /partirLaMasLarga\(estado\.current\.filas\)/.test(pizarraClasica) &&
+      /Math\.max\(0\.8, estado\.current\.escala/.test(pizarraClasica),
   );
   // El informe pidió después lo contrario de centrar (OBS-10: "definiciones
   // amontonadas al centro… alinear a la izquierda").
@@ -3046,7 +3309,7 @@ titulo("A2. Polinomios, despejes y prosa");
   check("y se rotula como tal", escena.focos[0].etiqueta === "se cancelan");
   check(
     "el término se tacha en los DOS lados, cada uno con su marca",
-    marcada(escena.latex, "pz-cancela-izq") && marcada(escena.latex, "pz-cancela-der"),
+    marcada(escena.latex, "pz-cancela-termino") && marcada(escena.latex, "pz-cancela-opuesto"),
     escena.latex,
   );
   check(
