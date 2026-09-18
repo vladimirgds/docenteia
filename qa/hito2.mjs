@@ -1046,7 +1046,32 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
   );
   check(
     "una línea escrita no cambia de lado: abierto el Ambiente 2, lo que viene sigue en él",
-    reparto([["planteamiento", null], ["paso", "a"], ["paso", "b"], ["paso", "a"]]) === "1122",
+    reparto([["planteamiento", null], ["paso", "amplificacion"], ["paso", "cancelacion"], ["paso", "amplificacion"]]) === "1122",
+  );
+  // LA CADENA DE RESOLUCIÓN NO SE PARTE EN DOS COLUMNAS (cuarta ronda del
+  // cliente): "conservar el historial acumulativo verticalmente en el panel de
+  // desarrollo… cada nuevo paso secuencialmente hacia abajo". El despeje empezaba
+  // en el Ambiente 1 y seguía en el 2, y leído de corrido parecía que la pizarra
+  // se vaciaba y saltaba a otra cosa.
+  check(
+    "2x + 5 = 15: la cadena sigue donde empieza —sobre el enunciado— y baja por el Ambiente 1; la respuesta enmarcada, a la derecha",
+    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]) === "112",
+    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]),
+  );
+  check(
+    "…y no salta de columna en el segundo paso, que es lo que se leía como un borrado",
+    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]) === "1112",
+    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]),
+  );
+  check(
+    "una derivada término a término tampoco: planteamiento y desarrollo en el Ambiente 1, el cierre a la derecha",
+    reparto([["planteamiento", "polinomio"], ["paso", "polinomio"], ["cierre", "resultado"]]) === "112",
+    reparto([["planteamiento", "polinomio"], ["paso", "polinomio"], ["cierre", "resultado"]]),
+  );
+  check(
+    "si el enunciado se transforma primero, la cadena entera baja por el panel de desarrollo",
+    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]) === "1222" &&
+      reparto([["planteamiento", null], ["paso", "cancelacion"], ["paso", "factor"]]) === "122",
   );
   check(
     "el MCM, los múltiplos y lo que sale de cada columna son cálculos auxiliares",
@@ -4689,6 +4714,7 @@ if (!vivo) {
 {
   const pizarraSrc = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
   const ttsSrc = readFileSync(new URL("../public/tts.js", import.meta.url), "utf8");
+  const aulaSrc = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
   const vozSrc = readFileSync(new URL("../app/api/voz/route.ts", import.meta.url), "utf8");
   const ejemplo = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
@@ -4752,7 +4778,30 @@ if (!vivo) {
   );
   check(
     "el arranque del resaltado sigue siendo el momento REAL en que empieza a sonar",
-    /addEventListener\("playing", \(\) => \{ try \{ onStart\?\.\(\); \} catch \{\} \}/.test(ttsSrc),
+    /const sonando = \(\) => \{ try \{ onStart\?\.\(\); \} catch \{\} \};/.test(ttsSrc) &&
+      /audio\.addEventListener\("playing", sonando\);/.test(ttsSrc),
+  );
+  // Y EL AUDIO SUENA DE VERDAD (cuarta ronda: "la voz que reproduce el navegador
+  // sigue siendo la nativa"): un solo <audio>, autorizado con el primer gesto
+  // del alumno, y la síntesis del navegador apagada mientras haya neuronal.
+  check(
+    "hay UN solo reproductor, que se reutiliza para todas las frases",
+    /_elemento\(\) \{[\s\S]{0,200}this\._audio = a;/.test(ttsSrc) &&
+      /const audio = this\._elemento\(\);/.test(ttsSrc),
+  );
+  check(
+    "y se autoriza con el primer gesto del alumno, que es lo único que acepta el navegador",
+    /desbloquear\(\) \{/.test(ttsSrc) && /addEventListener\("pointerdown", abrir/.test(ttsSrc) &&
+      /ttsRef\.current\?\.desbloquear\(\);/.test(aulaSrc),
+  );
+  check(
+    "con voz neuronal, la síntesis del navegador se apaga",
+    /if \(this\.neural && this\.synth\) \{\s*try \{ this\.synth\.cancel\(\); \} catch \{\}/.test(ttsSrc),
+  );
+  check(
+    "un tropiezo de red no cambia de voz: se reintenta antes de ceder, y sólo a la tercera se rinde",
+    /if \(!url && this\.neural !== false && !signal\?\.aborted\) url = await this\._audioDe/.test(ttsSrc) &&
+      /this\._fallosNeurales >= 3/.test(ttsSrc),
   );
   check(
     "si la voz neuronal se cae a media frase, se termina por donde iba, sin repetir lo dicho",
@@ -4761,7 +4810,7 @@ if (!vivo) {
   );
   check(
     "callar calla también el audio neuronal",
-    /cancel\(\) \{[\s\S]{0,240}this\._audioActual\.pause\(\)/.test(ttsSrc),
+    /cancel\(\) \{[\s\S]{0,240}this\._audio\.pause\(\)/.test(ttsSrc),
   );
   check(
     "con la voz apagada por el alumno no suena ninguna de las dos",

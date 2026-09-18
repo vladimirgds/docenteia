@@ -1377,7 +1377,14 @@ export function Aula({
   const mandosLeccion = useMemo(
     () => ({
       pausar: () => pseRef.current?.pause(),
-      reanudar: () => void pseRef.current?.play(),
+      // Arrancar la lección es el gesto con el que el navegador AUTORIZA el
+      // audio: se aprovecha para dejar listo el reproductor de la voz neuronal
+      // —si no, la primera frase llega después del clic y el navegador puede
+      // negarse a reproducirla, cayendo a la voz metálica justo al empezar—.
+      reanudar: () => {
+        ttsRef.current?.desbloquear();
+        void pseRef.current?.play();
+      },
     }),
     [],
   );

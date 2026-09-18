@@ -2622,3 +2622,78 @@ redes de seguridad); `qa/qa.mjs`: **1.465**; `qa/navegador.mjs`: **87**;
 `qa/leccion.mjs`, diagnóstico, paso 1, hito 1, diagnóstico por nivel, sesiones,
 aceptación 24/24, matemáticas, frontend y el barrido de 200 sesiones y 1.800
 turnos: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 38. Quinta ronda del cliente: el procedimiento no se parte en dos, y la voz neuronal suena de verdad
+
+Dos observaciones, las dos críticas.
+
+### 1. «La pizarra se limpia y salta directamente a 2x = 10»
+
+No se borraba nada —el paso seguía escrito—, pero **estaba en la otra columna**.
+La cadena del despeje empezaba en el Ambiente 1 (la resta a los dos lados, sobre
+el propio enunciado) y en el segundo paso saltaba al Ambiente 2 (`2x = 10`,
+`x = 5`). Leído de corrido, el alumno ve vaciarse el sitio donde estaba mirando
+y aparecer otra cosa a la derecha: es un borrado, aunque técnicamente no lo sea.
+
+**Lo que se hace ahora** (`lib/leccion/ambientes.ts`): una cadena de resolución
+**sigue en el ambiente donde empieza**, bajando un paso debajo de otro, como un
+cuaderno.
+
+- Si el enunciado es ya el primer eslabón —`2x + 5 = 15`, sobre el que se
+  cancela—, la cadena baja por el Ambiente 1: la resta a los dos lados,
+  `2x = 10`, `x = 5`; y a la derecha, la respuesta enmarcada con su visto, que
+  es donde el informe del cliente pide "la respuesta final consolidada".
+- Si el enunciado se transforma primero —`2(x + 3) = 16`—, esa transformación se
+  queda en el Ambiente 1 (`2(x + 3) = 16` y `2x + 6 = 16`) y **la cadena entera
+  baja por el Ambiente 2**: `2x + 6 − 6 = 16 − 6` con su tachado, `2x = 10`,
+  `x = 5` y el recuadro final. Que es, paso por paso, el flujo que dibujó el
+  cliente.
+
+Sigue en pie lo de la ronda anterior —no se pinta lo que aún no se ha
+explicado— y lo de la suma de fracciones —una conversión a cada lado, para que
+ningún ambiente quede vacío—: lo que cambia es que un despeje ya no se reparte
+entre los dos.
+
+### 2. «La voz sigue siendo la nativa del navegador»
+
+Era verdad, y por dos motivos que ahora se cierran:
+
+1. **Sin clave configurada no hay voz neuronal que oír.** El endpoint estaba
+   hecho, pero una instalación sin `GOOGLE_TTS_API_KEY` ni `ELEVENLABS_API_KEY`
+   responde 503 y la clase se queda —correctamente— con la voz del navegador. Es
+   lo que pasa hoy en el despliegue: **falta contratar una de las dos claves y
+   ponerla en el servidor**. No hay nada más que hacer en el código para eso.
+2. **Y aunque la hubiera, el navegador podía negarse a reproducir el audio.** Un
+   navegador sólo deja sonar audio si la primera reproducción ocurre dentro de un
+   gesto del usuario; la primera frase de la clase llega *después* de pedirla al
+   servidor, cuando el gesto ya ha pasado. La reproducción se rechazaba en
+   silencio y la frase salía por la voz del navegador: el cliente oía la metálica
+   con la neuronal configurada. Ahora hay **un solo reproductor `<audio>`**, que
+   se autoriza con el primer clic reproduciendo un silencio de un milisegundo, y
+   todas las frases suenan en él.
+
+Además, **con voz neuronal la síntesis del navegador se apaga**: en cuanto el
+servidor dice que la hay, se cancela `speechSynthesis` y no se vuelve a usar. Un
+tropiezo de red se reintenta una vez antes de ceder, y sólo a la tercera caída
+seguida se da la neuronal por perdida —es preferible una voz peor a una clase a
+trompicones—.
+
+Y esto ya no se comprueba leyendo el código: `qa/voz.mjs` abre una clase en
+Chrome con un proveedor de mentira interpuesto y comprueba que la lección pide
+el audio a `/api/voz` frase a frase, que lo reproduce en un `<audio>` de la
+página, que **`speechSynthesis.speak` no se llama ni una sola vez**, que la
+pizarra sigue sincronizada y que la interfaz dice qué voz suena. Y con el
+endpoint apagado (503), que la clase no se queda muda: vuelve a la voz del
+navegador y no anuncia una voz neuronal que no hay.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **95.119 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs` —batería nueva, también en Chrome—:
+**13/13**, con el endpoint respondiendo audio y con el endpoint apagado.
+`qa/hito2.mjs`: **708**. La batería de rigor: **31.476 afirmaciones matemáticas
+recalculadas, 0 incorrectas**. `qa/qa.mjs`: **1.465**; `qa/navegador.mjs`:
+**87**; `qa/leccion.mjs`, diagnóstico, paso 1, hito 1, diagnóstico por nivel,
+sesiones, aceptación 24/24, matemáticas, frontend y el barrido de 200 sesiones
+y 1.800 turnos: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.

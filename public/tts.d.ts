@@ -28,6 +28,10 @@ export class TTS {
   hasSpanishVoice(): boolean;
   /** Pregunta UNA vez al servidor si hay voz neuronal configurada. */
   listaLaVoz(): Promise<boolean>;
+  /** Autoriza el reproductor de audio con el primer gesto del alumno. */
+  desbloquear(): void;
+  /** ¿Está sonando la voz neuronal del servidor, y no la del navegador? */
+  usandoNeural(): boolean;
   /** Descripción legible del estado de la voz, para la interfaz. */
   describe(): string;
   speak(texto: string, opciones?: { signal?: AbortSignal }): Promise<void>;

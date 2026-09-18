@@ -38,6 +38,31 @@
  * con la captura de 1/2 + 1/3 delante: mientras el Ambiente 1 amplificaba, "el
  * Ambiente 2 sólo muestra la línea del MCM y queda con un enorme espacio
  * vacío". Reparte una conversión a cada lado, que es lo que pidió.
+ *
+ * Y LA CADENA DE RESOLUCIÓN NO SE PARTE EN DOS COLUMNAS.
+ *
+ * El despeje de "2x + 6 = 16" empezaba en el Ambiente 1 —la línea de la
+ * cancelación— y seguía en el 2 —"2x = 10", "x = 5"—. Está todo escrito y no se
+ * borra nada, pero leído de corrido parece que la pizarra se vacía y salta a
+ * otra cosa; el cliente lo describió así: "tras aplicar la resta a ambos lados,
+ * la pizarra se limpia y salta directamente a 2x = 10, borrando el paso de
+ * cancelación". Pidió el historial "acumulativo verticalmente en el panel de
+ * desarrollo… cada nuevo paso secuencialmente hacia abajo, estilo registro de
+ * cuaderno escolar".
+ *
+ * Así que UNA CADENA DE RESOLUCIÓN SIGUE EN EL AMBIENTE DONDE EMPIEZA, bajando
+ * un paso debajo de otro en el orden en que la voz los cuenta:
+ *
+ *   · si el propio enunciado es ya el primer eslabón —"2x + 6 = 16", sobre el
+ *     que se cancela—, la cadena baja por el Ambiente 1: la resta a los dos
+ *     lados, "2x = 10" con su solución, y a la derecha la respuesta enmarcada,
+ *     que es donde el informe pone "la respuesta final consolidada";
+ *   · si el enunciado se transforma primero —repartir un paréntesis, amplificar
+ *     una fracción—, esa transformación se queda en el Ambiente 1 y la cadena
+ *     entera baja por el Ambiente 2.
+ *
+ * Lo que ya no pasa es que la cadena empiece a la izquierda y salte a la
+ * derecha en el segundo paso, que es lo que se leía como un borrado.
  */
 
 export type Ambiente = 1 | 2;
@@ -50,23 +75,44 @@ export interface PasoDeLaPizarra {
   gesto: string | null;
 }
 
+/**
+ * Los gestos que REESCRIBEN EL ENUNCIADO, que son los que el informe pone en el
+ * Ambiente 1 como "primera fase de transformación": repartir un paréntesis,
+ * amplificar una fracción a su denominador común, simplificar un término.
+ *
+ * Los demás —cancelar, dividir, bajar un exponente, llegar al resultado— son la
+ * continuación operativa: la cadena que baja por el panel de desarrollo.
+ */
+const TRANSFORMA_EL_ENUNCIADO = new Set(["distributiva", "amplificacion", "simplificacion", "suma-fracciones"]);
+
 export function repartirEnAmbientes(pasos: readonly PasoDeLaPizarra[]): Ambiente[] {
   let primerGesto: string | null = null;
   let acompana = false;
   let segundoAbierto = false;
+  /** La cadena de resolución empezó sobre el propio enunciado, en el Ambiente 1. */
+  let cadenaEnElUno = false;
   return pasos.map((p) => {
     if (p.papel === "planteamiento") {
       // Un planteamiento que ya opera (la distributiva que se anima sobre el
       // propio enunciado) fija el gesto de la primera fase.
       if (p.gesto && !primerGesto) primerGesto = p.gesto;
+      // Y si lo que hace sobre él no es transformarlo sino resolverlo —cancelar
+      // un término, dividir entre el coeficiente—, el enunciado es el primer
+      // eslabón: la cadena continúa debajo, aquí mismo.
+      if (p.gesto && !TRANSFORMA_EL_ENUNCIADO.has(p.gesto)) cadenaEnElUno = true;
       return 1;
     }
     if (p.papel === "auxiliar" || p.papel === "cierre") return 2;
-    if (!segundoAbierto && !acompana && (primerGesto == null || p.gesto === primerGesto)) {
+    const transforma = p.gesto != null && TRANSFORMA_EL_ENUNCIADO.has(p.gesto);
+    // Acompaña al planteamiento UN solo paso que lo transforme (la primera
+    // conversión de una suma de fracciones): la segunda abre el Ambiente 2.
+    if (!segundoAbierto && !acompana && transforma && (primerGesto == null || p.gesto === primerGesto)) {
       primerGesto ??= p.gesto;
       acompana = true;
       return 1;
     }
+    // Y una cadena de resolución no se parte por la mitad: sigue donde empezó.
+    if (!segundoAbierto && !transforma && cadenaEnElUno) return 1;
     segundoAbierto = true;
     return 2;
   });

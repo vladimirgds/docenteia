@@ -175,6 +175,19 @@ const VOZ_FEMENINA = /\b(helena|sabina|elvira|dalia|m[óo]nica|paulina|luc[íi]a
  */
 const RUTA_VOZ = "/api/voz";
 
+/**
+ * UN SILENCIO DE MILISEGUNDO, PARA DESBLOQUEAR EL AUDIO.
+ *
+ * Los navegadores sólo dejan sonar audio si la primera reproducción de un
+ * elemento ocurre dentro de un gesto del usuario. La primera frase de la
+ * lección llega DESPUÉS de pedirla al servidor, y para entonces el gesto ya ha
+ * pasado: sin esto, Safari se negaba a reproducir y la clase caía a la voz del
+ * navegador justo en la frase en que estrenaba la neuronal. Al primer clic se
+ * reproduce este silencio en el MISMO elemento que luego dirá las frases, y el
+ * elemento queda autorizado para el resto de la sesión.
+ */
+const SILENCIO = "data:audio/wav;base64,UklGRqQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
 export class TTS {
   constructor() {
     this.synth = typeof window !== "undefined" ? window.speechSynthesis : null;
@@ -185,7 +198,15 @@ export class TTS {
     this._sonda = null;
     /** Frase → URL del audio ya descargado (una clase repite mucho). */
     this._audios = new Map();
-    this._audioActual = null;
+    /** EL ÚNICO reproductor de la clase: se reutiliza para todas las frases. */
+    this._audio = null;
+    this._desbloqueado = false;
+    this._fallosNeurales = 0;
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      const abrir = () => this.desbloquear();
+      window.addEventListener("pointerdown", abrir, { once: true, capture: true });
+      window.addEventListener("keydown", abrir, { once: true, capture: true });
+    }
     this.voice = null;
     this.masculina = false;
     this._fijada = false;   // una vez que ha empezado a hablar, la voz YA NO se cambia
@@ -225,6 +246,45 @@ export class TTS {
     return !!this.voice || this.neural === true;
   }
 
+  /** El reproductor: uno solo, creado la primera vez que hace falta. */
+  _elemento() {
+    if (this._audio) return this._audio;
+    if (typeof Audio !== "function") return null;
+    const a = new Audio();
+    a.preload = "auto";
+    this._audio = a;
+    return a;
+  }
+
+  /**
+   * Autoriza el audio con el primer gesto del alumno (el clic de «Reproducir»,
+   * una tecla, un toque). Es idempotente y no suena: es un silencio.
+   */
+  desbloquear() {
+    if (this._desbloqueado) return;
+    const a = this._elemento();
+    if (!a) return;
+    this._desbloqueado = true;
+    try {
+      a.muted = true;
+      a.src = SILENCIO;
+      const intento = a.play();
+      const soltar = () => {
+        try { a.pause(); a.currentTime = 0; } catch {}
+        a.muted = false;
+      };
+      if (intento?.then) intento.then(soltar, soltar);
+      else soltar();
+    } catch {
+      a.muted = false;
+    }
+  }
+
+  /** ¿Está sonando la voz neuronal del servidor, y no la del navegador? */
+  usandoNeural() {
+    return this.neural === true;
+  }
+
   /**
    * ¿Hay voz neuronal? Se pregunta una sola vez por sesión y se recuerda la
    * promesa: la lección la espera al montar para poder anunciar qué voz suena.
@@ -241,6 +301,13 @@ export class TTS {
       .then((d) => {
         this.neural = Boolean(d?.disponible);
         this.proveedor = d?.proveedor ?? null;
+        // CON VOZ NEURONAL, LA DEL NAVEGADOR SE APAGA. El cliente lo pidió con
+        // esas palabras —"desactivando la síntesis local del navegador"—: no es
+        // sólo preferir una, es que la metálica no puede colarse a mitad de la
+        // clase. Queda como último recurso si la neuronal se cae del todo.
+        if (this.neural && this.synth) {
+          try { this.synth.cancel(); } catch {}
+        }
         return this.neural;
       })
       .catch(() => {
@@ -301,15 +368,30 @@ export class TTS {
     const trozos = chunkForSpeech(spoken);
     for (let i = 0; i < trozos.length; i++) {
       if (signal?.aborted) return -1;
-      const url = await this._audioDe(trozos[i], signal);
-      if (!url) return i === 0 ? null : i;
+      // Un tropiezo de red no cambia de voz a mitad de clase: se reintenta una
+      // vez, y sólo si vuelve a fallar se cede el resto a la del navegador.
+      let url = await this._audioDe(trozos[i], signal);
+      if (!url && this.neural !== false && !signal?.aborted) url = await this._audioDe(trozos[i], signal);
+      if (!url) return this._cederALaLocal(i);
       // Mientras suena éste se va pidiendo el siguiente: sin esto queda un
       // silencio entre frase y frase, del tamaño de la red.
       if (trozos[i + 1]) this._audioDe(trozos[i + 1], signal).catch(() => {});
       const sono = await this._reproducir(url, signal, i === 0 ? onStart : null);
-      if (!sono) return i === 0 ? null : i;
+      if (!sono) return this._cederALaLocal(i);
+      this._fallosNeurales = 0;
     }
     return -1;
+  }
+
+  /**
+   * Cede la palabra a la voz del navegador desde el trozo `i`. A la tercera
+   * caída seguida se da la neuronal por perdida y no se vuelve a intentar: es
+   * preferible una voz peor a una clase a trompicones.
+   */
+  _cederALaLocal(i) {
+    this._fallosNeurales++;
+    if (this._fallosNeurales >= 3) this.neural = false;
+    return i === 0 ? null : i;
   }
 
   /** El MP3 de una frase, del servidor o de lo ya descargado. `null` si no hay. */
@@ -349,30 +431,46 @@ export class TTS {
    * entonces la frase se dice con la voz del navegador.
    */
   _reproducir(url, signal, onStart) {
+    const audio = this._elemento();
+    if (!audio) return Promise.resolve(false);
     return new Promise((resolve) => {
       let acabado = false;
-      const audio = new Audio(url);
-      this._audioActual = audio;
-      audio.preload = "auto";
+      const sonando = () => { try { onStart?.(); } catch {} };
+      const terminado = () => fin(true);
+      const fallo = () => fin(false);
+      const abortar = () => { try { audio.pause(); } catch {} fin(true); };
       const fin = (ok) => {
         if (acabado) return;
         acabado = true;
+        audio.removeEventListener("playing", sonando);
+        audio.removeEventListener("ended", terminado);
+        audio.removeEventListener("error", fallo);
         signal?.removeEventListener?.("abort", abortar);
-        if (this._audioActual === audio) this._audioActual = null;
         resolve(ok);
       };
-      const abortar = () => { try { audio.pause(); } catch {} fin(true); };
       // El foco de la pizarra se enciende cuando el audio EMPIEZA A SONAR.
-      audio.addEventListener("playing", () => { try { onStart?.(); } catch {} }, { once: true });
-      audio.addEventListener("ended", () => fin(true), { once: true });
-      audio.addEventListener("error", () => fin(false), { once: true });
+      audio.addEventListener("playing", sonando);
+      audio.addEventListener("ended", terminado);
+      audio.addEventListener("error", fallo);
       signal?.addEventListener?.("abort", abortar, { once: true });
+      try {
+        audio.muted = false;
+        audio.src = url;
+        audio.currentTime = 0;
+      } catch {
+        return fin(false);
+      }
       const intento = audio.play();
       if (intento?.catch) intento.catch(() => fin(false));
     });
   }
 
-  /** La voz del navegador, desde el trozo `desde` en adelante. */
+  /**
+   * La voz del navegador, desde el trozo `desde` en adelante.
+   *
+   * No se usa mientras la neuronal esté en pie: sólo cuando esta instalación no
+   * la tiene configurada, o cuando acaba de fallar y hay una frase a medias.
+   */
   _hablarLocal(spoken, { signal, onStart }, desde = 0) {
     // Sin voz real: retardo proporcional (subtítulos temporizados). Aquí no hay
     // evento que esperar, así que el "arranque" es inmediato: el resaltado se
@@ -453,9 +551,8 @@ export class TTS {
   cancel() {
     if (this.synth) this.synth.cancel();
     // Y el MP3 que estuviera sonando: callar es callar del todo.
-    if (this._audioActual) {
-      try { this._audioActual.pause(); } catch {}
-      this._audioActual = null;
+    if (this._audio) {
+      try { this._audio.pause(); } catch {}
     }
   }
 }

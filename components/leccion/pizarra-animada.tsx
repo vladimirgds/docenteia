@@ -923,6 +923,8 @@ export function PanelAnimado({
 
   /** Cualquier mando que arranque la voz pide antes el turno de palabra. */
   const conLaVoz = (accion: () => void) => () => {
+    // Y autoriza de paso el reproductor de la voz neuronal: es un gesto del
+    // alumno, que es lo único que el navegador acepta para dejar sonar audio.
     alTomarLaVoz?.();
     accion();
   };
