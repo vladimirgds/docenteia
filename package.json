@@ -5,7 +5,7 @@
   "description": "MentorIA Math — MVP 2. HITO 1: autoría docente, catálogo curricular dinámico y validador matemático en servidor, sobre la base del PMV 1 (Next.js App Router + TypeScript + PostgreSQL/Prisma).",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.6"
   },
   "scripts": {
     "dev": "next dev",

@@ -4831,6 +4831,78 @@ if (!vivo) {
   );
 }
 
+// ── EL DESPLIEGUE TIENE QUE PODER CONSTRUIR LA APLICACIÓN ───────────────────
+//
+// Durante semanas el cliente abrió la URL de las guías de prueba y vio la misma
+// versión de siempre. No era la pizarra: el blueprint de Render se había quedado
+// en el prototipo —instalaba dependencias y arrancaba, sin compilar—, así que
+// cada despliegue de la aplicación Next moría al arrancar y Render seguía
+// sirviendo el último contenedor que sí arrancó, de agosto.
+//
+// Esto es lo que impide que vuelva a pasar sin que nadie se entere.
+{
+  const paquete = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const blueprint = readFileSync(new URL("../render.yaml", import.meta.url), "utf8");
+  const arranque = String(paquete.scripts?.start ?? "");
+  const construccion = /buildCommand:\s*(.+)/.exec(blueprint)?.[1]?.trim() ?? "";
+  const despliegue = String(paquete.scripts?.["vercel-build"] ?? "");
+
+  check(
+    "arrancar la aplicación exige haberla compilado antes (`next start` no compila)",
+    /next start/.test(arranque),
+    arranque,
+  );
+  check(
+    "y el blueprint de despliegue la compila: instalar no basta",
+    /npm run (build|vercel-build)/.test(construccion),
+    construccion,
+  );
+  check(
+    "el despliegue usa la MISMA secuencia que Vercel: generar, migrar, sembrar y compilar",
+    /vercel-build/.test(construccion) && /prisma generate/.test(despliegue) && /next build/.test(despliegue),
+    `${construccion} · ${despliegue}`,
+  );
+  const pideTipos = /--experimental-strip-types/.test(despliegue);
+  const nodeBlueprint = /key: NODE_VERSION[\s\S]{0,60}?value: "([^"]+)"/.exec(blueprint)?.[1] ?? "";
+  const suficiente = (v) => {
+    const [may, men = 0] = String(v).split(".").map(Number);
+    return may > 22 || (may === 22 && men >= 6);
+  };
+  check(
+    "si la siembra necesita el intérprete de tipos, el despliegue fija un Node que lo tiene (≥ 22.6)",
+    !pideTipos || suficiente(nodeBlueprint),
+    `NODE_VERSION=${nodeBlueprint}`,
+  );
+  check(
+    "y el paquete declara ese mínimo, para que ninguna plataforma elija un Node que no puede construirlo",
+    !pideTipos || suficiente(String(paquete.engines?.node ?? "").replace(/[^\d.]/g, "")),
+    `engines.node=${paquete.engines?.node}`,
+  );
+  check(
+    "el blueprint pide los secretos que la aplicación necesita para algo más que arrancar",
+    ["DATABASE_URL", "AUTH_SECRET", "GEMINI_API_KEY"].every((k) => blueprint.includes(`key: ${k}`)),
+  );
+  check(
+    "y deja hueco a la voz neuronal, sin escribir ninguna clave en el repositorio",
+    /key: GOOGLE_TTS_API_KEY[\s\S]{0,40}sync: false/.test(blueprint) &&
+      /key: ELEVENLABS_API_KEY[\s\S]{0,40}sync: false/.test(blueprint),
+  );
+  // Y desde fuera se comprueba qué versión está viva sin entrar a ningún panel:
+  // `/api/health` publica el commit desplegado, y la lección lo enseña bajo el
+  // avatar. Es lo que convierte "está igual" en una pregunta con respuesta.
+  const nucleo = readFileSync(new URL("../src/queryCore.js", import.meta.url), "utf8");
+  const saludRuta = readFileSync(new URL("../app/api/health/route.ts", import.meta.url), "utf8");
+  check(
+    "la salud del servicio publica el commit desplegado, y la ruta lo devuelve",
+    /VERCEL_GIT_COMMIT_SHA[\s\S]{0,120}RENDER_GIT_COMMIT/.test(nucleo) &&
+      /const base = salud\(\);/.test(saludRuta) && /\.\.\.base/.test(saludRuta),
+  );
+  check(
+    "y la pantalla de la lección enseña ese mismo build, para verlo sin consola",
+    /build \{VERSION\}/.test(readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8")),
+  );
+}
+
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` ${ok} comprobaciones superadas · ${fallos.length} fallidas`);
 if (fallos.length > 0) {

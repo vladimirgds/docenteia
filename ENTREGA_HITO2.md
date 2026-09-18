@@ -2697,3 +2697,69 @@ recalculadas, 0 incorrectas**. `qa/qa.mjs`: **1.465**; `qa/navegador.mjs`:
 **87**; `qa/leccion.mjs`, diagnóstico, paso 1, hito 1, diagnóstico por nivel,
 sesiones, aceptación 24/24, matemáticas, frontend y el barrido de 200 sesiones
 y 1.800 turnos: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 39. Por qué el cliente veía siempre lo mismo: el despliegue no construía la aplicación
+
+El cliente lo dijo cinco rondas seguidas —«está igual, no has cambiado nada»— y
+tenía razón. No era la pizarra: **era el despliegue**.
+
+`GET https://math-ia.onrender.com/api/health` devolvía la versión `e96a544`, del
+**24 de agosto**, y la respuesta traía la cabecera `x-powered-by: Express`. Ese
+commit es el prototipo anterior: su árbol tiene `server.js` y `src/`, y no tiene
+`app/` ni `components/` ni pizarra alguna. Es decir, la URL que aparece en
+`ENTREGA.md` y en las guías de prueba llevaba semanas sirviendo el prototipo,
+no la aplicación.
+
+**La causa, en una línea.** `render.yaml` se quedó escrito para el prototipo:
+
+```yaml
+buildCommand: npm install     # ← nunca compila
+startCommand: npm start       # ← `next start`, que EXIGE un `next build` previo
+```
+
+Cuando la aplicación era Express, instalar y arrancar bastaba. Con Next.js,
+`next start` sin build muere al arrancar («Could not find a production build»),
+Render marca el despliegue como fallido y **mantiene vivo el último contenedor
+que sí arrancó**: el de agosto. Cada entrega se subía, se fusionaba… y no se
+veía.
+
+Y había una segunda mina en el mismo fichero: `NODE_VERSION: "20"`. La siembra
+del banco de preguntas corre con `node --experimental-strip-types`, que existe a
+partir de **22.6**; con Node 20 ese paso falla aunque todo lo demás esté bien.
+`package.json` declaraba `engines: >=18`, así que cualquier plataforma podía
+elegir un Node incapaz de construir el proyecto.
+
+**Lo que se ha corregido** (`render.yaml`, `package.json`):
+
+- el blueprint compila antes de arrancar, con la **misma secuencia que Vercel**
+  (`npm ci && npm run vercel-build`: generar cliente, migrar, sembrar, compilar);
+- fija `NODE_VERSION 22.18.0`, y el paquete declara `engines: >=22.6`;
+- pide en el panel los secretos que la aplicación necesita para algo más que
+  arrancar —`DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`— y deja hueco, sin
+  escribir ninguna clave en el repositorio, a la voz neuronal
+  (`GOOGLE_TTS_API_KEY`, `ELEVENLABS_API_KEY`).
+
+**Cómo se comprueba desde fuera, en un segundo y sin entrar a ningún panel:**
+
+```
+curl -sI https://math-ia.onrender.com/api/health | grep -i x-powered-by
+   Express → está sirviendo el prototipo viejo
+   Next.js → está sirviendo la aplicación
+
+curl -s  https://math-ia.onrender.com/api/health     → "version": <commit>
+```
+
+Y en la propia pantalla de la lección, bajo el avatar, aparece `build <commit>`.
+
+**Y lo que no se puede arreglar desde el repositorio:** que el servicio de
+Render (o de Vercel) vuelva a desplegar. El blueprint sólo lo relee Render si el
+servicio sigue enlazado al Blueprint; si sus ajustes se editaron a mano, mandan
+los del panel. Los secretos hay que pegarlos allí una vez. Eso es del cliente.
+
+**La comprobación que faltaba.** `qa/hito2.mjs` incluye ahora un bloque de
+despliegue: que arrancar exija compilar, que el blueprint compile, que use la
+secuencia de Vercel, que el Node fijado soporte la siembra, que el paquete
+declare ese mínimo, que los secretos estén pedidos y que la versión desplegada
+se publique en `/api/health` y en pantalla. Nueve comprobaciones que habrían
+convertido cinco rondas de «está igual» en un fallo de batería el primer día.

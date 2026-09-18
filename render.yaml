@@ -1,25 +1,72 @@
 # Blueprint de despliegue para Render (https://render.com)
 # Región US (oregon) — necesaria porque la API de Gemini bloquea otras regiones.
 #
+# ESTE FICHERO SE QUEDÓ EN EL PROTOTIPO, Y POR ESO EL SITIO NO CAMBIABA.
+#
+# Cuando la aplicación era el prototipo (`server.js` con Express), `npm install`
+# + `npm start` bastaba: no había nada que compilar. La aplicación de hoy es
+# Next.js, y `npm start` es `next start`, que NECESITA un `next build` previo.
+# Como aquí sólo se instalaban las dependencias, cada despliegue moría al
+# arrancar —"Could not find a production build"— y Render mantenía vivo el
+# último contenedor que sí arrancó: el del prototipo, de agosto. El cliente
+# abría la URL de las guías de prueba, veía la versión vieja y decía, con toda
+# la razón, "está igual, no has cambiado nada".
+#
+# Se comprueba en un segundo, sin entrar al panel de Render:
+#
+#   curl -sI https://math-ia.onrender.com/api/health | grep x-powered-by
+#     → "Express"  = está sirviendo el prototipo viejo
+#     → "Next.js"  = está sirviendo la aplicación
+#
+#   curl -s https://math-ia.onrender.com/api/health   → "version": <commit>
+#
 # Cómo usarlo:
 #   1) Sube este repo a GitHub (ver README → Despliegue).
 #   2) En Render: New + → Blueprint → conecta el repo. Render lee este archivo.
-#   3) En el dashboard del servicio, añade la variable secreta GEMINI_API_KEY
-#      (sync:false ⇒ NO se guarda en el repo; se pega a mano una sola vez).
+#   3) En el dashboard del servicio, pega los secretos marcados `sync: false`
+#      (nunca se guardan en el repo): la base de datos, la clave de sesión y la
+#      de Gemini. Sin base de datos la aplicación arranca, pero no hay login ni
+#      diagnóstico: `/api/health` lo dice ("sin_configurar").
 services:
   - type: web
     name: math-ia
     runtime: node
     region: oregon          # región US: aquí sí funciona la API de Gemini
     plan: free
-    buildCommand: npm install
+    # COMPILAR ANTES DE ARRANCAR. `vercel-build` es la secuencia completa de
+    # despliegue —generar el cliente de Prisma, aplicar las migraciones, sembrar
+    # el banco de preguntas y compilar Next—, la misma que se usa en Vercel: un
+    # solo sitio donde está escrito cómo se despliega esto.
+    buildCommand: npm ci && npm run vercel-build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      # La siembra del banco de preguntas se ejecuta con el intérprete de tipos
+      # de Node, que existe a partir de 22.6. Con Node 20 el despliegue fallaba
+      # en ese paso aunque todo lo demás estuviera bien.
+      - key: NODE_VERSION
+        value: "22.18.0"
+      # Persistencia (Supabase u otro Postgres). Sin esto no hay login, ni
+      # diagnóstico, ni progreso guardado.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      # Sesiones (NextAuth). `openssl rand -base64 32` vale como valor.
+      - key: AUTH_SECRET
+        sync: false
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      # IA generativa. Sin clave la aplicación arranca igual, en modo demo.
       - key: GEMINI_API_KEY
         sync: false          # secreto: se define en el dashboard, nunca en el repo
       - key: GEMINI_MODEL
         value: gemini-2.5-flash-lite
-      - key: NODE_VERSION
-        value: "20"
+      # Voz neuronal del tutor (opcional). Con una de las dos, el tutor deja de
+      # sonar a sintetizador del navegador; sin ninguna, sigue con la del
+      # navegador y la clase funciona igual.
+      - key: GOOGLE_TTS_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
