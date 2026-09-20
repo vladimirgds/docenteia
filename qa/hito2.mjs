@@ -4928,6 +4928,36 @@ if (!vivo) {
     /qa\/despliegue\.mjs/.test(readFileSync(new URL("../package.json", import.meta.url), "utf8")) &&
       /x-powered-by/.test(readFileSync(new URL("./despliegue.mjs", import.meta.url), "utf8")),
   );
+
+  check(
+    "compilar en el plan gratuito no se queda sin memoria a mitad",
+    /NODE_OPTIONS[\s\S]{0,120}max-old-space-size/.test(blueprint),
+  );
+  // Los dos flujos de GitHub que responden solos a "¿compila?" y "¿está
+  // desplegado?" viajan aparte: crear ficheros en `.github/workflows` exige un
+  // permiso que esta credencial no tiene. Cuando estén en el repositorio, esta
+  // comprobación los exige; mientras tanto no penaliza no tenerlos.
+  const flujo = (nombre) => {
+    try {
+      return readFileSync(new URL(`../.github/workflows/${nombre}`, import.meta.url), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  const ci = flujo("verificacion.yml");
+  const vigilancia = flujo("despliegue.yml");
+  if (ci) {
+    check(
+      "en cada push a main se compila el repositorio desde cero y se pasan las baterías",
+      /npm ci/.test(ci) && /npm run build/.test(ci) && /qa\/hito2\.mjs/.test(ci) && /branches: \[main\]/.test(ci),
+    );
+  }
+  if (vigilancia) {
+    check(
+      "y se vigila que lo desplegado sea lo de main, con aviso cuando no lo es",
+      /qa\/despliegue\.mjs/.test(vigilancia) && /schedule/.test(vigilancia) && /workflow_dispatch/.test(vigilancia),
+    );
+  }
 }
 
 console.log("\n═══════════════════════════════════════════════════════════");

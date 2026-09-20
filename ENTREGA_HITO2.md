@@ -2808,3 +2808,64 @@ que hay que responder: **2 fallos** —«lo que sirve es la aplicación, no el
 prototipo de Express» y «la versión desplegada es la esperada»—. Cuando el
 cliente redespliegue, esa misma orden dará 5 de 5 y no hará falta discutir si se
 ven o no se ven los cambios.
+
+
+## 40. La entrega, comprobada en el propio repositorio del cliente
+
+Con todo fusionado —PR #53 a #58— el sitio en vivo seguía sirviendo, cinco horas
+después, la versión del 24 de agosto: `x-powered-by: Express`, `version
+e96a544`. Ya no es que el blueprint no compilara (corregido) ni que el panel
+mande sobre el blueprint (resuelto con el gancho `postinstall`): es que **ese
+servicio no está desplegando este repositorio**. Eso sólo se ve, y sólo se
+arregla, desde su panel.
+
+Lo que sí se puede hacer desde aquí es que nadie tenga que fiarse de nadie. La
+pregunta «¿está igual porque no habéis cambiado nada, o porque no ha llegado?»
+tiene dos mitades, y ahora las dos se responden solas, en la pestaña *Actions*
+del repositorio del cliente:
+
+> **Estos dos flujos viajan fuera del repositorio.** Crear ficheros en
+> `.github/workflows` exige un permiso de GitHub (`workflow`) que la credencial
+> de esta entrega no tiene. Los dos ficheros van adjuntos con la entrega: basta
+> con añadirlos desde la web del repositorio (Add file → Create new file) o
+> autorizar ese permiso y subirlos. Todo lo demás de esta sección ya está dentro.
+
+| Flujo | Cuándo | Qué responde |
+| --- | --- | --- |
+| `verificacion.yml` | en cada push y cada PR a `main` | ¿compila el código, desde cero y en una máquina limpia, y pasa sus baterías? (`npm ci`, tipos, `next build`, hito 2, rigor, matemáticas) |
+| `despliegue.yml` | cada 6 h y a mano | ¿lo que está vivo en la URL es ese mismo código? |
+
+Si la primera está en verde y la segunda en rojo —que es exactamente lo que pasa
+hoy—, el problema no está en el código: está en el servicio que despliega. Y el
+propio flujo imprime qué mirar: si el servicio apunta a este repositorio y a
+`main`, si el despliegue automático está activo, qué dice el registro del último
+despliegue y si están puestas `DATABASE_URL`, `DIRECT_URL` y `AUTH_SECRET`.
+
+### Tres cosas más que habrían vuelto a fallar
+
+- **El candado de dependencias estaba desfasado.** `package.json` pedía Node
+  `>=22.6` y `package-lock.json` seguía diciendo `>=18`. `npm ci` —la orden que
+  ejecutan Render y el flujo de integración— falla cuando los dos no coinciden.
+  Actualizado y probado: `npm ci` limpio, 50 segundos.
+- **Compilar en el plan gratuito se queda sin memoria.** 512 MB dan lo justo, y
+  cuando el sistema mata la compilación el registro sólo dice «exited with
+  status 137», que no se parece a un error. El blueprint fija ahora
+  `NODE_OPTIONS=--max-old-space-size=448`.
+- **Y se ha probado el camino de Render entero, con la base apagada**:
+  instalación limpia (`npm ci`), migración y siembra avisando y continuando,
+  `next build` terminando, `.next/BUILD_ID` escrito. Es decir: aunque el cliente
+  no ponga todavía las claves de la base, el despliegue saldrá y `/api/health`
+  dirá qué le falta.
+
+### Comprobado (entrega del Hito 2, cierre)
+
+`qa/observaciones.mjs`, siete clases en Chrome: **95.129 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **724** (con el
+bloque de despliegue: que arrancar exija compilar, que instalar construya, que
+la base caída no tumbe el despliegue y que se vigile qué versión está viva).
+Rigor: **31.476 afirmaciones matemáticas recalculadas, 0 incorrectas**.
+`qa/qa.mjs`: **1.465**; `qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**;
+`qa/matematicas.mjs`: 100; `qa/hito1.mjs`: 124; diagnóstico por nivel 94;
+aceptación **24/24**; diagnóstico, sesiones, paso 1 y frontend sin fallos; y el
+barrido de **200 sesiones y 1.800 turnos, 0 violaciones**. `npm ci` limpio,
+`tsc --noEmit` y `npm run build`, limpios.

@@ -47,6 +47,12 @@ services:
       # en ese paso aunque todo lo demás estuviera bien.
       - key: NODE_VERSION
         value: "22.18.0"
+      # El plan gratuito da 512 MB, y compilar Next.js se acerca a ese techo. Con
+      # el montón de JavaScript limitado por debajo del límite del contenedor, el
+      # compilador recoge basura en vez de que el sistema lo mate a media
+      # compilación (que es un fallo mudo: sólo se ve "exited with status 137").
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=448"
       # Persistencia (Supabase u otro Postgres). Sin esto no hay login, ni
       # diagnóstico, ni progreso guardado.
       - key: DATABASE_URL
