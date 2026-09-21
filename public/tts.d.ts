@@ -24,6 +24,10 @@ export class TTS {
   neural: boolean | null;
   /** Qué proveedor sirve la voz neuronal ("google", "elevenlabs") o `null`. */
   proveedor: string | null;
+  /** Por qué no hay voz neuronal ("sin_configurar"), si el servidor lo dice. */
+  motivo: string | null;
+  /** Qué variable de entorno habría que definir para tenerla. */
+  claveQueFalta: string | null;
   /** ¿Puede hablar? Una voz española instalada, o la neuronal del servidor. */
   hasSpanishVoice(): boolean;
   /** Pregunta UNA vez al servidor si hay voz neuronal configurada. */

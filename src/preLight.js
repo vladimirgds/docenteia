@@ -701,12 +701,32 @@ export function solveLinearSteps(text) {
   // Sin este paso la ecuación "saltaba" de una forma a otra sin explicación, o —peor— estas formas
   // no se resolvían aquí y acababan en la IA, sin garantía de que la respuesta fuera correcta.
   const ladoStr = (a, b) => (a === 0 ? fmt(b) : `${xc(a)}${v}${konstStr(b)}`);
+  // LO QUE EL TUTOR DICE QUE HACE, SE ESCRIBE ANTES DE ENSEÑAR EL RESULTADO.
+  //
+  // El cliente lo pidió como regla general, con "x/3 + 7 = 12" delante: el
+  // avatar decía "multiplicamos AMBOS lados por 3" y la pizarra saltaba a
+  // "x + 21 = 36" sin enseñar nunca la multiplicación. "No se pueden omitir las
+  // transformaciones intermedias." Así que quitar un denominador son DOS pasos:
+  // la multiplicación escrita —"3 · (x/3 + 7) = 3 · 12"— y su reparto.
+  const entreParentesis = (t) => {
+    const limpio = String(t ?? "").trim().replace(/\s+/g, " ");
+    // Un solo término no necesita paréntesis: "3 · 12", no "3 · (12)".
+    return /[+-]/.test(limpio.replace(/^-/, "")) ? `(${limpio})` : limpio;
+  };
+  if (escala !== 1) {
+    // Un 0,5 no tiene denominador escrito: lo que se quita ahí es el decimal.
+    const estorbo = /\//.test(String(text)) ? "el denominador" : "el decimal";
+    steps.push({
+      explica: `Primero multiplicamos ambos lados por ${escala} para quitar ${estorbo} y trabajar con números enteros.`,
+      escribe: `${escala} · ${entreParentesis(lhs)} = ${escala} · ${entreParentesis(rhs)}`,
+    });
+  }
   if (tieneParentesis || escala !== 1) {
     const partes = [];
     if (tieneParentesis) partes.push("quitamos los paréntesis multiplicando el número de fuera por CADA término de dentro (propiedad distributiva) y juntamos los números sueltos");
-    if (escala !== 1) partes.push(`multiplicamos AMBOS lados por ${escala} para quitar el denominador y trabajar con números enteros`);
+    if (escala !== 1) partes.push(`repartimos ese ${escala} en cada término`);
     steps.push({
-      explica: `Primero ${partes.join(", y luego ")}.`,
+      explica: `${escala !== 1 && !tieneParentesis ? "Ahora" : "Primero"} ${partes.join(", y luego ")}.`,
       escribe: `${ladoStr(coefL, konstL)} = ${ladoStr(coefR, konstR)}`,
     });
   }
@@ -714,7 +734,18 @@ export function solveLinearSteps(text) {
   // Paso EXTRA (dos lados): mover los términos con x del lado derecho a la izquierda.
   if (rhsX !== 0) {
     const op = rhsX > 0 ? `restamos ${xc(rhsX)}${v}` : `sumamos ${xc(-rhsX)}${v}`;
-    steps.push({ explica: `Primero juntamos los términos con ${v} en el lado izquierdo: ${op} en ambos lados.`, escribe: `${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}` });
+    // La misma regla: primero se ESCRIBE lo que se resta (o suma) en los dos
+    // lados, y en el renglón siguiente el resultado de juntarlos.
+    const conLaResta = (a, b) =>
+      `${ladoStr(a, b)} ${rhsX > 0 ? "-" : "+"} ${xc(Math.abs(rhsX))}${v}`;
+    steps.push({
+      explica: `Primero juntamos los términos con ${v} en el lado izquierdo: ${op} en los dos lados.`,
+      escribe: `${conLaResta(coefL, konstL)} = ${conLaResta(coefR, konstR)}`,
+    });
+    steps.push({
+      explica: `Al juntarlos queda ${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}.`,
+      escribe: `${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}`,
+    });
   }
   if (xTerms > 1 && rhsX === 0) {
     const combined = konst === 0

@@ -751,7 +751,7 @@ async function abrirClase({ etapa, curso, tema, nivel, viewport = { width: 1366,
   let voz = null;
   for (let k = 0; k < 20 && !voz; k++) {
     voz = await p.evaluate(() =>
-      [...document.querySelectorAll("p, span, div")].map((e) => (e.textContent ?? "").trim()).find((t) => /^voz: |^sin TTS|^voz del sistema/.test(t)),
+      [...document.querySelectorAll("p, span, div")].map((e) => (e.textContent ?? "").trim()).find((t) => /^voz(:| del | neuronal)|^sin TTS/.test(t)),
     );
     if (!voz) await p.waitForTimeout(250);
   }

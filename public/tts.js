@@ -195,6 +195,8 @@ export class TTS {
     /** `null` mientras no se sabe; `true`/`false` cuando el servidor contesta. */
     this.neural = null;
     this.proveedor = null;
+    this.motivo = null;
+    this.claveQueFalta = null;
     this._sonda = null;
     /** Frase → URL del audio ya descargado (una clase repite mucho). */
     this._audios = new Map();
@@ -301,6 +303,11 @@ export class TTS {
       .then((d) => {
         this.neural = Boolean(d?.disponible);
         this.proveedor = d?.proveedor ?? null;
+        // POR QUÉ NO SUENA LA NEURONAL, GUARDADO PARA DECIRLO EN PANTALLA. El
+        // cliente auditó la interfaz, leyó "voz: Microsoft Raul" y tuvo que
+        // revisar el código para saber que faltaba una clave. Eso se dice aquí.
+        this.motivo = d?.motivo ?? null;
+        this.claveQueFalta = Array.isArray(d?.variables?.google) ? d.variables.google[0] : null;
         // CON VOZ NEURONAL, LA DEL NAVEGADOR SE APAGA. El cliente lo pidió con
         // esas palabras —"desactivando la síntesis local del navegador"—: no es
         // sólo preferir una, es que la metálica no puede colarse a mitad de la
@@ -321,8 +328,11 @@ export class TTS {
   describe() {
     if (!this.enabled) return "sin TTS (subtítulos)";
     if (this.neural) return `voz neuronal (${this.proveedor ?? "servidor"})`;
-    if (!this.voice) return "voz del sistema (sin es-ES)";
-    return `voz: ${this.voice.name}${this.masculina ? " (masculina)" : " (tono grave)"}`;
+    // Sin clave en el servidor, la pantalla lo DICE: es la diferencia entre
+    // "suena mal" y "falta esto por configurar".
+    const falta = this.motivo === "sin_configurar" ? ` · sin voz neuronal: falta ${this.claveQueFalta ?? "GOOGLE_TTS_API_KEY"} en el servidor` : "";
+    if (!this.voice) return `voz del sistema (sin es-ES)${falta}`;
+    return `voz del navegador: ${this.voice.name}${falta}`;
   }
 
   /**

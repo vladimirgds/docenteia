@@ -61,6 +61,7 @@ import {
   processLSG,
   repararEquivalencias,
   sincronizarPasosConVoz,
+  solveLinearSteps,
   TIPOS_OPERACION as TIPOS_OPERACION_SERVIDOR,
 } from "../src/preLight.js";
 import {
@@ -4878,6 +4879,61 @@ if (!vivo) {
     "la salud del servicio informa del estado de la voz en la misma mirada",
     /voz: vozConfigurada/.test(readFileSync(new URL("../app/api/health/route.ts", import.meta.url), "utf8")),
   );
+  check(
+    "y la pantalla dice POR QUÉ no hay voz neuronal, donde el cliente estaba mirando",
+    /this\.motivo = d\?\.motivo/.test(ttsSrc) &&
+      /sin voz neuronal: falta \$\{this\.claveQueFalta/.test(ttsSrc),
+  );
+
+  // TODA OPERACIÓN QUE EL AVATAR NOMBRA SE ESCRIBE ANTES DE ENSEÑAR SU
+  // RESULTADO (regla que pidió el cliente con "x/3 + 7 = 12" delante: el tutor
+  // decía "multiplicamos ambos lados por 3" y la pizarra saltaba a "x + 21 =
+  // 36" sin enseñar nunca la multiplicación).
+  {
+    const dicho = /(multiplicamos|dividimos|restamos|sumamos)\s+(?:ambos|los dos)\s+lados\s+(?:por|entre)?\s*([\d.,/]+|[a-z]?\d*[a-z])?/i;
+    const ecuaciones = ["x/3 + 7 = 12", "0,5x = 4", "5x - 7 = 2x + 5", "2(x + 3) = 16", "2x + 5 = 15", "x/2 + 5 = 12"];
+    const sinEscribir = [];
+    for (const eq of ecuaciones) {
+      const sol = solveLinearSteps(eq);
+      if (!sol) continue;
+      sol.steps.forEach((paso, i) => {
+        const m = dicho.exec(String(paso.explica));
+        if (!m) return;
+        // Dos excepciones, y las dos por cómo se enseña, no por comodidad:
+        //  · dividir entre el coeficiente enseña su resultado en la misma línea
+        //    ("x = 5"), que es como el cliente lo aceptó en su propio dibujo;
+        //  · la cancelación SÍ se escribe, pero la escribe la lección en un
+        //    renglón aparte (`tiempoDeCancelacion`), no este paso.
+        if (/dividimos/i.test(m[1]) || paso.accion?.tipo === "cancelacion") return;
+        const numero = (m[2] ?? "").replace(",", ".");
+        const escrito = String(paso.escribe ?? "");
+        const registrada =
+          escrito.includes(`${numero} ·`) ||
+          escrito.includes(`· ${numero}`) ||
+          escrito.includes(`+ ${numero}`) ||
+          escrito.includes(`- ${numero}`);
+        if (!registrada) sinEscribir.push(`${eq} · paso ${i}: «${paso.explica}» ⇒ «${escrito}»`);
+      });
+    }
+    check(
+      "lo que el tutor dice que hace con los dos lados queda escrito en la pizarra, no sólo dicho",
+      sinEscribir.length === 0,
+      sinEscribir.slice(0, 3).join(" | "),
+    );
+    check(
+      "x/3 + 7 = 12 enseña la multiplicación, su reparto y luego el despeje",
+      (() => {
+        const p = (solveLinearSteps("x/3 + 7 = 12")?.steps ?? []).map((x) => x.escribe);
+        return p[0] === "3 · (x/3 + 7) = 3 · 12" && p[1] === "x + 21 = 36" && p[2] === "x = 15";
+      })(),
+      (solveLinearSteps("x/3 + 7 = 12")?.steps ?? []).map((x) => x.escribe).join(" | "),
+    );
+    check(
+      "y una ecuación con x en los dos lados escribe la resta antes de juntar los términos",
+      (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe === "5x - 7 - 2x = 2x + 5 - 2x",
+      (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe,
+    );
+  }
 }
 
 // ── EL DESPLIEGUE TIENE QUE PODER CONSTRUIR LA APLICACIÓN ───────────────────

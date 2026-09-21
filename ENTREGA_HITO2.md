@@ -2955,3 +2955,83 @@ matemáticas recalculadas, 0 incorrectas** (las del renglón nuevo, incluidas).
 100; hito 1 124; diagnóstico por nivel 94; aceptación **24/24**; diagnóstico,
 sesiones, paso 1 y frontend sin fallos; barrido de **200 sesiones y 1.800
 turnos, 0 violaciones**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 42. Séptima ronda: lo que el avatar dice, escrito; y la voz, diagnosticada en pantalla
+
+### 1. «Escribir en la pizarra exactamente lo que narra el avatar»
+
+El cliente lo cazó con `x/3 + 7 = 12`: el tutor decía «multiplicamos AMBOS lados
+por 3» y la pizarra **saltaba directamente a `x + 21 = 36`**. La multiplicación
+—la operación que el avatar acababa de nombrar— no se escribía en ninguna parte.
+Y puso la regla general: *toda operación que el avatar mencione debe quedar
+registrada visualmente antes de enseñar el resultado*.
+
+Era verdad, y venía del motor: el paso de preparación calculaba la
+transformación y escribía **sólo su resultado**. Ahora son dos pasos, y el mismo
+criterio se aplicó donde se cometía el mismo silencio:
+
+| Ecuación | Antes | Ahora |
+| --- | --- | --- |
+| `x/3 + 7 = 12` | `x + 21 = 36` | `3 · (x/3 + 7) = 3 · 12` → `x + 21 = 36` |
+| `0,5x = 4` | `x = 8` | `2 · 0.5x = 2 · 4` → `x = 8` |
+| `5x − 7 = 2x + 5` | `3x − 7 = 5` | `5x − 7 − 2x = 2x + 5 − 2x` → `3x − 7 = 5` |
+
+Con la cancelación en dos renglones (§41), la clase de `x/3 + 7 = 12` termina
+exactamente con el flujo que dibujó el cliente:
+
+```
+x/3 + 7 = 12                 (enunciado)
+3 · (x/3 + 7) = 3 · 12       ← la multiplicación, escrita
+x + 21 = 36                  ← el reparto
+x + 21 − 21 = 36 − 21        ← la resta uniforme, escrita
+x + 2̶1̶ − 2̶1̶ = 36 − 21        ← la cancelación, tachada
+x = 15                       ← y el recuadro final
+```
+
+**Dos excepciones, y las dos razonadas.** Dividir entre el coeficiente enseña su
+resultado en la misma línea (`2x = 10` → `x = 5`): es como el propio cliente lo
+dibujó en su flujo de referencia. Y la resta de la cancelación sí se escribe,
+pero la escribe la lección en su renglón aparte, no el paso del motor.
+
+La regla queda comprobada, y de forma general: `qa/hito2.mjs` recorre las
+ecuaciones de todas las formas, busca en lo que dice el tutor cualquier
+«multiplicamos / restamos / sumamos … en los dos lados» y **exige que ese mismo
+número aparezca escrito en la línea de ese paso**. Si alguien vuelve a narrar
+una operación sin escribirla, la batería lo dice.
+
+### 2. La voz: el servidor ya contesta, y ahora la pantalla también
+
+El cliente leyó en la interfaz «voz: Microsoft Raul - Spanish (Mexico)» y dedujo
+—bien— que `public/tts.js` estaba cayendo al respaldo. La causa es la de
+siempre, y ahora la confirma el propio despliegue:
+
+```
+GET https://docenteia-nu.vercel.app/api/voz
+{"disponible":false,"motivo":"sin_configurar","variables":{"google":["GOOGLE_TTS_API_KEY",…]}}
+```
+
+**No hay ninguna clave configurada en Vercel.** El código hace lo correcto. Lo
+que faltaba era decirlo donde el cliente estaba mirando: bajo el avatar se lee
+ahora
+
+> voz del navegador: Microsoft Raul · **sin voz neuronal: falta
+> GOOGLE_TTS_API_KEY en el servidor**
+
+Con la clave puesta, esa misma línea dirá «voz neuronal (google)» y la síntesis
+del navegador queda apagada. Y para saber si una clave puesta FUNCIONA —que no
+es lo mismo que estar puesta— basta `GET /api/voz?probar=1`, que sintetiza una
+palabra y devuelve la respuesta del proveedor.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **94.798 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **733**, con la
+regla nueva —lo que el tutor dice que hace con los dos lados tiene que estar
+escrito— comprobada sobre todas las formas de ecuación. Rigor: **32.608
+afirmaciones matemáticas recalculadas, 0 incorrectas** (las de los renglones
+nuevos, incluidas). `qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826;
+`qa/navegador.mjs`: 87; matemáticas 100; hito 1 124; diagnóstico por nivel 94;
+aceptación **24/24**; diagnóstico, sesiones, paso 1 y frontend sin fallos;
+barrido de **200 sesiones y 1.800 turnos, 0 violaciones**. `tsc --noEmit` y
+`npm run build`, limpios.

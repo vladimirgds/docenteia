@@ -1388,7 +1388,9 @@ async function unitTests() {
     check(`coma decimal: solveLinearSteps('0,5x = 4') muestra la ecuación íntegra (no '5x = 4')`,
       solveLinearSteps("0,5x = 4")?.original === "0.5x = 4", `→ ${solveLinearSteps("0,5x = 4")?.original}`);
     check(`coma decimal: '0,5x = 4' se ENSEÑA quitando el decimal (paso de multiplicar)`,
-      /multiplicamos ambos lados por 2/i.test((solveLinearSteps("0,5x = 4")?.steps || []).map((s) => s.explica).join(" ")),
+      /multiplicamos (ambos|los dos) lados por 2/i.test((solveLinearSteps("0,5x = 4")?.steps || []).map((s) => s.explica).join(" ")) &&
+        // Y ese paso se ESCRIBE en la pizarra, no sólo se dice (regla del cliente).
+        (solveLinearSteps("0,5x = 4")?.steps || []).some((s) => /^2 · /.test(String(s.escribe))),
       `→ ${(solveLinearSteps("0,5x = 4")?.steps || []).map((s) => s.explica).join(" | ")}`);
     check(`coma decimal en constante: '3x = 7,5' → 5/2 (correcto)`, checkAnswer(solveLinearFromText("3x = 7,5"), "5/2").correct === true, `→ ${solveLinearFromText("3x = 7,5")}`);
 
