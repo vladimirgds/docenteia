@@ -544,12 +544,22 @@ function instalarMedidor() {
       const iguales = [...formula.querySelectorAll(".katex-html *")]
         .filter((el) => el.childElementCount === 0 && (el.textContent ?? "").trim() === "=" && visible(el))
         .map(R);
-      // El primer igual de la línea: a su derecha no puede haber ninguna marca.
+      // El primer igual de la línea. Las marcas de una cancelación tienen que
+      // estar TODAS del mismo lado de él: una constante se cancela a la
+      // izquierda ("2x + 6 − 6 = 16 − 6") y los términos con incógnita a la
+      // derecha ("2x + 8 − 3x = 3x − 1 − 3x"). Lo que no puede pasar nunca —y es
+      // lo que fotografió el cliente— es que una marca empiece en un miembro y
+      // acabe en el otro.
       const igual = iguales.sort((a, b) => a.y - b.y || a.x - b.x)[0] ?? null;
+      const cajas = marcas.map(R);
+      const aLaDerecha = igual ? cajas.filter((b) => b.x >= igual.x + igual.w).length : 0;
       out.cancelaciones.push({
         texto: textoVisible(formula),
         marcas: marcas.length,
-        trasElIgual: igual ? marcas.map(R).filter((b) => b.x >= igual.x + igual.w).length : 0,
+        // Repartidas entre los dos miembros = una marca cruza el igual.
+        trasElIgual: igual && aLaDerecha > 0 && aLaDerecha < cajas.length ? aLaDerecha : 0,
+        // Y ninguna marca, por sí sola, puede empezar antes del igual y acabar después.
+        aCaballo: igual ? cajas.filter((b) => b.x < igual.x && b.x + b.w > igual.x + igual.w).length : 0,
         clases: marcas.map((m) => [...m.classList].find((c) => c.startsWith("pz-cancela-")) ?? "").filter(Boolean),
       });
     }
@@ -828,7 +838,7 @@ function comprobarSiempre(m, clase) {
 
   // R3-01: ninguna marca de cancelación a la derecha del igual.
   for (const c of m.cancelaciones) {
-    verificar("R3-01", "la cancelación se tacha DENTRO de su miembro, sin cruzar el igual", c.trasElIgual === 0, `«${c.texto}»: ${c.trasElIgual} de ${c.marcas} marcas pasadas del igual (${clase})`);
+    verificar("R3-01", "la cancelación se tacha DENTRO de su miembro, sin cruzar el igual", c.trasElIgual === 0 && (c.aCaballo ?? 0) === 0, `«${c.texto}»: ${c.trasElIgual} de ${c.marcas} marcas repartidas entre los dos miembros, ${c.aCaballo ?? 0} a caballo del igual (${clase})`);
     // Antes de destaparse, sólo está el término; al destaparse, su opuesto al lado.
     verificar("R3-01", "…y lo que se tacha es el término y su opuesto, nunca el número del otro miembro", JSON.stringify([...new Set(c.clases)].sort()) === JSON.stringify(c.clases.length > 1 ? ["pz-cancela-opuesto", "pz-cancela-termino"] : ["pz-cancela-termino"]), `${c.clases.join(",")} (${clase})`);
   }

@@ -649,6 +649,26 @@ export function computeAnswer(text) {
 
 // Genera los PASOS de resolución de una ecuación lineal simple, para el modo demo
 // (sin IA): permite que "2x + x = 12" muestre una solución real paso a paso.
+/**
+ * LO QUE SE DICE AL CANCELAR LOS TÉRMINOS EN x.
+ *
+ * Gemela de `fraseDeCancelacionDeIncognita` (lib/leccion/animacion.ts): las dos
+ * construyen la MISMA frase con los mismos números, una para que la diga el
+ * tutor y otra para que la pizarra la reconozca y dispare el tachado. Se repite
+ * aquí porque este módulo es JavaScript de servidor y no importa la interfaz;
+ * qa/hito2.mjs comprueba que digan exactamente lo mismo.
+ */
+export function fraseCancelacionIncognita(izquierdo, derecho, v) {
+  const conVariable = (k) => (k === 1 ? v : k === -1 ? `-${v}` : `${k}${v}`);
+  const sinSigno = (k) => conVariable(Math.abs(k));
+  const queda = izquierdo - derecho;
+  return (
+    `A la derecha se cancela ${derecho > 0 ? "" : "-"}${sinSigno(derecho)} con ` +
+    `${derecho > 0 ? "-" : "+"}${sinSigno(derecho)}, y a la izquierda ${conVariable(izquierdo)} ` +
+    `${derecho > 0 ? "menos" : "más"} ${sinSigno(derecho)} es ${conVariable(queda)}.`
+  );
+}
+
 // Devuelve { original, steps:[{explica, escribe}], answer, varName } o null.
 export function solveLinearSteps(text) {
   const eq = parseEcuacionLineal(text);
@@ -738,13 +758,22 @@ export function solveLinearSteps(text) {
     // lados, y en el renglón siguiente el resultado de juntarlos.
     const conLaResta = (a, b) =>
       `${ladoStr(a, b)} ${rhsX > 0 ? "-" : "+"} ${xc(Math.abs(rhsX))}${v}`;
+    // El término que se quita de los dos lados, escrito como está en la línea
+    // ("3x"): es lo que la pizarra tiene que señalar en cada uno de los dos
+    // tiempos —cuando se escribe la resta y cuando se tacha el par—.
+    const terminoX = `${xc(Math.abs(rhsX))}${v}`;
     steps.push({
       explica: `Primero juntamos los términos con ${v} en el lado izquierdo: ${op} en los dos lados.`,
       escribe: `${conLaResta(coefL, konstL)} = ${conLaResta(coefR, konstR)}`,
+      accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
     });
     steps.push({
-      explica: `Al juntarlos queda ${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}.`,
+      // La frase que TACHA, idéntica a la que compone la pizarra
+      // (`fraseDeCancelacionDeIncognita`). La batería comprueba que no se
+      // separen: si se separan, el tachado llegaría a destiempo.
+      explica: fraseCancelacionIncognita(coefL, coefR, v),
       escribe: `${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}`,
+      accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
     });
   }
   if (xTerms > 1 && rhsX === 0) {

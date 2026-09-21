@@ -33,6 +33,7 @@ import {
   escenaDeDespeje,
   escenaDeLinea,
   escenaDePolinomio,
+  fraseDeCancelacionDeIncognita,
   escenaDeSimplificacion,
   escenaDeTexto,
   escenaDeAmplificacion,
@@ -62,6 +63,7 @@ import {
   repararEquivalencias,
   sincronizarPasosConVoz,
   solveLinearSteps,
+  fraseCancelacionIncognita,
   TIPOS_OPERACION as TIPOS_OPERACION_SERVIDOR,
 } from "../src/preLight.js";
 import {
@@ -741,7 +743,12 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       "…y su cancelación sigue siendo del miembro izquierdo",
       !/pz-cancela/.test(unaLinea.latex.split("&=").slice(1).join("&=")),
     );
-    // En TODO el catálogo de ecuaciones: ninguna marca de cancelación a la derecha del igual.
+    // En TODO el catálogo de ecuaciones: las marcas de una cancelación viven
+    // DENTRO DE UN MISMO MIEMBRO, nunca a caballo del igual. Cuál de los dos
+    // depende de qué se cancele: una constante se cancela a la izquierda
+    // ("2x + 6 − 6 = 16 − 6") y los términos con incógnita, a la derecha
+    // ("2x + 8 − 3x = 3x − 1 − 3x"). Lo que no puede pasar nunca es que una
+    // marca empiece en un miembro y acabe en el otro.
     const cruzan = [];
     for (const nivel of ["facil", "normal", "dificil", "experto"]) {
       const lsg = leccion(linealResueltaLSG({ nivel, concepto: true }));
@@ -750,7 +757,8 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
         const escena = escenaDeLinea({ latex: d.contenido, ...(d.operacion ? { operacion: d.operacion } : {}) }, "x");
         if (!escena?.latex) continue;
         const partes = escena.latex.split("&=").join("=").split("=");
-        if (partes.slice(1).some((p) => /pz-cancela/.test(p))) cruzan.push(d.contenido);
+        const conMarca = partes.filter((p) => /pz-cancela/.test(p)).length;
+        if (conMarca > 1) cruzan.push(d.contenido);
       }
     }
     check("en todo el catálogo de ecuaciones, ninguna cancelación cruza el igual", cruzan.length === 0, cruzan.join(" · "));
@@ -4933,6 +4941,49 @@ if (!vivo) {
       (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe === "5x - 7 - 2x = 2x + 5 - 2x",
       (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe,
     );
+
+    // CADA LÍNEA, CON SU FRASE — Y LA MISMA EN EL MOTOR Y EN LA PIZARRA.
+    //
+    // El cliente fotografió "2(x + 4) = 3x − 1": dos líneas aparecían de golpe
+    // "sin coincidir con lo que dice el avatar". Pasaba porque esas líneas no
+    // llevaban etiqueta: la pizarra las componía como si fueran un polinomio de
+    // derivadas —"miramos el término 2 por x, su coeficiente es 2…"— y no podía
+    // reconocer ninguna frase del tutor, así que no avanzaba con la voz.
+    check(
+      "la frase que tacha los términos con incógnita es la MISMA en el motor y en la pizarra",
+      fraseCancelacionIncognita(2, 3, "x") === fraseDeCancelacionDeIncognita(2, 3, "x") &&
+        fraseCancelacionIncognita(5, 2, "y") === fraseDeCancelacionDeIncognita(5, 2, "y"),
+      `${fraseCancelacionIncognita(2, 3, "x")} ≠ ${fraseDeCancelacionDeIncognita(2, 3, "x")}`,
+    );
+    check(
+      "una ecuación con incógnita a los dos lados NO se cuenta como un polinomio de derivadas",
+      escenaDePolinomio("2x + 8 = 3x - 1", "x") === null && escenaDePolinomio("3x² + 2x", "x") !== null,
+    );
+    {
+      // Toda línea escrita de la lección que el cliente grabó tiene que traer
+      // foco, y su foco tiene que decir lo que el tutor dice en ese momento.
+      const enLeccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
+      const ev = simularLeccion(enLeccion(linealResueltaLSG({ nivel: "dificil", instancia: "2(x + 4) = 3x - 1" })));
+      const escritas = ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir");
+      const sinFoco = escritas
+        .map((e) => ({ texto: e.d.contenido, escena: escenaDeLinea({ latex: e.d.contenido, operacion: e.d.operacion, narracion: e.d.narracion }, "x") }))
+        .filter(({ escena }) => !escena || escena.focos.length === 0 || escena.clase === "polinomio");
+      check(
+        "2(x + 4) = 3x − 1: ninguna línea se queda sin foco ni se compone como un polinomio",
+        sinFoco.length === 0,
+        sinFoco.map((x) => x.texto).join(" · "),
+      );
+      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 3x en los dos lados/i.test(e.d.texto));
+      const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /A la derecha se cancela 3x con -3x/.test(e.d.texto));
+      const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
+      check(
+        "cuando dice «restamos 3x en los dos lados» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
+        iResta >= 0 && iTacha > iResta &&
+          focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
+          focoEn(iTacha)?.tipo === "tachado",
+        `escribir: ${focoEn(iResta)?.tipo}/${focoEn(iResta)?.clase} · tachar: ${focoEn(iTacha)?.tipo}`,
+      );
+    }
   }
 }
 

@@ -406,6 +406,18 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
   const lados = String(texto ?? "").split("=");
   if (lados.length > 2) return null;
 
+  // UNA ECUACIÓN CON INCÓGNITA A LOS DOS LADOS NO ES UN POLINOMIO QUE RECORRER.
+  //
+  // "2x + 8 = 3x - 1" caía aquí por descarte y la pizarra lo contaba como si
+  // fuera una derivada: "miramos el término 2 por x, su coeficiente es 2…",
+  // mientras el tutor hablaba de otra cosa. El cliente lo fotografió: dos
+  // líneas que "aparecen de golpe, sin coincidir con lo que dice el avatar"
+  // —porque la pizarra no podía reconocer ninguna de esas frases—.
+  if (lados.length === 2) {
+    const conIncognita = (t: string) => /[a-zA-Z]/.test(String(t).replace(/[a-zA-Z]+\s*\(/g, ""));
+    if (conIncognita(lados[0]) && conIncognita(lados[1])) return null;
+  }
+
   const terminos = leerTerminos(lados[0]);
   if (!terminos) return null;
   // Un número suelto no es un polinomio que animar término a término.
@@ -747,6 +759,149 @@ export function escenaDeCancelacion(texto: string, id: string): Escena | null {
         piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
         tipo: "tachado",
         narracion: `A la izquierda se cancela ${signo(b)}${Math.abs(b)} con ${signo(opuesto)}${Math.abs(opuesto)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c + compensa}.`,
+        etiqueta: "se cancelan",
+      },
+    ],
+  };
+}
+
+/**
+ * LA FRASE CON LA QUE SE TACHAN LOS TÉRMINOS EN x.
+ *
+ * Se construye aquí y en el motor (`solveLinearSteps`) con los mismos números,
+ * y la batería comprueba que las dos digan exactamente lo mismo: si se separan,
+ * la pizarra tacharía cuando el tutor ya está en otra cosa.
+ */
+export function fraseDeCancelacionDeIncognita(
+  izquierdo: number,
+  derecho: number,
+  variable: string,
+): string {
+  const conVariable = (k: number) => (k === 1 ? variable : k === -1 ? `-${variable}` : `${k}${variable}`);
+  const sinSigno = (k: number) => conVariable(Math.abs(k));
+  const queda = izquierdo - derecho;
+  return (
+    `A la derecha se cancela ${derecho > 0 ? "" : "-"}${sinSigno(derecho)} con ` +
+    `${derecho > 0 ? "-" : "+"}${sinSigno(derecho)}, y a la izquierda ${conVariable(izquierdo)} ` +
+    `${derecho > 0 ? "menos" : "más"} ${sinSigno(derecho)} es ${conVariable(queda)}.`
+  );
+}
+
+/**
+ * EL PRIMER TIEMPO CON LA INCÓGNITA: "2x + 8 = 3x − 1" → se escribe el −3x.
+ *
+ * Lo mismo que se hace con una constante, pero con el término en x: la línea
+ * que está en la pizarra destapa la resta en los DOS miembros —una caja por
+ * miembro, ninguna cruza el igual— mientras la voz cuenta que se resta 3x a los
+ * dos lados. El tachado llega en el renglón siguiente.
+ *
+ * Que la línea EVOLUCIONE (y no se quede como estaba) es además lo que evita
+ * que se vea dos veces la misma igualdad: arriba a la izquierda, como resultado
+ * de repartir el paréntesis, y aquí otra vez sin cambio alguno.
+ */
+export function escenaDeRestaDeIncognita(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // ax + b = cx + d  (con b y d opcionales)
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)?=(-?\d*)\2([+-]\d+)?$/);
+  if (!m) return null;
+
+  const num = (crudo: string) => (crudo === "" || crudo === "+" ? 1 : crudo === "-" ? -1 : Number(crudo));
+  const [, aCrudo, variable, bCrudo, cCrudo, dCrudo] = m;
+  const a = num(aCrudo);
+  const b = bCrudo ? Number(bCrudo) : 0;
+  const c = num(cCrudo);
+  const d = dCrudo ? Number(dCrudo) : 0;
+  if (!Number.isFinite(a) || !Number.isFinite(c) || c === 0 || a === c) return null;
+
+  const conVar = (k: number) => (k === 1 ? variable : k === -1 ? `-${variable}` : `${k}${variable}`);
+  const abs = (k: number) => (Math.abs(k) === 1 ? variable : `${Math.abs(k)}${variable}`);
+  const signo = (n: number) => (n > 0 ? "+" : "-");
+  // Se quita lo que hay a la derecha: si es +3x se resta 3x, y si es -3x se suma.
+  const quita = `${c > 0 ? "-" : "+"} ${marcar("pz-uniforme pz-uniforme-IZQ", abs(c))}`;
+
+  const izquierda = `${conVar(a)}${b ? ` ${signo(b)} ${Math.abs(b)}` : ""} ${marcar("pz-rev-0", quita.replace("IZQ", "izq"))}`;
+  const derecha = `${conVar(c)}${d ? ` ${signo(d)} ${Math.abs(d)}` : ""} ${marcar(
+    "pz-rev-0",
+    quita.replace("IZQ", "der"),
+  )}`;
+
+  return {
+    id,
+    texto,
+    latex: `${izquierda} = ${derecha}`,
+    narracion: `Juntamos los términos con ${variable}.`,
+    clase: "despeje",
+    focos: [
+      {
+        clase: "pz-uniforme",
+        piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
+        tipo: "caja",
+        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)} en los dos lados: lo escribimos en los dos miembros.`,
+      },
+    ],
+  };
+}
+
+/**
+ * EL RENGLÓN QUE TACHA LOS TÉRMINOS EN x: "2x + 8 − 3x = 3x − 1 − 3x".
+ *
+ * El mismo trato que la cancelación de una constante, pero con la incógnita: lo
+ * que se cancela está a la DERECHA —el 3x que había y el −3x que acabamos de
+ * escribir— y las dos marcas se quedan dentro de ese miembro, sin cruzar el
+ * igual. A la izquierda no se tacha nada: ahí los términos se suman.
+ */
+export function escenaDeCancelacionDeIncognita(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // a·x + b - c·x = c·x + d - c·x
+  const m = limpio.match(
+    /^(-?\d*)([a-zA-Z])([+-]\d+)?([+-]\d*)\2=(-?\d*)\2([+-]\d+)?([+-]\d*)\2$/,
+  );
+  if (!m) return null;
+
+  const num = (crudo: string, porDefecto = 1) => {
+    if (crudo === "" || crudo === "+") return porDefecto;
+    if (crudo === "-") return -porDefecto;
+    const n = Number(crudo);
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const [, aCrudo, variable, bCrudo, restaIzq, cCrudo, dCrudo, restaDer] = m;
+  const a = num(aCrudo);
+  const b = bCrudo ? Number(bCrudo) : 0;
+  const c = num(cCrudo);
+  const d = dCrudo ? Number(dCrudo) : 0;
+  const quitadoIzq = num(restaIzq);
+  const quitadoDer = num(restaDer);
+  if (![a, c, quitadoIzq, quitadoDer].every(Number.isFinite)) return null;
+  // Lo que se quita tiene que ser lo MISMO en los dos lados, y ser el opuesto
+  // del término que hay a la derecha: si no, esto no es lo que se está contando.
+  if (quitadoIzq !== quitadoDer || quitadoDer !== -c) return null;
+
+  const conVar = (k: number, marca?: string) => {
+    const cuerpo = k === 1 ? variable : k === -1 ? `-${variable}` : `${k}${variable}`;
+    return marca ? marcar(marca, cuerpo) : cuerpo;
+  };
+  const signo = (n: number) => (n > 0 ? "+" : "-");
+  const abs = (k: number) => (Math.abs(k) === 1 ? variable : `${Math.abs(k)}${variable}`);
+
+  const izquierda =
+    `${conVar(a)}${b ? ` ${signo(b)} ${Math.abs(b)}` : ""} ${signo(quitadoIzq)} ${abs(quitadoIzq)}`;
+  const derecha =
+    `${marcar("pz-cancela pz-cancela-termino", conVar(c))}` +
+    `${d ? ` ${signo(d)} ${Math.abs(d)}` : ""} ` +
+    `${signo(quitadoDer)} ${marcar("pz-cancela pz-cancela-opuesto", abs(quitadoDer))}`;
+
+  return {
+    id,
+    texto,
+    latex: `${izquierda} = ${derecha}`,
+    narracion: "Se cancelan los términos con la incógnita.",
+    clase: "despeje",
+    focos: [
+      {
+        clase: "pz-cancela",
+        piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
+        tipo: "tachado",
+        narracion: fraseDeCancelacionDeIncognita(a, c, variable),
         etiqueta: "se cancelan",
       },
     ],
@@ -1346,7 +1501,11 @@ const COMPOSITOR: Record<
   // los dos quedan a la vista al terminar (petición del cliente: los pasos no
   // se sobrescriben, se apilan).
   cancelacion: (t, id) =>
-    escenaDeCancelacion(t, id) ?? escenaDeDespeje(t, id, { soloEscritura: true }) ?? escenaDeSimplificacion(t, id),
+    escenaDeCancelacion(t, id) ??
+    escenaDeCancelacionDeIncognita(t, id) ??
+    escenaDeDespeje(t, id, { soloEscritura: true }) ??
+    escenaDeRestaDeIncognita(t, id) ??
+    escenaDeSimplificacion(t, id),
   amplificacion: (t, id) => escenaDeAmplificacion(t, id),
   "suma-fracciones": (t, id) => escenaDeSumaDeFracciones(t, id),
   distributiva: (t, id) => escenaDeDistributiva(t, id),

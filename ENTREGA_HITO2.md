@@ -3035,3 +3035,81 @@ nuevos, incluidas). `qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826;
 aceptación **24/24**; diagnóstico, sesiones, paso 1 y frontend sin fallos;
 barrido de **200 sesiones y 1.800 turnos, 0 violaciones**. `tsc --noEmit` y
 `npm run build`, limpios.
+
+
+## 43. Octava ronda: las líneas que aparecían «de golpe» y no coincidían con la voz
+
+El cliente fotografió `2(x + 4) = 3x − 1` y rodeó en rojo dos renglones: «esto
+apareció de golpe, sin coincidir con lo que dice el avatar». Tenía razón, y la
+causa era peor de lo que parecía.
+
+### Qué pasaba
+
+Las dos líneas que se añadieron en la ronda anterior —`2x + 8 = 3x − 1` y
+`2x + 8 − 3x = 3x − 1 − 3x`— **no llevaban etiqueta de operación**. Sin etiqueta,
+la pizarra deduce la escena por descarte… y caían en el compositor de
+**polinomios**, que es el de las derivadas. El resultado: la pizarra las contaba
+como «miramos el término 2 por x, su coeficiente es 2, miramos el término 8…»,
+frases que el tutor no dice nunca.
+
+Y de ahí salían los dos síntomas a la vez:
+
+- **No coincidían con la voz**, porque la pizarra avanza reconociendo lo que se
+  dice, y ninguna de esas frases se decía;
+- **aparecían de golpe**, porque desde la corrección de «no pintes lo que aún no
+  has explicado», una línea cuya escena no se alcanza **no se dibuja**: las dos
+  esperaban calladas y saltaban juntas cuando el puntero por fin pasaba.
+
+### Qué se ha hecho
+
+1. **Una ecuación con incógnita a los dos lados ya no se compone como un
+   polinomio de derivadas.** `escenaDePolinomio` la rechaza: era una deducción
+   por descarte que sólo podía contar algo falso.
+2. **Los dos pasos nuevos llevan su etiqueta**, y con ella dos escenas propias,
+   hermanas de las que ya existían para las constantes:
+   - `escenaDeRestaDeIncognita` — sobre `2x + 8 = 3x − 1` **escribe** el `− 3x` en
+     los dos miembros, con una caja por miembro, mientras la voz dice «restamos
+     3x en los dos lados»;
+   - `escenaDeCancelacionDeIncognita` — sobre `2x + 8 − 3x = 3x − 1 − 3x` **tacha**
+     el par que se va, que aquí está en el miembro DERECHO, cuando la voz dice
+     «a la derecha se cancela 3x con −3x, y a la izquierda 2x menos 3x es −x».
+3. Y esa frase la construyen el motor y la pizarra por separado, con los mismos
+   números: la batería comprueba que sean **idénticas**, como ya se hacía con la
+   cancelación de constantes.
+
+Además, que la primera línea EVOLUCIONE —que destape el `− 3x` en vez de quedarse
+igual— quita de paso el efecto de ver dos veces la misma igualdad: arriba a la
+izquierda como resultado de repartir el paréntesis, y otra vez abajo sin cambio.
+
+La clase de `2(x + 4) = 3x − 1` queda así, un renglón por frase:
+
+```
+2(x + 4) = 3x − 1        el enunciado, con el reparto animado
+2x + 8 − 3x = 3x − 1 − 3x   ← «restamos 3x en los dos lados» (cajas)
+2x + 8 − 3̶x̶ = 3̶x̶ − 1 − 3x   ← «a la derecha se cancela 3x con −3x…» (tachado)
+−x + 8 − 8 = −1 − 8       ← «restamos 8 en los dos lados» (cajas)
+−x + 8̶ − 8̶ = −1 − 8       ← «a la izquierda se cancela +8 con −8…» (tachado)
+−x = −9   ·   x = 9       ← y el recuadro final
+```
+
+### Lo que ahora impide que vuelva a pasar
+
+- `qa/hito2.mjs`: **ninguna línea escrita de esa lección puede quedarse sin foco
+  ni componerse como un polinomio**, y se comprueba que al decir «restamos 3x en
+  los dos lados» la pizarra escribe, y que sólo al decir que se cancela, tacha.
+- `qa/rigor.mjs` audita ahora las frases nuevas —86 + 86 afirmaciones— con las
+  mismas reglas que las demás: el término que se quita es el que está al otro
+  lado, el verbo corresponde a su signo, y lo que queda al juntarlos es exacto.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **94.433 comprobaciones y 0
+fallos**, 166 capturas —con `R3-01` generalizada: las marcas de una cancelación
+tienen que estar todas del mismo lado del igual, sea el izquierdo (constantes) o
+el derecho (términos con incógnita), y ninguna puede quedar a caballo—.
+`qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **737**. Rigor: **31.466 afirmaciones
+matemáticas recalculadas, 0 incorrectas**, con las 172 nuevas de la cancelación
+con incógnita. `qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826; `qa/navegador.mjs`:
+87; matemáticas 100; hito 1 124; diagnóstico por nivel 94; aceptación **24/24**;
+diagnóstico, sesiones, paso 1 y frontend sin fallos; barrido de **200 sesiones y
+1.800 turnos, 0 violaciones**. `tsc --noEmit` y `npm run build`, limpios.

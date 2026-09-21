@@ -568,6 +568,48 @@ function juzgarPie(foco, escena, donde, indice) {
     }
   }
 
+  // "Restamos 3x en los dos lados": cuando lo que se quita lleva incógnita, el
+  // término tiene que ser el que está AL OTRO LADO del igual, y el verbo, el que
+  // corresponde a su signo.
+  const quitaIncognita = frase.match(/^(Restamos|Sumamos) (-?\d*[a-z]) en los dos lados/i);
+  if (quitaIncognita && String(escena.texto ?? "").includes("=")) {
+    const der = String(escena.texto).replace(/[−–—]/g, "-").split("=")[1] ?? "";
+    const suyo = (terminosDe(der) ?? []).find((t) => t.variable);
+    if (suyo) {
+      anotar("la resta que junta los términos con la incógnita");
+      const esperado = suyo.negativo ? "Sumamos" : "Restamos";
+      const escrito = `${suyo.coeficiente && suyo.coeficiente !== "1" ? suyo.coeficiente : ""}${suyo.variable}`;
+      check(
+        `se quita el término en ${suyo.variable} que hay al otro lado (${donde})`,
+        quitaIncognita[1].toLowerCase() === esperado.toLowerCase() && quitaIncognita[2] === escrito,
+        `${frase} · sobre ${escena.texto} (debería decir «${esperado} ${escrito}»)`,
+      );
+    }
+  }
+
+  // "A la derecha se cancela 3x con -3x, y a la izquierda 2x menos 3x es -x."
+  const cancelaIncognita = frase.match(
+    /^A la derecha se cancela (-?\d*[a-z]) con (-?\d*[a-z]), y a la izquierda (-?\d*[a-z]) (menos|más) (-?\d*[a-z]) es (-?\d*[a-z])\.$/i,
+  );
+  if (cancelaIncognita) {
+    anotar("la cancelación de los términos con la incógnita");
+    const coefDe = (t) => {
+      const m = /^(-?)(\d*)([a-z])$/i.exec(String(t));
+      return m ? Number(`${m[1]}${m[2] || "1"}`) : NaN;
+    };
+    const [, seVa, opuesto, izquierdo, verbo, quitado, queda] = cancelaIncognita;
+    const resta = verbo.toLowerCase() === "menos";
+    const bien =
+      coefDe(seVa) === -coefDe(opuesto) &&
+      coefDe(quitado) === Math.abs(coefDe(seVa)) &&
+      (resta ? coefDe(izquierdo) - coefDe(quitado) : coefDe(izquierdo) + coefDe(quitado)) === coefDe(queda);
+    check(
+      `lo que queda al juntar los términos con la incógnita es correcto (${donde})`,
+      bien,
+      `${frase} · sobre ${escena.texto}`,
+    );
+  }
+
   // "Dividimos los dos lados entre 2."
   const divide = frase.match(/Dividimos los dos lados entre (-?\d+)/i);
   if (divide) {
