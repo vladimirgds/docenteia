@@ -245,9 +245,14 @@ function instalarMedidor() {
       pregunta: Boolean([...document.querySelectorAll("input")].find((i) => /respuesta/i.test(i.placeholder ?? ""))),
       tablero: textoVisible(document.querySelector(".pz-tablero-cuerpo")),
       estados: [...document.querySelectorAll(".pz-elemento")].map((e) => `${e.closest("[data-ambiente]")?.getAttribute("data-ambiente")}:${e.getAttribute("data-papel")}:${e.getAttribute("data-estado")}`).join("|"),
-      // Cada paso, por su fórmula (sin el pie, que cambia con la voz): no puede
-      // haber dos iguales en la pizarra.
+      // Cada paso, por la LÍNEA DEL GUION de la que viene: no puede haber dos
+      // iguales en la pizarra. Se mira la línea y no lo pintado porque los dos
+      // tiempos de una cancelación —"2x + 6 = 16" con la resta ya escrita, y
+      // "2x + 6 − 6 = 16 − 6" tachada— enseñan lo mismo siendo renglones
+      // distintos, y los dos tienen que quedarse (el cliente lo pidió así).
       pasos: [...document.querySelectorAll(".pz-elemento")].map((e) => {
+        const dePanel = e.querySelector("[data-texto]")?.getAttribute("data-texto");
+        if (dePanel) return dePanel.replace(/\s+/g, "");
         const c = e.cloneNode(true);
         c.querySelectorAll(".katex-mathml, .pz-pie, style").forEach((n) => n.remove());
         return (c.textContent ?? "").replace(/\s+/g, "");

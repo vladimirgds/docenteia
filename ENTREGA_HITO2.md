@@ -2869,3 +2869,89 @@ Rigor: **31.476 afirmaciones matemáticas recalculadas, 0 incorrectas**.
 aceptación **24/24**; diagnóstico, sesiones, paso 1 y frontend sin fallos; y el
 barrido de **200 sesiones y 1.800 turnos, 0 violaciones**. `npm ci` limpio,
 `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 41. Sexta ronda: los pasos se apilan de verdad, y la voz dice qué le falta
+
+El cliente resolvió por su cuenta el cruce de entornos, y con eso se pudo
+trabajar sobre lo que de verdad pasa: **no usan Render, usan Vercel**
+(`docenteia-nu.vercel.app`), y esa instalación **sí** estaba sirviendo el último
+commit. La URL de Render que arrastraban las guías era un servicio abandonado de
+agosto, y perseguirla costó dos rondas. Queda dicho para que no vuelva a pasar:
+la dirección que vale es la de Vercel, y `/api/health` la identifica.
+
+Con el entorno claro, los dos problemas que quedaban son reales y están
+corregidos.
+
+### 1. La pizarra sobrescribía el paso en vez de apilarlo
+
+El cliente lo pidió con un dibujo: al terminar la explicación tienen que quedar
+**los cinco renglones a la vista**, uno debajo de otro —la resta escrita en los
+dos lados, la resta cancelada, `2x = 10`, `x = 5` y el recuadro final—. Lo que
+había apilaba cuatro: los dos primeros eran **el mismo renglón**, que primero
+escribía la resta y luego se tachaba encima. El paso se sobrescribía a sí mismo.
+
+**Ahora son dos renglones.** El motor escribe una línea más —la igualdad con la
+resta ya puesta, `2x + 6 − 6 = 16 − 6`— y el tachado se dibuja sobre ella
+(`escenaDeCancelacion` en `lib/leccion/animacion.ts`), mientras la primera se
+queda como estaba. Al acabar, el panel de desarrollo enseña:
+
+```
+2x + 6 − 6 = 16 − 6      ← «Restamos 6 en ambos lados»
+2x + 6̶ − 6̶ = 16 − 6      ← «A la izquierda se cancela +6 con −6…»
+2x = 10
+x = 5
+[5] ✓
+```
+
+Y una trampa que cazó la batería antes de salir: la etiqueta del renglón nuevo
+llevaba el término leído de un texto **con espacios**, así que decía señalar un
+"0" que no está escrito y **el saneado del servidor la descartaba entera** —el
+renglón habría llegado a producción sin tachado—. `qa/hito2.mjs` lo detectó en
+el mismo sitio donde comprueba que ninguna etiqueta se pierde al validar.
+
+### 2. La voz no decía qué le faltaba
+
+El diagnóstico del cliente era exacto: `/api/voz` responde 503 porque **no hay
+ninguna clave configurada en Vercel**, y el reproductor hace lo que debe —volver
+a la voz del navegador—. Lo que estaba mal es que averiguar *qué variable hacía
+falta* obligó a leer el código fuente en producción. Eso ya lo contesta el
+servicio:
+
+| Llamada | Qué responde |
+| --- | --- |
+| `GET /api/voz` | si está apagada: `motivo: "sin_configurar"` y **los nombres de variable** que acepta |
+| `GET /api/voz?probar=1` | con clave puesta: sintetiza una palabra y dice si el proveedor **la acepta** (`prueba: "ok"`) o la rechaza, con el motivo |
+| `GET /api/health` | el mismo estado, en el campo `voz`, sin abrir otro endpoint |
+
+Y se aceptan los nombres que uno escribe de memoria —`GOOGLE_TTS_KEY`,
+`ELEVEN_LABS_API_KEY`, `XI_API_KEY`…—: una clave bien puesta con otro nombre ya
+no se ignora en silencio, y la respuesta dice **con cuál** se encontró.
+
+### Sobre «una integración que no dependa de cuotas»
+
+El cliente pidió, si no hay credenciales, «una integración que no dependa de
+cuotas bloqueadas». Hay que ser claro: **no existe una voz neuronal seria y
+gratuita sin credencial**. Lo que circula —el servicio de lectura de Edge, el
+TTS interno del traductor de Google— son **endpoints privados sin documentar**,
+que se usan con tokens obtenidos por ingeniería inversa: se caen sin aviso,
+quedan fuera de los términos de servicio del proveedor y no se pueden poner en
+el producto de un cliente que factura. No se ha hecho, a propósito.
+
+Lo que sí hay, y es la vía correcta: **Google Cloud Text-to-Speech tiene nivel
+gratuito mensual** (en el momento de escribir esto, un millón de caracteres para
+voces Neural2). Una clase entera gasta unos pocos miles de caracteres, así que
+el uso normal cabe holgadamente dentro de ese nivel. Hace falta crear la clave
+una vez y pegarla en Vercel como `GOOGLE_TTS_API_KEY`; desde ese momento el
+tutor habla con voz neuronal y la síntesis del navegador queda apagada.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **94.489 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **729**, con
+los renglones apilados y el diagnóstico de la voz. Rigor: **31.930 afirmaciones
+matemáticas recalculadas, 0 incorrectas** (las del renglón nuevo, incluidas).
+`qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826; `qa/navegador.mjs`: 87; matemáticas
+100; hito 1 124; diagnóstico por nivel 94; aceptación **24/24**; diagnóstico,
+sesiones, paso 1 y frontend sin fallos; barrido de **200 sesiones y 1.800
+turnos, 0 violaciones**. `tsc --noEmit` y `npm run build`, limpios.

@@ -412,6 +412,11 @@ export function PizarraAnimada({
       // etiquetado por el motor se pinta con su etiqueta.
       data-origen={escena.origen}
       data-gesto={escena.clase}
+      // De qué LÍNEA del guion viene esta escena. Dos renglones pueden acabar
+      // enseñando lo mismo —la resta escrita y la resta tachada son la misma
+      // igualdad— y sin esto no hay forma de distinguir desde fuera esos dos
+      // tiempos de un paso repetido de verdad.
+      data-texto={escena.texto}
       data-estado={estado}
     >
       <div

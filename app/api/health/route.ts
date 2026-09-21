@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { salud } from "@/src/queryCore.js";
+import { configuracionDeVoz } from "@/lib/voz/config";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import catalogoOficial from "@/prisma/seed-data/reglas-matematicas.json";
@@ -31,6 +32,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const base = salud();
+  const vozConfigurada = configuracionDeVoz();
 
   let estado:
     | "ok"
@@ -93,6 +95,17 @@ export async function GET() {
       reglas_en_base: reglasEnBase,
       reglas_esperadas: reglasEsperadas,
       detalle,
+      // LA VOZ, EN LA MISMA MIRADA. Sin esto, saber por qué el tutor suena a
+      // sintetizador del navegador obligaba a abrir otro endpoint —o a leer el
+      // código en producción, que es lo que acabó haciendo el cliente—.
+      voz: vozConfigurada
+        ? { disponible: true, proveedor: vozConfigurada.proveedor, variable: vozConfigurada.variable }
+        : {
+            disponible: false,
+            proveedor: null,
+            variable: null,
+            detalle: "Sin GOOGLE_TTS_API_KEY ni ELEVENLABS_API_KEY: el tutor habla con la voz del navegador.",
+          },
     },
     { status: estado === "ok" ? 200 : 503 },
   );

@@ -7,7 +7,7 @@
 // prototipo anterior, porque su orden de construcción nunca compilaba la
 // aplicación. Nadie se enteró porque nadie miraba desde fuera.
 //
-//   node qa/despliegue.mjs                                (BASE_URL o el sitio en vivo)
+//   node qa/despliegue.mjs                                (BASE_URL o el despliegue de Vercel)
 //   node qa/despliegue.mjs https://mi-sitio.com           (cualquier dirección)
 //   node qa/despliegue.mjs https://mi-sitio.com 52736d8   (y qué commit se espera)
 //
@@ -20,7 +20,11 @@
 
 import { execSync } from "node:child_process";
 
-const DESTINO = (process.argv[2] || process.env.BASE_URL || "https://math-ia.onrender.com").replace(/\/$/, "");
+// LA DIRECCIÓN BUENA ES LA DE VERCEL. La de Render que arrastraban las guías es
+// un servicio abandonado desde agosto —sirve el prototipo de Express— y
+// perseguirlo costó dos rondas de "está igual". Se comprueba el despliegue real
+// salvo que se pida otro.
+const DESTINO = (process.argv[2] || process.env.BASE_URL || "https://docenteia-nu.vercel.app").replace(/\/$/, "");
 const commitLocal = () => {
   try {
     return execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();

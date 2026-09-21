@@ -905,8 +905,7 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
       if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
       if (s.accion?.tipo === "cancelacion") {
-        const frase = locucionCancelacion(k === 0 ? lin.original : lin.steps[k - 1]?.escribe);
-        if (frase) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+        dir.push(...tiempoDeCancelacion(k === 0 ? lin.original : lin.steps[k - 1]?.escribe, PAUSA_LECTURA));
       }
       // La última línea es la solución, "x = 5": el cierre del ejercicio, enmarcado.
       if (k === lin.steps.length - 1) {
@@ -1877,6 +1876,57 @@ export function locucionCancelacion(texto) {
   return `A la izquierda se cancela ${b > 0 ? "+" : "-"}${abs} con ${b > 0 ? "-" : "+"}${abs}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${abs} son ${c - b}.`;
 }
 
+/**
+ * EL RENGLÓN DE LA CANCELACIÓN, ESCRITO APARTE.
+ *
+ * De "2x + 6 = 16" saca "2x + 6 - 6 = 16 - 6": la misma igualdad con la resta
+ * ya escrita en los dos miembros. El motor la escribe como UNA LÍNEA MÁS, justo
+ * debajo, y sobre ella se dibuja el tachado.
+ *
+ * Lo pidió el cliente así: los pasos no se sobrescriben, se apilan, y al acabar
+ * la explicación tienen que seguir todos en pantalla —la resta escrita Y la
+ * resta cancelada—, como en un cuaderno.
+ *
+ * `null` si la línea no es "ax + b = c" con b distinto de cero.
+ */
+export function lineaCompensada(texto) {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)?=(-?\d+)$/);
+  if (!m) return null;
+  const coef = m[1] === "" || m[1] === "+" ? "" : m[1] === "-" ? "-" : m[1];
+  const b = m[3] ? Number(m[3]) : 0;
+  const c = Number(m[4]);
+  if (!b || !Number.isFinite(c)) return null;
+  const abs = Math.abs(b);
+  const signo = b > 0 ? "+" : "-";
+  const contrario = b > 0 ? "-" : "+";
+  return `${coef}${m[2]} ${signo} ${abs} ${contrario} ${abs} = ${c} ${contrario} ${abs}`;
+}
+
+/**
+ * Las dos directivas del segundo tiempo: escribir la línea con la resta ya
+ * puesta y decir que se cancela. Se usan igual en la lección, en el desglose y
+ * en el problema aplicado, para que la pizarra se comporte igual en los tres.
+ */
+function tiempoDeCancelacion(linea, pausa) {
+  const compensada = lineaCompensada(linea);
+  const frase = locucionCancelacion(linea);
+  if (!compensada || !frase) return [];
+  // El término que se cancela, leído de la línea SIN espacios: con espacios el
+  // "+ 5" no casaba, la etiqueta viajaba con un término que no está escrito y
+  // el saneado del servidor la descartaba entera —dejando el renglón sin
+  // tachado—. Lo cazó la batería; aquí queda leído como se escribe.
+  const limpio = String(linea ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  const termino = /^-?\d*[a-zA-Z]([+-]\d+)=/.exec(limpio)?.[1];
+  if (!termino) return [];
+  const abs = String(Math.abs(Number(termino)));
+  return [
+    escribePaso(compensada, { tipo: "cancelacion", terminosFoco: [abs] }, frase),
+    { tipo: "hablar", texto: frase },
+    ...(pausa ? [{ ...pausa }] : []),
+  ];
+}
+
 export function linealResueltaLSG(opts = {}) {
   let { ejemplo, practica } = elegirBoton(LINEALES, opts, "lineal", formaLineal);
   // Si el EJEMPLO tiene x en AMBOS lados, la práctica debe ser del MISMO tipo (dos lados), elegida de forma
@@ -1937,8 +1987,7 @@ export function linealResueltaLSG(opts = {}) {
     // lados (la frase de arriba) y, tras su pausa, se dice que se cancela — y es
     // esa segunda frase la que dispara el tachado rojo sobre la línea a la vista.
     if (s.accion?.tipo === "cancelacion") {
-      const frase = locucionCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe);
-      if (frase) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
     }
     // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
     if (k === sol.steps.length - 1) {
@@ -2502,8 +2551,7 @@ export function linealAplicadaLSG(opts = {}) {
     // También aquí el despeje se cuenta en dos tiempos: se escribe la resta en
     // los dos lados y, con la frase siguiente, se tacha lo que se cancela.
     if (s.accion?.tipo === "cancelacion") {
-      const frase = locucionCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe);
-      if (frase) dir.push({ tipo: "hablar", texto: frase });
+      dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, null));
     }
     dir.push({ tipo: "pizarra", accion: "escribir", contenido: s.escribe });
   });

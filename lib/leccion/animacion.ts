@@ -492,7 +492,11 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
  *
  * A la derecha no se tacha nada: queda la resta simple, que es lo que da 10.
  */
-export function escenaDeDespeje(texto: string, id: string): Escena | null {
+export function escenaDeDespeje(
+  texto: string,
+  id: string,
+  opciones: { soloEscritura?: boolean } = {},
+): Escena | null {
   const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
   // ax + b = c, con b opcional en signo.
   const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)?=(-?\d+)$/);
@@ -565,7 +569,20 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
    */
   const cancela = b !== 0;
   const divide = !cancela && !unitario;
-  const llegaALaSolucion = !cancela || unitario;
+  /**
+   * CUANDO EL TACHADO VIVE EN SU PROPIO RENGLÓN.
+   *
+   * El cliente pidió que los pasos NO se sobrescriban: que la resta escrita en
+   * los dos lados y la cancelación tachada queden las dos a la vista, una
+   * debajo de otra, como en un cuaderno. Entonces esta línea hace sólo la
+   * primera mitad —escribir la resta— y el tachado se dibuja en el renglón
+   * siguiente, que el motor escribe a continuación (`escenaDeCancelacion`).
+   *
+   * Sin esta opción —una línea deducida, sin guion que la acompañe— la escena
+   * sigue haciendo las dos cosas, para no dejar una cancelación sin tachar.
+   */
+  const soloEscritura = Boolean(opciones.soloEscritura) && cancela;
+  const llegaALaSolucion = (!cancela || unitario) && !soloEscritura;
 
   // LO QUE SE RESTA SE ESCRIBE EN LOS DOS MIEMBROS, y aparece en el momento de
   // cancelar, no antes. A la izquierda, como el término OPUESTO que anula al que
@@ -598,7 +615,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   // La solución se destapa en el último foco: la ecuación no puede empezar con
   // el resultado escrito, eso es dar la respuesta antes de la pregunta.
   // Cancelar son DOS focos —escribir la resta y tachar—, y la solución va detrás.
-  const pasoSolucion = (cancela ? 2 : 0) + (divide ? 1 : 0);
+  const pasoSolucion = (cancela ? (soloEscritura ? 1 : 2) : 0) + (divide ? 1 : 0);
   // LA SOLUCIÓN, EN SU PROPIO RENGLÓN, alineada por el igual:
   //
   //   x + 3 = 8 − 3
@@ -633,7 +650,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       tipo: "caja",
       narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: lo escribimos en los dos miembros.`,
     });
-    focos.push({
+    if (!soloEscritura) focos.push({
       clase: "pz-cancela",
       // Una caja por término, y las dos DENTRO DEL MISMO MIEMBRO: el término que
       // estaba y su opuesto. Ninguna marca cruza el igual.
@@ -676,6 +693,63 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
     narracion: `Despejamos ${variable}.`,
     clase: "despeje",
     focos,
+  };
+}
+
+/**
+ * EL RENGLÓN DEL TACHADO: "2x + 6 − 6 = 16 − 6", con las aspas.
+ *
+ * Es el segundo tiempo del despeje, y vive en SU PROPIO RENGLÓN porque el
+ * cliente pidió que los pasos no se sobrescriban: «los pasos del desarrollo no
+ * deben sobreescribirse; deben agregarse secuencialmente uno debajo del otro…
+ * todos los pasos deben permanecer en pantalla simultáneamente al concluir la
+ * explicación». Así, al acabar quedan las dos versiones a la vista —la resta
+ * escrita y la resta cancelada—, como en un cuaderno.
+ *
+ * Reconoce la línea YA compensada: el término, su opuesto al lado, y la misma
+ * resta al otro lado del igual. Devuelve `null` si no es eso, que es lo que
+ * permite encadenarla con las demás sin preguntar por el tema.
+ */
+export function escenaDeCancelacion(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // ax + b - b = c - b  (o ax - b + b = c + b)
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)([+-]\d+)=(-?\d+)([+-]\d+)$/);
+  if (!m) return null;
+
+  const [, coefCrudo, variable, terminoCrudo, opuestoCrudo, derechaCruda, compensaCruda] = m;
+  const coeficiente = coefCrudo === "" || coefCrudo === "+" ? 1 : coefCrudo === "-" ? -1 : Number(coefCrudo);
+  const b = Number(terminoCrudo);
+  const opuesto = Number(opuestoCrudo);
+  const c = Number(derechaCruda);
+  const compensa = Number(compensaCruda);
+  if (!Number.isFinite(coeficiente) || coeficiente === 0 || !b) return null;
+  // Lo que se cancela tiene que ser un par de opuestos, y al otro lado tiene que
+  // estar la MISMA operación: si no, esto no es una cancelación uniforme y no se
+  // dibuja nada (mejor sin marcas que con marcas que mienten).
+  if (opuesto !== -b || compensa !== -b) return null;
+
+  const signo = (n: number) => (n > 0 ? "+" : "-");
+  const coefLatex = coeficiente === 1 ? "" : coeficiente === -1 ? "-" : String(coeficiente);
+  const izquierda =
+    `${coefLatex}${variable} ${signo(b)} ${marcar("pz-cancela pz-cancela-termino", String(Math.abs(b)))}` +
+    ` ${signo(opuesto)} ${marcar("pz-cancela pz-cancela-opuesto", String(Math.abs(opuesto)))}`;
+  const derecha = `${c} ${signo(compensa)} ${Math.abs(compensa)}`;
+
+  return {
+    id,
+    texto,
+    latex: `${izquierda} = ${derecha}`,
+    narracion: "Se cancelan.",
+    clase: "despeje",
+    focos: [
+      {
+        clase: "pz-cancela",
+        piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
+        tipo: "tachado",
+        narracion: `A la izquierda se cancela ${signo(b)}${Math.abs(b)} con ${signo(opuesto)}${Math.abs(opuesto)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c + compensa}.`,
+        etiqueta: "se cancelan",
+      },
+    ],
   };
 }
 
@@ -1267,7 +1341,12 @@ const COMPOSITOR: Record<
 > = {
   columna: (t, id) => escenaDeColumna(t, id),
   factor: (t, id) => escenaDeDespeje(t, id),
-  cancelacion: (t, id) => escenaDeDespeje(t, id) ?? escenaDeSimplificacion(t, id),
+  // Dos renglones, dos escenas: el que ESCRIBE la resta en los dos lados y el
+  // que la TACHA. El motor escribe el segundo justo después del primero, y así
+  // los dos quedan a la vista al terminar (petición del cliente: los pasos no
+  // se sobrescriben, se apilan).
+  cancelacion: (t, id) =>
+    escenaDeCancelacion(t, id) ?? escenaDeDespeje(t, id, { soloEscritura: true }) ?? escenaDeSimplificacion(t, id),
   amplificacion: (t, id) => escenaDeAmplificacion(t, id),
   "suma-fracciones": (t, id) => escenaDeSumaDeFracciones(t, id),
   distributiva: (t, id) => escenaDeDistributiva(t, id),

@@ -1723,12 +1723,27 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // se restan (+6 y −6)."
   {
     const paso = escenaDeLinea({ latex: "2x + 6 = 16", operacion: { tipo: "cancelacion", terminosFoco: ["6"] } }, "p");
+    // LOS PASOS NO SE SOBRESCRIBEN: SE APILAN (quinta ronda del cliente). La
+    // línea del enunciado sólo ESCRIBE la resta en los dos lados; el tachado se
+    // dibuja en el renglón siguiente, que el motor escribe aparte, y así al
+    // terminar quedan los dos a la vista.
+    const tachada = escenaDeLinea({ latex: "2x + 6 - 6 = 16 - 6", operacion: { tipo: "cancelacion", terminosFoco: ["6"] } }, "p2");
     check(
-      "sobre 2x + 6 = 16 hay DOS focos: se escribe la resta y, después, se tacha el par de opuestos",
-      paso.focos.length === 2 && paso.focos[0].tipo === "caja" && paso.focos[0].clase === "pz-uniforme" &&
-        paso.focos[1].tipo === "tachado" &&
-        JSON.stringify(paso.focos[1].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      "sobre 2x + 6 = 16 se ESCRIBE la resta y nada más: el tachado no se dibuja aquí",
+      paso.focos.length === 1 && paso.focos[0].tipo === "caja" && paso.focos[0].clase === "pz-uniforme",
       JSON.stringify(paso.focos),
+    );
+    check(
+      "y el renglón siguiente —2x + 6 − 6 = 16 − 6— es el que tacha el par de opuestos",
+      tachada.focos.length === 1 && tachada.focos[0].tipo === "tachado" &&
+        JSON.stringify(tachada.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      JSON.stringify(tachada.focos),
+    );
+    check(
+      "ese renglón se escribe entero, sin nada que destapar: es el registro de lo hecho",
+      !/pz-rev-/.test(tachada.latex) && /pz-cancela-termino/.test(tachada.latex) &&
+        /pz-cancela-opuesto/.test(tachada.latex) && /= 16 - 6$/.test(tachada.latex),
+      tachada.latex,
     );
     check(
       "ni marca de resultado, ni visto, ni coeficiente encendido junto a la x, ni la solución adelantada",
@@ -1766,10 +1781,20 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     const enCancela = ev[iCancela];
     const focoCancela = enCancela?.escenas[enCancela.escena]?.focos[enCancela.foco];
     check(
-      "y sólo al decir «a la izquierda se cancela +6 con −6» se dispara el tachado, sobre esa misma línea",
-      iCancela > iResta && enCancela?.escenas[enCancela.escena]?.texto === "2x + 6 = 16" &&
+      "y al decir «a la izquierda se cancela +6 con −6» el tachado se dibuja en el RENGLÓN NUEVO, sin borrar el anterior",
+      iCancela > iResta && enCancela?.escenas[enCancela.escena]?.texto === "2x + 6 - 6 = 16 - 6" &&
         focoCancela?.tipo === "tachado",
       `${enCancela?.escenas[enCancela.escena]?.texto} foco ${enCancela?.foco} (${focoCancela?.tipo})`,
+    );
+    check(
+      "los dos renglones existen en el guion, en orden: primero la resta escrita, debajo la cancelada",
+      (() => {
+        const escritos = ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir").map((e) => e.d.contenido);
+        const i1 = escritos.indexOf("2x + 6 = 16");
+        const i2 = escritos.indexOf("2x + 6 - 6 = 16 - 6");
+        return i1 >= 0 && i2 === i1 + 1;
+      })(),
+      ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir").map((e) => e.d.contenido).join(" · "),
     );
     check(
       "la frase que tacha es la MISMA en el motor y en la pizarra: si no, se tacharía a destiempo",
@@ -2739,7 +2764,8 @@ titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
     ["división", () => divisionResueltaLSG({ concepto: true }), 3],
     ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 2],
     ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 4],
-    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 3],
+    // Cuatro: la resta escrita, la resta tachada, la división y el cierre.
+    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 4],
     ["derivadas", () => derivadaResueltaLSG({ concepto: true }), 1],
     ["factorización", () => factorizacionResueltaLSG({ concepto: true }), 1],
   ];
@@ -4828,6 +4854,29 @@ if (!vivo) {
   check(
     "la voz por defecto del tutor sigue siendo masculina, como en toda la plataforma",
     configuracionDeVoz({ GOOGLE_TTS_API_KEY: "x" })?.voz === "es-US-Neural2-B",
+  );
+  // QUÉ CLAVE HACE FALTA, DICHO POR EL PROPIO ENDPOINT (quinta ronda: el
+  // cliente tuvo que leer el código en producción para averiguarlo), y una
+  // clave puesta con otro nombre razonable no se ignora en silencio.
+  check(
+    "una clave puesta con otro nombre habitual también vale, y se sabe con cuál se encontró",
+    configuracionDeVoz({ GOOGLE_TTS_KEY: "x" })?.variable === "GOOGLE_TTS_KEY" &&
+      configuracionDeVoz({ ELEVEN_LABS_API_KEY: "y" })?.proveedor === "elevenlabs" &&
+      configuracionDeVoz({ XI_API_KEY: "z" })?.variable === "XI_API_KEY",
+  );
+  check(
+    "sin clave, /api/voz dice exactamente qué variable falta —y no sólo que no hay voz—",
+    /motivo: "sin_configurar"/.test(vozSrc) && /variables: CLAVES_DE_VOZ/.test(vozSrc) &&
+      /GOOGLE_TTS_API_KEY[\s\S]{0,80}ELEVENLABS_API_KEY/.test(vozSrc),
+  );
+  check(
+    "y con clave puesta se puede comprobar si FUNCIONA, que no es lo mismo, sin gastar una clase",
+    /searchParams\.get\("probar"\)/.test(vozSrc) && /sintetizar\("Prueba de voz\."/.test(vozSrc) &&
+      /prueba: "ok"/.test(vozSrc) && /prueba: "falla"/.test(vozSrc),
+  );
+  check(
+    "la salud del servicio informa del estado de la voz en la misma mirada",
+    /voz: vozConfigurada/.test(readFileSync(new URL("../app/api/health/route.ts", import.meta.url), "utf8")),
   );
 }
 

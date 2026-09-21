@@ -11,6 +11,8 @@ type Proveedor = "google" | "elevenlabs";
 export type Config = {
   proveedor: Proveedor;
   clave: string;
+  /** Con qué nombre de variable se encontró la clave (para poder decirlo). */
+  variable: string;
   voz: string;
   modelo: string;
   velocidad: number;
@@ -21,10 +23,33 @@ export type Config = {
  * Qué proveedor hay configurado. Manda `VOZ_PROVEEDOR` si está puesto; si no,
  * se usa el que tenga clave (Google primero, por precio).
  */
+/**
+ * LOS NOMBRES QUE SE ACEPTAN PARA CADA CLAVE.
+ *
+ * El primero de cada lista es el nombre oficial —el que está documentado en
+ * `.env.example` y el que devuelve `/api/voz`—; los demás son los nombres que
+ * uno escribe de memoria. Una clave puesta como `GOOGLE_TTS_KEY` funcionaba
+ * igual que no ponerla: el servidor respondía "sin configurar" y la clase se
+ * quedaba con la voz del navegador, sin que nada dijera por qué.
+ */
+export const CLAVES_DE_VOZ = {
+  google: ["GOOGLE_TTS_API_KEY", "GOOGLE_TTS_KEY", "GOOGLE_CLOUD_TTS_API_KEY", "GCP_TTS_API_KEY"],
+  elevenlabs: ["ELEVENLABS_API_KEY", "ELEVEN_LABS_API_KEY", "ELEVENLABS_KEY", "XI_API_KEY"],
+} as const;
+
+/** El primer valor no vacío de una lista de nombres, y cuál de ellos era. */
+function primeraClave(entorno: NodeJS.ProcessEnv, nombres: readonly string[]) {
+  for (const nombre of nombres) {
+    const valor = String(entorno[nombre] ?? "").trim();
+    if (valor) return { valor, nombre };
+  }
+  return { valor: "", nombre: "" };
+}
+
 export function configuracionDeVoz(entorno: NodeJS.ProcessEnv = process.env): Config | null {
   const pedido = String(entorno.VOZ_PROVEEDOR ?? "").trim().toLowerCase();
-  const google = String(entorno.GOOGLE_TTS_API_KEY ?? "").trim();
-  const eleven = String(entorno.ELEVENLABS_API_KEY ?? "").trim();
+  const { valor: google, nombre: nombreGoogle } = primeraClave(entorno, CLAVES_DE_VOZ.google);
+  const { valor: eleven, nombre: nombreEleven } = primeraClave(entorno, CLAVES_DE_VOZ.elevenlabs);
   const numero = (v: string | undefined, porDefecto: number) => {
     const n = Number(String(v ?? "").trim());
     return Number.isFinite(n) && String(v ?? "").trim() !== "" ? n : porDefecto;
@@ -35,6 +60,7 @@ export function configuracionDeVoz(entorno: NodeJS.ProcessEnv = process.env): Co
     return {
       proveedor: "google",
       clave: google,
+      variable: nombreGoogle,
       // Neural2 masculina: la voz del tutor es masculina y estable desde la
       // primera ronda, y cambiarla ahora sería cambiarle la persona al avatar.
       voz: String(entorno.GOOGLE_TTS_VOZ ?? "").trim() || "es-US-Neural2-B",
@@ -47,6 +73,7 @@ export function configuracionDeVoz(entorno: NodeJS.ProcessEnv = process.env): Co
     return {
       proveedor: "elevenlabs",
       clave: eleven,
+      variable: nombreEleven,
       voz: String(entorno.ELEVENLABS_VOICE_ID ?? "").trim() || "onwK4e9ZLuTAKqWW03F9",
       modelo: String(entorno.ELEVENLABS_MODELO ?? "").trim() || "eleven_multilingual_v2",
       velocidad: numero(entorno.ELEVENLABS_VELOCIDAD, 1),
