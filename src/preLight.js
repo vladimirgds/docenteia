@@ -804,8 +804,14 @@ export function solveLinearSteps(text) {
     steps.push({
       explica: `Dividimos ambos lados entre ${fmt(coef)} para dejar ${v} sola.`,
       escribe: `${xc(coef)}${v} ÷ ${fmt(coef)} = ${fmt(c - konst)} ÷ ${fmt(coef)}`,
-      // Con coeficiente -1 no hay cifra escrita que recuadrar ("-x = 3"): sin términos, sin etiqueta.
-      ...(Math.abs(coef) !== 1 ? { accion: { tipo: "factor", terminosFoco: [fmt(Math.abs(coef))] } } : {}),
+      // Con coeficiente -1 no hay cifra que recuadrar ("-x = -9"), pero la línea
+      // necesita igualmente su etiqueta: sin ella la pizarra la deduce, y una
+      // escena deducida adelanta la solución —que es lo que el cliente vio: el
+      // "x = 5" antes de la división que lo produce—. Se señala el término.
+      accion: {
+        tipo: "factor",
+        terminosFoco: [Math.abs(coef) !== 1 ? fmt(Math.abs(coef)) : `${xc(coef)}${v}`],
+      },
     });
     steps.push({
       explica: `Al dividir queda ${v} = ${answerStr}.`,

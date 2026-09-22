@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **106.635 comprobaciones en Chrome y 0
+> las de la última pasada completa): **106.561 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.586
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **744** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **749** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3260,3 +3260,62 @@ igual que antes. La batería exige lo uno o lo otro según el ancho de la ventan
 y lo que no se negocia en ninguna pantalla es que nada se salga.
 
 Y la clase de móvil se queda en la batería: **ocho clases** en lugar de siete.
+
+
+## 46. Décima ronda: la respuesta no puede ir antes de la operación que la produce
+
+El cliente revisó el despliegue (commit `cbf6ecf`) y encontró un desorden real en
+`2(x + 3) = 16`. La pizarra enseñaba:
+
+```
+2x = 10
+x = 5                ← la respuesta…
+2x ÷ 2 = 10 ÷ 2      ← …y DESPUÉS la división que la produce
+[5] ✓
+```
+
+**De dónde salía ese `x = 5` adelantado.** No era un paso escrito por el motor:
+era la propia línea `2x = 10`, que traía la solución dentro como segundo
+renglón. Tenía sentido cuando la división no se escribía —la línea hacía las dos
+cosas—, pero desde que cada operación se escribe en su propio renglón (§44) esa
+solución sobra y, además, llega antes de tiempo.
+
+**Corregido.** La línea que se va a dividir ya no adelanta nada: la escena del
+despeje sólo destapa la solución cuando nadie más la va a escribir (el camino
+deducido, sin guion). Con la etiqueta del motor delante, se queda en su sitio:
+
+```
+2x + 6 − 6 = 16 − 6      ← «restamos 6 en los dos lados»
+2x + 6̶ − 6̶ = 16 − 6      ← «a la izquierda se cancela +6 con −6…»
+2x = 10
+2x ÷ 2 = 10 ÷ 2          ← «dividimos ambos lados entre 2»
+x = [5] ✓                ← y el recuadro final
+```
+
+Que es, renglón por renglón, la secuencia que pidió el cliente.
+
+**Y el caso que se habría escapado:** con coeficiente −1 —`−x = −9`— no hay cifra
+que recuadrar, así que esa línea no llevaba etiqueta, la pizarra la deducía… y la
+escena deducida vuelve a adelantar la solución. Ahora el motor la etiqueta
+igualmente señalando el término (`−x`), y la escena marca ese término en lugar de
+una cifra que no existe. Sin eso, la línea se habría quedado además sin foco, que
+es el defecto de la ronda anterior.
+
+Queda comprobado con tres comprobaciones nuevas: que la línea previa a la
+división no trae ni solución escrita ni marca de resuelto, que el orden escrito
+es dividir y después la solución, y que lo mismo vale cuando el coeficiente es
+−1.
+
+### Sobre la voz, respondiendo a la pregunta del cliente
+
+Pregunta si hace falta que cargue él `GOOGLE_TTS_API_KEY` en Vercel «o si
+subiremos credenciales operativas de prueba». **Tiene que cargarla él**, y no se
+van a subir credenciales: una clave en el repositorio es un incidente de
+seguridad —queda en el historial de git para siempre y cualquiera con acceso al
+código puede gastarla—. Por eso el endpoint la lee del entorno del servidor y
+nunca viaja al navegador.
+
+Con la clave puesta en **Production** y un despliegue nuevo, `/api/voz?probar=1`
+responde `"prueba": "ok"` y la línea bajo el avatar pasa de «falta
+GOOGLE_TTS_API_KEY en el servidor» a «voz neuronal (google)». La síntesis del
+navegador —la Microsoft Raul que está oyendo— se apaga en ese momento.

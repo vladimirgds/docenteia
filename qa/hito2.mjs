@@ -4989,6 +4989,47 @@ if (!vivo) {
       })(),
       (solveLinearSteps("2x + 5 = 15")?.steps ?? []).map((x) => x.escribe).join(" | "),
     );
+    // LA RESPUESTA NO PUEDE IR ANTES DE LA OPERACIÓN QUE LA PRODUCE.
+    //
+    // El cliente lo fotografió con "2(x + 3) = 16": la pizarra enseñaba
+    // "2x = 10", debajo "x = 5" y DESPUÉS "2x ÷ 2 = 10 ÷ 2". La solución salía
+    // de la propia línea "2x = 10", que la traía dentro como segundo renglón
+    // —algo que tenía sentido cuando la división no se escribía—.
+    {
+      const pasos = (solveLinearSteps("2(x + 3) = 16")?.steps ?? []);
+      const division = pasos.find((p) => /÷/.test(String(p.escribe)));
+      const anterior = pasos[pasos.indexOf(division) - 1];
+      const escenaAnterior = escenaDeLinea(
+        { latex: anterior?.escribe, operacion: division?.accion, narracion: division?.explica },
+        "prev",
+      );
+      check(
+        "la línea que se va a dividir no adelanta el resultado: ni solución escrita ni marca de resuelto",
+        !/pz-solucion/.test(escenaAnterior.latex ?? "") &&
+          !escenaAnterior.focos.some((f) => f.tipo === "resultado" || f.final),
+        `${anterior?.escribe} → ${escenaAnterior.latex}`,
+      );
+      check(
+        "y el orden escrito es: se divide y DESPUÉS sale la solución",
+        (() => {
+          const escritos = pasos.map((p) => String(p.escribe));
+          const iDiv = escritos.findIndex((t) => /÷/.test(t));
+          const iSol = escritos.findIndex((t) => /^x = /.test(t));
+          return iDiv >= 0 && iSol > iDiv;
+        })(),
+        pasos.map((p) => p.escribe).join(" | "),
+      );
+      check(
+        "…también cuando el coeficiente es −1, que no tiene cifra que recuadrar",
+        (() => {
+          const p = (solveLinearSteps("2(x + 4) = 3x - 1")?.steps ?? []);
+          const div = p.find((x) => /÷/.test(String(x.escribe)));
+          const prev = p[p.indexOf(div) - 1];
+          const e = escenaDeLinea({ latex: prev?.escribe, operacion: div?.accion, narracion: div?.explica }, "u");
+          return !/pz-solucion/.test(e.latex ?? "") && e.focos.length > 0;
+        })(),
+      );
+    }
     check(
       "…y esa línea lleva su foco, para que no aparezca antes de que la voz la cuente",
       (() => {

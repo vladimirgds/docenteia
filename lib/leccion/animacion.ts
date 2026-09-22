@@ -593,8 +593,17 @@ export function escenaDeDespeje(
    * Sin esta opción —una línea deducida, sin guion que la acompañe— la escena
    * sigue haciendo las dos cosas, para no dejar una cancelación sin tachar.
    */
-  const soloEscritura = Boolean(opciones.soloEscritura) && cancela;
+  //
+  // Y lo mismo vale para la división: desde que el motor la escribe en su propio
+  // renglón —"2x ÷ 2 = 10 ÷ 2"—, esta línea NO puede adelantar el resultado. El
+  // cliente lo fotografió: la pizarra enseñaba "2x = 10", debajo "x = 5" y
+  // DESPUÉS la división que lo produce. La respuesta antes de la operación.
+  const soloEscritura = Boolean(opciones.soloEscritura);
   const llegaALaSolucion = (!cancela || unitario) && !soloEscritura;
+  // Con "x" a secas y sin constante —"-x = -9"— no hay cifra que recuadrar: el
+  // gesto se marca sobre el propio término. Si no, esta línea se quedaría sin
+  // foco, y una línea sin foco no se sincroniza con la voz.
+  const marcaElTermino = soloEscritura && !cancela && !divide;
 
   // LO QUE SE RESTA SE ESCRIBE EN LOS DOS MIEMBROS, y aparece en el momento de
   // cancelar, no antes. A la izquierda, como el término OPUESTO que anula al que
@@ -619,7 +628,9 @@ export function escenaDeDespeje(
   const compensacionDerecha = cancela ? ` ${marcar(`pz-rev-0`, marcar("pz-uniforme pz-uniforme-der", opuesto))}` : "";
 
   /** El miembro izquierdo, con sus marcas y sólo las suyas. */
-  const izquierda = `${coefLatex}${variable}${terminoLatex}${compensacionIzquierda}`;
+  const izquierda = `${
+    marcaElTermino ? marcar("pz-coef-despeje", `${coefLatex}${variable}`) : `${coefLatex}${variable}`
+  }${terminoLatex}${compensacionIzquierda}`;
 
   /** El miembro derecho: el número y, al cancelar, la misma resta sin tachar. */
   const derecha = `${c}${compensacionDerecha}`;
@@ -681,6 +692,14 @@ export function escenaDeDespeje(
   if (divide) {
     // Señalar el número que divide es una CAJA, no un resultado: con la marca
     // de resultado se dibujaba el visto verde justo al lado de la x.
+    focos.push({
+      clase: "pz-coef-despeje",
+      tipo: "caja",
+      narracion: `Dividimos los dos lados entre ${coeficiente}.`,
+      etiqueta: `÷ ${coeficiente}`,
+    });
+  }
+  if (marcaElTermino) {
     focos.push({
       clase: "pz-coef-despeje",
       tipo: "caja",
@@ -1495,7 +1514,9 @@ const COMPOSITOR: Record<
   (texto: string, id: string, narracion?: string | null) => Escena | null
 > = {
   columna: (t, id) => escenaDeColumna(t, id),
-  factor: (t, id) => escenaDeDespeje(t, id),
+  // La línea que se va a dividir NO adelanta el resultado: la división se
+  // escribe en su propio renglón y la solución llega después de ella.
+  factor: (t, id) => escenaDeDespeje(t, id, { soloEscritura: true }),
   // Dos renglones, dos escenas: el que ESCRIBE la resta en los dos lados y el
   // que la TACHA. El motor escribe el segundo justo después del primero, y así
   // los dos quedan a la vista al terminar (petición del cliente: los pasos no
