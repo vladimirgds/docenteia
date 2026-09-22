@@ -155,8 +155,31 @@ export function chunkForSpeech(text) {
 //     así que se RE-ELEGÍA a mitad de la sesión y el tutor cambiaba de voz mientras hablaba.
 // Ahora se prefiere una voz masculina conocida, y la elegida se BLOQUEA en cuanto empieza a hablar:
 // pase lo que pase con la lista de voces, el tutor no cambia de voz dentro de una sesión.
-const VOZ_MASCULINA = /\b(pablo|[áa]lvaro|ra[úu]l|jorge|diego|juan|carlos|enrique|miguel|gonzalo|andr[ée]s|crist[íi]an|liberto|arnau|el[íi]as|mateo|tom[áa]s|luciano|male|hombre|masculin)\b/i;
-const VOZ_FEMENINA = /\b(helena|sabina|elvira|dalia|m[óo]nica|paulina|luc[íi]a|laura|marisol|catalina|isabela|salom[ée]|camila|ver[óo]nica|pen[ée]lope|esperanza|tania|sof[íi]a|valentina|renata|larissa|yolanda|paloma|estrella|female|mujer|femenin)\b/i;
+// Y OJO CON `\b` Y LAS TILDES: "Microsoft **Á**lvaro Online (Natural)" —la mejor voz
+// masculina en español que ofrece Edge— NO la reconocía nadie, porque `\b` sólo marca
+// frontera entre [A-Za-z0-9_] y lo demás: delante de una "Á" no hay frontera ninguna y
+// el patrón fallaba. Lo mismo por detrás con "Lucía" o "Mónica". Por eso la frontera se
+// escribe con letras Unicode de verdad, que es lo que son estos nombres.
+const VOZ_MASCULINA = /(?:^|[^\p{L}])(pablo|[áa]lvaro|ra[úu]l|jorge|diego|juan|carlos|enrique|miguel|gonzalo|andr[ée]s|crist[íi]an|liberto|arnau|el[íi]as|mateo|tom[áa]s|luciano|male|hombre|masculin)(?![\p{L}])/iu;
+const VOZ_FEMENINA = /(?:^|[^\p{L}])(helena|sabina|elvira|dalia|m[óo]nica|paulina|luc[íi]a|laura|marisol|catalina|isabela|salom[ée]|camila|ver[óo]nica|pen[ée]lope|esperanza|tania|sof[íi]a|valentina|renata|larissa|yolanda|paloma|estrella|female|mujer|femenin)(?![\p{L}])/iu;
+
+// Y DENTRO DEL PROPIO NAVEGADOR TAMBIÉN HAY VOCES BUENAS Y MALAS.
+//
+// Lo que suena "robótico y metálico" son las voces LOCALES del sistema
+// (SAPI: "Microsoft Helena Desktop"). El mismo `speechSynthesis` ofrece —sin
+// configurar nada y sin clave— voces neuronales cuando el equipo las trae:
+// "Microsoft Álvaro Online (Natural)" en Edge, "Google español" en Chrome.
+// Se tomaba la primera que cumpliera el género y podía salir la de escritorio
+// teniendo la natural al lado. Ahora se PUNTÚAN todas y gana la mejor:
+//
+//   varón (16) · variante es-ES (8) / América (4) · natural (2) · no femenina (1)
+//
+// El género sigue mandando —el avatar es Alex— y la variante sigue por delante
+// del timbre, como estaba; lo nuevo es que, a igualdad, la neuronal gana a la
+// de escritorio. Mientras no haya clave neuronal en el servidor, esto es lo
+// único que separa al tutor de sonar a lector de pantalla.
+const VOZ_NATURAL = /(?:^|[^\p{L}])(natural|neural|online|premium|enhanced|wavenet)(?![\p{L}])|^google[\s-]/iu;
+const VOZ_PERFECTA = 27; // 16 + 8 + 2 + 1: no hay nada mejor que buscar.
 
 /**
  * LA VOZ NEURONAL, Y LA DEL NAVEGADOR COMO RED.
@@ -211,37 +234,54 @@ export class TTS {
     }
     this.voice = null;
     this.masculina = false;
+    /** La elegida es una voz neuronal del propio navegador (Natural / Online / Google). */
+    this.natural = false;
+    this._puntos = -1;
     this._fijada = false;   // una vez que ha empezado a hablar, la voz YA NO se cambia
     this.rate = 0.95; // un poco más pausado: se entiende mejor y suena menos entrecortado
     this.pitch = 1.0;
     this._pickVoice();
-    // Las voces cargan async en algunos navegadores. Se vuelve a elegir SOLO mientras no esté fijada
-    // y no se haya encontrado ya una masculina (si llega tarde, se aprovecha; si ya habla, no se toca).
+    // Las voces cargan async en algunos navegadores —y las neuronales son justo las que llegan
+    // tarde, porque son remotas—. Se vuelve a elegir SOLO mientras no esté fijada y mientras
+    // quede algo mejor que encontrar (si llega tarde, se aprovecha; si ya habla, no se toca).
     if (this.synth && "onvoiceschanged" in this.synth) {
       this.synth.onvoiceschanged = () => this._pickVoice();
     }
   }
 
+  /** Cuánto vale una voz para este tutor. Ver VOZ_NATURAL: varón · variante · natural · no femenina. */
+  _puntuar(v) {
+    const nombre = String(v?.name ?? "");
+    const lang = String(v?.lang ?? "");
+    const variante = /^es[-_]ES/i.test(lang) ? 8 : /^es[-_](MX|US|419|AR|CO|CL|PE)/i.test(lang) ? 4 : 0;
+    return (
+      (VOZ_MASCULINA.test(nombre) ? 16 : 0) +
+      variante +
+      (VOZ_NATURAL.test(nombre) ? 2 : 0) +
+      (VOZ_FEMENINA.test(nombre) ? 0 : 1)
+    );
+  }
+
   _pickVoice() {
-    if (!this.synth || this._fijada || this.masculina) return;
+    if (!this.synth || this._fijada || this._puntos >= VOZ_PERFECTA) return;
     const es = (this.synth.getVoices() || []).filter((v) => /^es/i.test(v.lang));
     if (!es.length) return;
-    // Preferencia por variante: España, luego América, luego cualquier español.
-    const grupos = [
-      es.filter((v) => /^es[-_]ES/i.test(v.lang)),
-      es.filter((v) => /^es[-_](MX|US|419|AR|CO|CL|PE)/i.test(v.lang)),
-      es,
-    ];
-    let elegida = null;
-    for (const g of grupos) { elegida = g.find((v) => VOZ_MASCULINA.test(v.name)); if (elegida) break; }
-    this.masculina = !!elegida;
-    // Sin voz masculina instalada, se descarta al menos la que se sabe femenina...
-    if (!elegida) for (const g of grupos) { elegida = g.find((v) => !VOZ_FEMENINA.test(v.name)); if (elegida) break; }
-    if (!elegida) elegida = grupos.find((g) => g.length)?.[0] || es[0];
+    let elegida = es[0];
+    let mejor = this._puntuar(elegida);
+    for (const v of es) {
+      const p = this._puntuar(v);
+      if (p > mejor) { mejor = p; elegida = v; }
+    }
+    // Una voz peor que la que ya está hablando no la sustituye nunca.
+    if (mejor <= this._puntos) return;
+    this._puntos = mejor;
     this.voice = elegida || null;
-    // ...y se BAJA el tono, que es lo único que queda en manos de la aplicación para que la voz
-    // disponible suene masculina. Con una voz masculina real el tono se deja natural.
-    this.pitch = this.masculina ? 0.95 : 0.7;
+    this.masculina = VOZ_MASCULINA.test(elegida?.name ?? "");
+    this.natural = VOZ_NATURAL.test(elegida?.name ?? "");
+    // EL TONO. Con una voz de escritorio femenina se BAJA, que es lo único que queda en manos de
+    // la aplicación para que suene al tutor que es. Con una NATURAL casi no se toca: bajarle el
+    // tono le devuelve exactamente el timbre metálico que se quería quitar.
+    this.pitch = this.natural ? (this.masculina ? 1.0 : 0.92) : this.masculina ? 0.95 : 0.7;
   }
 
   hasSpanishVoice() {
@@ -332,7 +372,10 @@ export class TTS {
     // "suena mal" y "falta esto por configurar".
     const falta = this.motivo === "sin_configurar" ? ` · sin voz neuronal: falta ${this.claveQueFalta ?? "GOOGLE_TTS_API_KEY"} en el servidor` : "";
     if (!this.voice) return `voz del sistema (sin es-ES)${falta}`;
-    return `voz del navegador: ${this.voice.name}${falta}`;
+    // Si la del navegador ya es una neuronal del sistema, se dice: es la diferencia entre
+    // "sigue igual" y "esto ya suena bien, falta sólo la del servidor".
+    const timbre = this.natural ? "voz natural del navegador" : "voz del navegador";
+    return `${timbre}: ${this.voice.name}${falta}`;
   }
 
   /**

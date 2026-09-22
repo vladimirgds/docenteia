@@ -149,17 +149,16 @@ console.log(`\n── Abriendo ${BASE}/estudiante/leccion en Chrome ──`);
 const navegador = await chromium.launch({ executablePath: CHROME, headless: true });
 const contexto = await navegador.newContext({ viewport: { width: 1280, height: 1400 } });
 
-const url = new URL(BASE);
+// La cookie se declara POR URL, no por dominio: así vale igual en http://localhost
+// que en https://…, donde el nombre lleva el prefijo `__Secure-` y exige `secure`.
+// Con el dominio a pelo, Chrome rechazaba la sesión contra el despliegue de verdad.
 await contexto.addCookies(
   galleta.split(";").map((par) => {
     const [nombre, ...resto] = par.trim().split("=");
     return {
       name: nombre,
       value: resto.join("="),
-      domain: url.hostname,
-      path: "/",
-      httpOnly: false,
-      secure: url.protocol === "https:",
+      url: BASE,
     };
   }),
 );
@@ -571,10 +570,7 @@ await ctxEq.addCookies(
     return {
       name: nombre,
       value: resto.join("="),
-      domain: url.hostname,
-      path: "/",
-      httpOnly: false,
-      secure: url.protocol === "https:",
+      url: BASE,
     };
   }),
 );
@@ -590,10 +586,20 @@ await paginaEq
   .click();
 
 let cancelacion = null;
-for (let k = 0; k < 80 && !cancelacion; k++) {
+// 120 s de margen: la cancelacion llega ahora un tiempo mas tarde —primero se
+// ESCRIBE la resta y despues se tacha— y esta pestana corre con la voz real del
+// navegador, que marca el ritmo por duracion estimada, no con la voz de mentira.
+for (let k = 0; k < 160 && !cancelacion; k++) {
   cancelacion = await paginaEq.evaluate(() => {
-    const panel = document.querySelector(".pz-animada");
-    if (!panel?.querySelector('.pz-resaltado[data-tipo="tachado"]')) return null;
+    // EL TACHADO YA NO ESTA EN EL PRIMER PANEL. La linea que se tacha es la
+    // SEGUNDA —la compensada—, porque escribir la resta y tacharla son dos
+    // tiempos distintos y cada uno tiene su renglon. Con `querySelector` a
+    // secas se miraba siempre el primero, que es el que solo escribe, y la
+    // bateria se quedaba esperando un tachado que estaba justo debajo.
+    const panel = [...document.querySelectorAll(".pz-animada")].find((n) =>
+      n.querySelector('.pz-resaltado[data-tipo="tachado"]'),
+    );
+    if (!panel) return null;
     const caja = (n) => {
       const b = n.getBoundingClientRect();
       return { x1: Math.round(b.left), x2: Math.round(b.right) };
@@ -610,7 +616,7 @@ for (let k = 0; k < 80 && !cancelacion; k++) {
 }
 
 if (!cancelacion) {
-  check("la lección llega a mostrar una cancelación", false, "no apareció en 60 s");
+  check("la lección llega a mostrar una cancelación", false, "no apareció en 120 s");
 } else {
   // Cada caja se dibuja dos veces —fondo y trazo—, así que se agrupan por
   // posición para contar recuadros, no rectángulos.
@@ -673,10 +679,7 @@ await ctxFr.addCookies(
     return {
       name: nombre,
       value: resto.join("="),
-      domain: url.hostname,
-      path: "/",
-      httpOnly: false,
-      secure: url.protocol === "https:",
+      url: BASE,
     };
   }),
 );
@@ -882,7 +885,7 @@ async function sesionRapida(nombre, etapa, curso) {
   await ctx.addCookies(
     g.split(";").map((par) => {
       const [name, ...r] = par.trim().split("=");
-      return { name, value: r.join("="), domain: url.hostname, path: "/", httpOnly: false, secure: url.protocol === "https:" };
+      return { name, value: r.join("="), url: BASE };
     }),
   );
   await ctx.addInitScript(vozRapida);

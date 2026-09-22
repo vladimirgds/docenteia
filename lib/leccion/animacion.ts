@@ -504,11 +504,7 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
  *
  * A la derecha no se tacha nada: queda la resta simple, que es lo que da 10.
  */
-export function escenaDeDespeje(
-  texto: string,
-  id: string,
-  opciones: { soloEscritura?: boolean } = {},
-): Escena | null {
+export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
   // ax + b = c, con b opcional en signo.
   const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)?=(-?\d+)$/);
@@ -598,8 +594,20 @@ export function escenaDeDespeje(
   // renglón —"2x ÷ 2 = 10 ÷ 2"—, esta línea NO puede adelantar el resultado. El
   // cliente lo fotografió: la pizarra enseñaba "2x = 10", debajo "x = 5" y
   // DESPUÉS la división que lo produce. La respuesta antes de la operación.
-  const soloEscritura = Boolean(opciones.soloEscritura);
-  const llegaALaSolucion = (!cancela || unitario) && !soloEscritura;
+  //
+  // Y ESTA ESCENA NUNCA ADELANTA LA SOLUCION NI TACHA POR SU CUENTA.
+  //
+  // Antes lo hacia cuando la linea llegaba sola al final ("x + 3 = 8"), porque
+  // entonces el motor no escribia los pasos intermedios. Ahora si los escribe:
+  // la resta en los dos lados, la cancelacion tachada, la division en fraccion
+  // y la solucion, cada una en su renglon. Dejar que ademas los adelantara esta
+  // linea producia lo que el cliente fotografio en la practica: el enunciado
+  // —que llega SIN etiqueta, porque es un enunciado— se pintaba ya tachado y
+  // con "x = 5" debajo, y despues aparecia otra vez la misma igualdad tachada.
+  //
+  // Un renglon, un tiempo: aqui se ESCRIBE la resta y nada mas.
+  const soloEscritura = true;
+  const llegaALaSolucion = false;
   // Con "x" a secas y sin constante —"-x = -9"— no hay cifra que recuadrar: el
   // gesto se marca sobre el propio término. Si no, esta línea se quedaría sin
   // foco, y una línea sin foco no se sincroniza con la voz.
@@ -1569,7 +1577,7 @@ const COMPOSITOR: Record<
   columna: (t, id) => escenaDeColumna(t, id),
   // La línea que se va a dividir NO adelanta el resultado: la división se
   // escribe en su propio renglón y la solución llega después de ella.
-  factor: (t, id) => escenaDeDivisionEnFraccion(t, id) ?? escenaDeDespeje(t, id, { soloEscritura: true }),
+  factor: (t, id) => escenaDeDivisionEnFraccion(t, id) ?? escenaDeDespeje(t, id),
   // Dos renglones, dos escenas: el que ESCRIBE la resta en los dos lados y el
   // que la TACHA. El motor escribe el segundo justo después del primero, y así
   // los dos quedan a la vista al terminar (petición del cliente: los pasos no
@@ -1577,7 +1585,7 @@ const COMPOSITOR: Record<
   cancelacion: (t, id) =>
     escenaDeCancelacion(t, id) ??
     escenaDeCancelacionDeIncognita(t, id) ??
-    escenaDeDespeje(t, id, { soloEscritura: true }) ??
+    escenaDeDespeje(t, id) ??
     escenaDeRestaDeIncognita(t, id) ??
     escenaDeSimplificacion(t, id),
   amplificacion: (t, id) => escenaDeAmplificacion(t, id),

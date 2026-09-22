@@ -61,7 +61,6 @@ if (!CHROME) {
 }
 await exigirServidor();
 
-const url = new URL(BASE);
 
 /** La voz de prueba: una es-ES con la duración de una voz real. */
 function instalarVoz() {
@@ -151,10 +150,14 @@ async function abrirClase(navegador) {
   });
   const sesion = (await iniciarSesion(BASE, correo, clave)) ?? alta.sesion;
   const ctx = await navegador.newContext({ viewport: { width: 1366, height: 900 } });
+  // La cookie se declara POR URL, no por dominio: asi vale igual en
+  // http://localhost que en https://..., donde el nombre puede llevar el
+  // prefijo `__Secure-` y exige `secure: true`. Con el dominio a pelo, Chrome
+  // rechazaba la sesion al apuntar la bateria al despliegue de verdad.
   await ctx.addCookies(
     sesion.split(";").map((par) => {
       const [name, ...r] = par.trim().split("=");
-      return { name, value: r.join("="), domain: url.hostname, path: "/", httpOnly: false, secure: false };
+      return { name, value: r.join("="), url: BASE };
     }),
   );
   await ctx.addInitScript(instalarVoz);

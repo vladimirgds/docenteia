@@ -25,3 +25,6 @@ next-env.d.ts
 # Artefactos de entrega (build)
 math-ia-codigo-fuente.zip
 *.zip
+
+# Artefactos de las baterias de QA (capturas, volcados)
+qa/.tmp/

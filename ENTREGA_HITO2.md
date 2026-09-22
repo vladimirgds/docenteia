@@ -6,9 +6,9 @@ verificado con la suite del proyecto.
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
 > las de la última pasada completa): **107.181 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
-> (`qa/observaciones.mjs`), **31.586
+> (`qa/observaciones.mjs`), **31.183
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **751** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **761** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3366,3 +3366,98 @@ Tres comprobaciones nuevas lo fijan: que el pie de la división hable de dividir
 y no del resultado, que marque los dos denominadores (uno por miembro), y que el
 pie de `2x = 10` hable del coeficiente que está marcado y **no** de «los dos
 lados».
+
+## 48. Duodécima ronda: el QA lo hacemos nosotros, y contra el despliegue de verdad
+
+> «Alex sigue igual… antes de decirme que yo verifique, debes hacer tú el QA.
+> Asimismo, la voz del Avatar está igual.»
+
+Las dos cosas eran ciertas, y las dos tenían la misma causa de fondo: **las
+baterías sólo sabían correr contra `localhost`**. Todo lo que se daba por
+comprobado estaba comprobado en un servidor de desarrollo, no en el que el
+cliente abre.
+
+### 1. Las baterías, apuntadas al despliegue
+
+La sesión se inyectaba como cookie *por dominio* (`domain`, `path`,
+`secure: false`). Contra `https://` eso no vale: el nombre de la cookie lleva el
+prefijo `__Secure-` y Chrome exige `secure`, así que la rechazaba y la batería
+veía la pantalla de invitado. Ahora la cookie se declara **por URL**, que es lo
+que resuelve el propio navegador, y las seis baterías de Chrome
+—`observaciones`, `navegador`, `voz`, `mandos`, `hito2`, `barrido`— corren igual
+contra `localhost` que contra `https://docenteia-nu.vercel.app`:
+
+```
+BASE_URL=https://docenteia-nu.vercel.app node qa/observaciones.mjs
+```
+
+### 2. Lo que apareció al mirar el despliegue: la práctica
+
+Con la batería apuntada al sitio de verdad salió un defecto que en local nunca
+se había visto, porque sólo ocurre en la **fase de práctica**: para `x + 3 = 8`
+la pizarra escribía
+
+```
+x + 3̶ − 3̶ = 8 − 3      ← ya tachada, y con «x = 5» dentro
+x + 3̶ − 3̶ = 8 − 3      ← otra vez la misma, tachada
+```
+
+El enunciado de la práctica se escribe **sin etiqueta** —es un enunciado, no un
+paso—, así que la pizarra tenía que deducir su escena, y la escena deducida
+—`escenaDeDespeje`— todavía tachaba y adelantaba la solución. Tenía sentido
+cuando el motor no escribía los pasos intermedios; desde la ronda anterior los
+escribe todos, uno por renglón, y por eso la deducción los duplicaba.
+
+`escenaDeDespeje` ya **no tacha ni adelanta el resultado nunca**: escribe la
+resta y ahí se queda. Tachar es de `escenaDeCancelacion`, dividir es de
+`escenaDeDivisionEnFraccion`, y la respuesta sale en la línea de cierre. Un
+renglón, un tiempo.
+
+### 3. La voz: lo que nos tocaba a nosotros, hecho
+
+Que la voz neuronal del servidor siga apagada es la clave que falta en Vercel
+—eso sólo lo puede poner el cliente, y la pantalla lo dice por su nombre—. Pero
+había además un fallo nuestro en la voz de repuesto, la del propio navegador, y
+era el que hacía que sonara igual de metálica en un equipo que tiene voces
+buenas instaladas:
+
+* **`Microsoft Álvaro Online (Natural)`** —la mejor voz masculina en español que
+  ofrece Edge— **no se reconocía como masculina**. El patrón usaba `\b`, que sólo
+  marca frontera entre `[A-Za-z0-9_]` y lo demás: delante de una `Á` no hay
+  frontera ninguna y la comparación fallaba en silencio. Lo mismo por detrás con
+  `Lucía` o `Mónica`. Ahora la frontera se escribe con letras Unicode.
+* Y **no se prefería la voz neuronal del sistema sobre la de escritorio**: se
+  tomaba la primera que cumpliera el género, de modo que en un equipo con `Pablo`
+  (escritorio, metálica) y `Álvaro Online (Natural)` al lado, salía la metálica.
+
+Ahora se puntúan todas las voces en español que ofrezca el navegador
+—varón 16 · variante `es-ES` 8 / América 4 · natural 2 · no femenina 1— y gana
+la mejor. El género sigue mandando (el avatar es Alex) y la variante sigue por
+delante del timbre; lo nuevo es que, a igualdad, **la neuronal gana a la de
+escritorio**. A una voz natural, además, ya no se le baja el tono: bajarlo era
+justo lo que le devolvía el timbre metálico.
+
+La pantalla distingue ahora los tres casos, con su nombre:
+
+```
+voz neuronal (google)
+voz natural del navegador: Microsoft Álvaro Online (Natural) — Spanish (Spain)
+   · sin voz neuronal: falta GOOGLE_TTS_API_KEY en el servidor
+voz del navegador: Microsoft Helena Desktop — Spanish (Spain)
+   · sin voz neuronal: falta GOOGLE_TTS_API_KEY en el servidor
+```
+
+Diez comprobaciones nuevas fijan la elección pasándole al elector **las listas de
+voces que devuelven de verdad Edge y Chrome en Windows**, no leyendo el código.
+
+### 4. Y una comprobación que se había quedado mirando al renglón anterior
+
+`qa/navegador.mjs` buscaba el tachado con `document.querySelector(".pz-animada")`
+—en singular—, es decir, siempre en el **primer** panel animado. Cuando escribir
+la resta y tacharla pasaron a ser dos tiempos con un renglón cada uno, el tachado
+se mudó al segundo, y la batería se quedó esperando 60 s algo que estaba justo
+debajo. Ahora busca el panel **que tiene el tachado**, y espera 120 s, que es lo
+que tarda la lección con la voz real del navegador marcando el ritmo.
+
+Es el tipo de fallo que sólo aparece corriendo las baterías enteras después de
+cada cambio, no sólo la del hito.

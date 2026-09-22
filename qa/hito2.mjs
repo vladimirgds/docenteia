@@ -31,6 +31,7 @@ import {
   escenaEstatica,
   escenaDeColumna,
   escenaDeDespeje,
+  escenaDeCancelacion,
   escenaDeLinea,
   escenaDePolinomio,
   fraseDeCancelacionDeIncognita,
@@ -495,7 +496,9 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   // "2x + 6 = 16 - 6" la caja y la tachadura abarcaban "+ 6 = 16 - 6", o sea el
   // signo igual y un número que no se cancela con nada. Cada término que se va
   // tiene que llevar SU caja.
-  const escena = escenaDeDespeje("2x + 6 = 16", "e");
+  // El tachado vive en el renglón que YA tiene la resta escrita: es el segundo
+  // tiempo del paso, y por eso se mira ahí y no en la línea del enunciado.
+  const escena = escenaDeCancelacion("2x + 6 - 6 = 16 - 6", "e");
   const cancelacion = escena.focos.find((f) => f.tipo === "tachado");
 
   check(
@@ -710,16 +713,26 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       /^Restamos 6 en los dos lados/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
       e.focos[0]?.narracion,
     );
+    // El SEGUNDO tiempo es otro renglón: la igualdad con la resta ya escrita, y
+    // ahí el tachado. Esta línea no tacha —ni adelanta la solución—, que es lo
+    // que el cliente fotografió en la práctica.
+    const tachada2 = escenaDeCancelacion("2x + 6 - 6 = 16 - 6", "t");
+    check(
+      "…y esta línea NO tacha ni adelanta el resultado: un renglón, un tiempo",
+      e.focos.length === 1 && !e.focos.some((f) => f.tipo === "tachado" || f.tipo === "resultado") &&
+        !/pz-solucion/.test(e.latex),
+      JSON.stringify(e.focos),
+    );
     check(
       "…el SEGUNDO tiempo tacha ese par de opuestos, y nada más",
-      e.focos[1]?.tipo === "tachado" &&
-        JSON.stringify(e.focos[1].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
-      JSON.stringify(e.focos[1]),
+      tachada2.focos[0]?.tipo === "tachado" &&
+        JSON.stringify(tachada2.focos[0].piezas) === JSON.stringify(["pz-cancela-termino", "pz-cancela-opuesto"]),
+      JSON.stringify(tachada2.focos[0]),
     );
     check(
       "…y lo dicho lo cuenta igual: a la izquierda se cancelan, a la derecha se resta",
-      /^A la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(e.focos[1]?.narracion ?? ""),
-      e.focos[1]?.narracion,
+      /^A la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(tachada2.focos[0]?.narracion ?? ""),
+      tachada2.focos[0]?.narracion,
     );
     check(
       "…y las cajas del primer tiempo no cruzan el igual: una en cada miembro",
@@ -1808,8 +1821,8 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     check(
       "la frase que tacha es la MISMA en el motor y en la pizarra: si no, se tacharía a destiempo",
       locucionCancelacion("2x + 6 = 16") ===
-        escenaDeDespeje("2x + 6 = 16", "e").focos.find((f) => f.tipo === "tachado")?.narracion,
-      `${locucionCancelacion("2x + 6 = 16")} ≠ ${escenaDeDespeje("2x + 6 = 16", "e").focos.find((f) => f.tipo === "tachado")?.narracion}`,
+        escenaDeCancelacion("2x + 6 - 6 = 16 - 6", "e").focos.find((f) => f.tipo === "tachado")?.narracion,
+      `${locucionCancelacion("2x + 6 = 16")} ≠ ${escenaDeCancelacion("2x + 6 - 6 = 16 - 6", "e").focos.find((f) => f.tipo === "tachado")?.narracion}`,
     );
     check(
       "y en ningún momento anterior la pizarra estuvo en el tachado de esa línea",
@@ -3426,46 +3439,48 @@ titulo("A2. Polinomios, despejes y prosa");
 }
 
 {
+  // UN RENGLÓN, UN TIEMPO. Esta línea sólo ESCRIBE la resta en los dos lados:
+  // ni tacha —eso es el renglón siguiente— ni adelanta la solución. Lo segundo
+  // lo fotografió el cliente en la práctica, donde el enunciado llega sin
+  // etiqueta: se pintaba ya tachado y con "x = 5" debajo, y luego aparecía otra
+  // vez la misma igualdad tachada.
   const escena = escenaDeDespeje("3x + 5 = 20", "e");
   check("3x + 5 = 20 se anima como despeje", escena?.clase === "despeje");
-  check("el primer foco escribe la resta en los dos miembros, sin tachar", escena.focos[0].tipo === "caja" && escena.focos[0].clase === "pz-uniforme");
-  check("y el segundo es la cancelación", escena.focos[1].tipo === "tachado");
-  check("y se rotula como tal", escena.focos[1].etiqueta === "se cancelan");
+  check("su único foco escribe la resta en los dos miembros, sin tachar", escena.focos.length === 1 && escena.focos[0].tipo === "caja" && escena.focos[0].clase === "pz-uniforme");
   check(
-    "el término se tacha en los DOS lados, cada uno con su marca",
-    marcada(escena.latex, "pz-cancela-termino") && marcada(escena.latex, "pz-cancela-opuesto"),
-    escena.latex,
-  );
-  check(
-    "la resta del otro lado está bien contada",
-    /20 menos 5 son 15/.test(escena.focos[1].narracion),
-    escena.focos[1].narracion,
-  );
-  // UN PASO, UNA OPERACIÓN (revisión del cliente sobre la build daa127d): en
-  // "3x + 5 = 20" se quita el 5 de los dos lados y ahí acaba la escena. Dividir
-  // entre 3 es la línea siguiente, "3x = 15", con su propia escena.
-  check(
-    "sobre 3x + 5 = 20 sólo se cancela —en dos tiempos—: ni se divide ni se adelanta la solución",
-    escena.focos.length === 2 && escena.focos.every((f) => f.tipo !== "resultado") &&
+    "y no adelanta nada: ni solución escrita, ni marca de resuelto, ni división",
+    !/pz-solucion/.test(escena.latex) && !escena.focos.some((f) => f.tipo === "resultado" || f.final) &&
       !escena.latex.includes("pz-coef-despeje") && !escena.latex.includes("Rightarrow"),
     escena.latex,
   );
 
+  // El tachado es el renglón siguiente, con la resta ya escrita.
+  const tachado = escenaDeCancelacion("3x + 5 - 5 = 20 - 5", "e");
+  check("el renglón siguiente tacha, y se rotula como tal", tachado.focos[0].tipo === "tachado" && tachado.focos[0].etiqueta === "se cancelan");
+  check(
+    "el término se tacha con su par, cada uno con su marca",
+    marcada(tachado.latex, "pz-cancela-termino") && marcada(tachado.latex, "pz-cancela-opuesto"),
+    tachado.latex,
+  );
+  check(
+    "la resta del otro lado está bien contada",
+    /20 menos 5 son 15/.test(tachado.focos[0].narracion),
+    tachado.focos[0].narracion,
+  );
+
   const division = escenaDeDespeje("3x = 15", "e");
   check(
-    "la división va en SU línea, 3x = 15: caja sobre el 3 y luego la solución",
-    division.focos.length === 2 &&
-      division.focos[0].clase === "pz-coef-despeje" && division.focos[0].tipo === "caja" &&
-      division.focos.at(-1).narracion === "x vale 5.",
+    "la línea que se va a dividir señala su coeficiente, y nada más",
+    division.focos.length === 1 && division.focos[0].clase === "pz-coef-despeje" &&
+      division.focos[0].tipo === "caja" && !/pz-solucion/.test(division.latex),
     JSON.stringify(division.focos),
   );
 
-  const fraccion = escenaDeDespeje("2x = 15", "e");
   check(
     "una solución no entera se da como fracción exacta, no como decimal",
-    fraccion.focos.at(-1).narracion === "x vale 15/2." &&
-      fraccion.latex.includes("\\frac{15}{2}"),
-    fraccion.focos.at(-1).narracion,
+    solveLinearSteps("2x = 15")?.answer === "15/2" &&
+      escenaDeCierre("x = 15/2", "c", "").latex.includes("\\frac{15}{2}"),
+    `${solveLinearSteps("2x = 15")?.answer} · ${escenaDeCierre("x = 15/2", "c", "").latex}`,
   );
 
   const unitario = escenaDeDespeje("x + 4 = 9", "e");
@@ -3484,13 +3499,15 @@ titulo("A2. Polinomios, despejes y prosa");
     escena.latex,
   );
   check(
-    "y donde la línea llega a la solución, ésta se destapa en el último paso",
-    // En "3x + 5 = 20" no hay solución escrita —la x sigue con su 3—, así que
-    // el único destape es el de la resta. Donde sí la hay, va tras el último foco.
-    !/pz-solucion/.test(escena.latex) &&
-      [escenaDeDespeje("x + 3 = 8", "e"), escenaDeDespeje("3x = 15", "e")].every((e) =>
-        e.latex.includes(`\\htmlClass{pz-rev-${e.focos.length - 1}}`),
-      ),
+    "NINGUNA línea de despeje adelanta la solución: la escribe el motor en su renglón",
+    // Lo que se destapa es la resta, y nada más. La solución llega como línea
+    // propia, después de la división, y enmarcada en el cierre. Antes esta
+    // escena la traía dentro, y en la práctica —donde el enunciado llega sin
+    // etiqueta— el alumno veía la respuesta junto al propio enunciado.
+    ["3x + 5 = 20", "x + 3 = 8", "3x = 15", "2x = 15"].every((t) => {
+      const e = escenaDeDespeje(t, "e");
+      return !/pz-solucion/.test(e.latex) && !e.focos.some((f) => f.tipo === "resultado");
+    }),
     escena.latex,
   );
   check(
@@ -4853,6 +4870,93 @@ if (!vivo) {
     "con la voz apagada por el alumno no suena ninguna de las dos",
     /if \(!this\.enabled\) return null;/.test(ttsSrc),
   );
+
+  // ─── LA VOZ DEL NAVEGADOR, ELEGIDA DE VERDAD ───────────────────────────────
+  // Mientras no haya clave neuronal en el servidor, lo que el cliente oye es
+  // ESTA elección. No se comprueba leyendo el código: se le pasan al elector las
+  // listas de voces que devuelven de verdad Edge y Chrome en Windows.
+  const { TTS } = await import("../public/tts.js");
+  const elector = new TTS();
+  const VZ = (name, lang = "es-ES") => ({ name, lang });
+  const elige = (voces) => {
+    elector._fijada = false;
+    elector._puntos = -1;
+    elector.synth = { getVoices: () => voces };
+    elector._pickVoice();
+    return elector.voice?.name ?? null;
+  };
+  const EDGE = [
+    VZ("Microsoft Helena Desktop - Spanish (Spain)"),
+    VZ("Microsoft Álvaro Online (Natural) - Spanish (Spain)"),
+    VZ("Microsoft Elvira Online (Natural) - Spanish (Spain)"),
+  ];
+  check(
+    "'Microsoft Álvaro' se reconoce como voz de varón AUNQUE lleve tilde (\\b no vale para la Á)",
+    elige(EDGE) === "Microsoft Álvaro Online (Natural) - Spanish (Spain)",
+  );
+  check(
+    "y 'Microsoft Lucía' se reconoce como femenina pese a la tilde final",
+    elige([VZ("Microsoft Lucía Online (Natural) - Spanish (Spain)"), VZ("Microsoft Pablo - Spanish (Spain)")]) ===
+      "Microsoft Pablo - Spanish (Spain)",
+  );
+  check(
+    "entre la voz de escritorio y la neuronal del sistema, el tutor se queda con la neuronal",
+    elige([
+      VZ("Microsoft Pablo - Spanish (Spain)"),
+      VZ("Microsoft Álvaro Online (Natural) - Spanish (Spain)"),
+    ]) === "Microsoft Álvaro Online (Natural) - Spanish (Spain)",
+  );
+  check(
+    "pero el género sigue mandando por encima del timbre: el avatar es Alex",
+    elige([
+      VZ("Microsoft Elvira Online (Natural) - Spanish (Spain)"),
+      VZ("Microsoft Pablo - Spanish (Spain)"),
+    ]) === "Microsoft Pablo - Spanish (Spain)",
+  );
+  check(
+    "en un Chrome de Windows se queda con la de Google, no con la Helena de escritorio",
+    elige([VZ("Microsoft Helena Desktop - Spanish (Spain)"), VZ("Google español")]) === "Google español",
+  );
+  check(
+    "y la variante sigue por delante del timbre sólo a igualdad de género",
+    elige([
+      VZ("Microsoft Jorge Online (Natural) - Spanish (Mexico)", "es-MX"),
+      VZ("Microsoft Elvira Online (Natural) - Spanish (Spain)"),
+    ]) === "Microsoft Jorge Online (Natural) - Spanish (Mexico)",
+  );
+  check(
+    "a una voz natural NO se le baja el tono: bajarlo es lo que le devolvía el timbre metálico",
+    (() => {
+      elige([VZ("Microsoft Elvira Online (Natural) - Spanish (Spain)")]);
+      const natural = elector.pitch;
+      elige([VZ("Microsoft Helena Desktop - Spanish (Spain)")]);
+      return natural > elector.pitch && elector.pitch === 0.7;
+    })(),
+  );
+  check(
+    "una voz que llega tarde sólo sustituye a la puesta si es MEJOR…",
+    (() => {
+      elige([VZ("Google español")]);
+      elector.synth = { getVoices: () => [VZ("Microsoft Helena Desktop - Spanish (Spain)")] };
+      elector._pickVoice();
+      return elector.voice?.name === "Google español";
+    })(),
+  );
+  check(
+    "…y en cuanto el tutor empieza a hablar ya no cambia de voz, pase lo que pase con la lista",
+    (() => {
+      elige([VZ("Google español")]);
+      elector._fijada = true;
+      elector.synth = { getVoices: () => [VZ("Microsoft Álvaro Online (Natural) - Spanish (Spain)")] };
+      elector._pickVoice();
+      return elector.voice?.name === "Google español";
+    })(),
+  );
+  check(
+    "la pantalla distingue la voz natural del navegador de la de escritorio",
+    /voz natural del navegador/.test(ttsSrc) && /this\.natural \? "voz natural del navegador"/.test(ttsSrc),
+  );
+
   // El endpoint, de verdad: sin claves en el entorno dice que no hay voz.
   const { configuracionDeVoz } = await import("../lib/voz/config.ts");
   check(
