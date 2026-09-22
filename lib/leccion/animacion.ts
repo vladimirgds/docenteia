@@ -695,7 +695,12 @@ export function escenaDeDespeje(
     focos.push({
       clase: "pz-coef-despeje",
       tipo: "caja",
-      narracion: `Dividimos los dos lados entre ${coeficiente}.`,
+      // LO QUE SE DICE ES LO QUE SE SEÑALA. Aquí sólo está marcado el
+      // coeficiente —a la derecha no hay ningún 2 que marcar—, así que el pie
+      // habla del coeficiente; que se divide en LOS DOS lados lo enseña el
+      // renglón siguiente, con los dos denominadores marcados. El cliente
+      // fotografió justo esto: «dice "los dos lados" y sólo señala el 2 del 2x».
+      narracion: `La ${variable} está multiplicada por ${coeficiente}.`,
       etiqueta: `÷ ${coeficiente}`,
     });
   }
@@ -703,7 +708,12 @@ export function escenaDeDespeje(
     focos.push({
       clase: "pz-coef-despeje",
       tipo: "caja",
-      narracion: `Dividimos los dos lados entre ${coeficiente}.`,
+      // LO QUE SE DICE ES LO QUE SE SEÑALA. Aquí sólo está marcado el
+      // coeficiente —a la derecha no hay ningún 2 que marcar—, así que el pie
+      // habla del coeficiente; que se divide en los dos lados lo enseña el
+      // renglón siguiente, con los dos denominadores marcados. El cliente
+      // fotografió justo esto: «dice "los dos lados" y sólo señala el 2x».
+      narracion: `La ${variable} está multiplicada por ${coeficiente}.`,
       etiqueta: `÷ ${coeficiente}`,
     });
   }
@@ -804,6 +814,49 @@ export function fraseDeCancelacionDeIncognita(
     `${derecho > 0 ? "-" : "+"}${sinSigno(derecho)}, y a la izquierda ${conVariable(izquierdo)} ` +
     `${derecho > 0 ? "menos" : "más"} ${sinSigno(derecho)} es ${conVariable(queda)}.`
   );
+}
+
+/**
+ * LA DIVISIÓN ESCRITA COMO FRACCIÓN: "2x/2 = 10/2".
+ *
+ * El cliente la pidió así —"crea la regla general: se divide como fracción"— y
+ * con ella se ve lo que de verdad pasa: el 2 de arriba y el 2 de abajo se van.
+ *
+ * Y se marcan LOS DOS DENOMINADORES, uno en cada miembro: la queja anterior fue
+ * exactamente esa —«dice "dividimos los dos lados entre 2" pero sólo señala el 2
+ * del 2x»—. Aquí lo que se dice y lo que se señala son la misma cosa.
+ */
+export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // ax/n = c/n  (el mismo divisor en los dos lados)
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])\/(-?\d+)=(-?\d+)\/(-?\d+)$/);
+  if (!m) return null;
+
+  const [, coefCrudo, variable, divIzq, dividendo, divDer] = m;
+  const coeficiente = coefCrudo === "" || coefCrudo === "+" ? 1 : coefCrudo === "-" ? -1 : Number(coefCrudo);
+  const divisor = Number(divIzq);
+  if (!Number.isFinite(coeficiente) || !divisor || divIzq !== divDer) return null;
+
+  const arribaIzq = coeficiente === 1 ? variable : coeficiente === -1 ? `-${variable}` : `${coeficiente}${variable}`;
+  const numerador = (cuerpo: string, marca: string) => `\\frac{${cuerpo}}{${marcar(marca, String(divisor))}}`;
+
+  return {
+    id,
+    texto,
+    latex: `${numerador(arribaIzq, "pz-divisor pz-divisor-izq")} = ${numerador(dividendo, "pz-divisor pz-divisor-der")}`,
+    narracion: `Dividimos los dos lados entre ${divisor}.`,
+    clase: "despeje",
+    focos: [
+      {
+        clase: "pz-divisor",
+        // Una caja por miembro: ninguna marca cruza el igual.
+        piezas: ["pz-divisor-izq", "pz-divisor-der"],
+        tipo: "caja",
+        narracion: `Dividimos los dos lados entre ${divisor}.`,
+        etiqueta: `÷ ${divisor}`,
+      },
+    ],
+  };
 }
 
 /**
@@ -1516,7 +1569,7 @@ const COMPOSITOR: Record<
   columna: (t, id) => escenaDeColumna(t, id),
   // La línea que se va a dividir NO adelanta el resultado: la división se
   // escribe en su propio renglón y la solución llega después de ella.
-  factor: (t, id) => escenaDeDespeje(t, id, { soloEscritura: true }),
+  factor: (t, id) => escenaDeDivisionEnFraccion(t, id) ?? escenaDeDespeje(t, id, { soloEscritura: true }),
   // Dos renglones, dos escenas: el que ESCRIBE la resta en los dos lados y el
   // que la TACHA. El motor escribe el segundo justo después del primero, y así
   // los dos quedan a la vista al terminar (petición del cliente: los pasos no
@@ -1933,7 +1986,10 @@ function clavesDeFoco(foco: Foco): string[] {
   if (foco.tipo === "tachado") return ["cancel"];
   if (foco.clase === "pz-uniforme") return ["restamos", "sumamos", "quitamos", "los dos lados", "ambos lados"];
   if (foco.clase === "pz-final") return ["resultado final", "respuesta final"];
-  if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide"];
+  if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide", "multiplicada por"];
+  // La división ya escrita en fracción: se enciende cuando la voz habla de
+  // dividir, que es lo que se está viendo en esos dos denominadores.
+  if (foco.clase === "pz-divisor") return ["dividimos", "dividir", "divide", "al dividir"];
   if (foco.clase === "pz-solucion") return ["vale", "solucion", "por tanto", "queda "];
   if (foco.clase === "pz-resultado") return ["resultado", "en total"];
   if (foco.clase.startsWith("pz-coef")) return ["coeficiente"];

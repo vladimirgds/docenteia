@@ -803,7 +803,10 @@ export function solveLinearSteps(text) {
     // resultado, igual que con la multiplicación y con la resta.
     steps.push({
       explica: `Dividimos ambos lados entre ${fmt(coef)} para dejar ${v} sola.`,
-      escribe: `${xc(coef)}${v} ÷ ${fmt(coef)} = ${fmt(c - konst)} ÷ ${fmt(coef)}`,
+      // COMO SE ESCRIBE EN CLASE: en fracción, no con el signo de dividir. Lo
+      // pidió el cliente como regla general —"2x/2 = 10/2"—, y es además la
+      // forma en que se ve la simplificación del coeficiente.
+      escribe: `${xc(coef)}${v}/${fmt(coef)} = ${fmt(c - konst)}/${fmt(coef)}`,
       // Con coeficiente -1 no hay cifra que recuadrar ("-x = -9"), pero la línea
       // necesita igualmente su etiqueta: sin ella la pizarra la deduce, y una
       // escena deducida adelanta la solución —que es lo que el cliente vio: el

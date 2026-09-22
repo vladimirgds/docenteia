@@ -4981,11 +4981,13 @@ if (!vivo) {
     // DIVIDIR TAMBIÉN SE ESCRIBE (regla general del cliente: "en los ejercicios
     // con multiplicación o división en ambos miembros… la pizarra salta
     // directamente a la ecuación resultante sin proyectar el paso operativo").
+    // La división se escribe COMO FRACCIÓN ("2x/2 = 10/2"), que es la regla
+    // general que pidió el cliente, y va justo antes de la solución.
     check(
-      "dividir entre el coeficiente se escribe antes de enseñar la solución",
+      "dividir entre el coeficiente se escribe —en fracción— antes de enseñar la solución",
       (() => {
         const p = (solveLinearSteps("2x + 5 = 15")?.steps ?? []).map((x) => x.escribe);
-        return p.includes("2x ÷ 2 = 10 ÷ 2") && p.indexOf("2x ÷ 2 = 10 ÷ 2") === p.indexOf("x = 5") - 1;
+        return p.includes("2x/2 = 10/2") && p.indexOf("2x/2 = 10/2") === p.indexOf("x = 5") - 1;
       })(),
       (solveLinearSteps("2x + 5 = 15")?.steps ?? []).map((x) => x.escribe).join(" | "),
     );
@@ -4997,7 +4999,8 @@ if (!vivo) {
     // —algo que tenía sentido cuando la división no se escribía—.
     {
       const pasos = (solveLinearSteps("2(x + 3) = 16")?.steps ?? []);
-      const division = pasos.find((p) => /÷/.test(String(p.escribe)));
+      const esDivisionEscrita = (t) => /^-?\d*[a-z]\/-?\d+ = -?\d+\/-?\d+$/.test(String(t ?? ""));
+      const division = pasos.find((p) => esDivisionEscrita(p.escribe));
       const anterior = pasos[pasos.indexOf(division) - 1];
       const escenaAnterior = escenaDeLinea(
         { latex: anterior?.escribe, operacion: division?.accion, narracion: division?.explica },
@@ -5013,7 +5016,7 @@ if (!vivo) {
         "y el orden escrito es: se divide y DESPUÉS sale la solución",
         (() => {
           const escritos = pasos.map((p) => String(p.escribe));
-          const iDiv = escritos.findIndex((t) => /÷/.test(t));
+          const iDiv = escritos.findIndex((t) => esDivisionEscrita(t));
           const iSol = escritos.findIndex((t) => /^x = /.test(t));
           return iDiv >= 0 && iSol > iDiv;
         })(),
@@ -5023,20 +5026,55 @@ if (!vivo) {
         "…también cuando el coeficiente es −1, que no tiene cifra que recuadrar",
         (() => {
           const p = (solveLinearSteps("2(x + 4) = 3x - 1")?.steps ?? []);
-          const div = p.find((x) => /÷/.test(String(x.escribe)));
+          const div = p.find((x) => esDivisionEscrita(x.escribe));
           const prev = p[p.indexOf(div) - 1];
           const e = escenaDeLinea({ latex: prev?.escribe, operacion: div?.accion, narracion: div?.explica }, "u");
           return !/pz-solucion/.test(e.latex ?? "") && e.focos.length > 0;
         })(),
       );
     }
+    // EL PIE CUENTA LO QUE SE VE, NO LO QUE VIENE DESPUÉS. El cliente
+    // fotografió las dos mentiras: sobre "2x/2 = 10/2" el pie decía "al dividir
+    // queda x = 5" —el resultado, que ahí todavía no está—, y sobre "2x = 10"
+    // decía "dividimos los dos lados entre 2" mientras sólo señalaba el 2 del
+    // 2x, porque a la derecha no hay ningún 2 que marcar.
     check(
-      "…y esa línea lleva su foco, para que no aparezca antes de que la voz la cuente",
+      "la división escrita lleva su foco, y el pie cuenta la división, no el resultado",
       (() => {
         const paso = (solveLinearSteps("2x + 5 = 15")?.steps ?? []).find((x) => x.escribe === "x = 5");
-        const e = escenaDeLinea({ latex: "2x ÷ 2 = 10 ÷ 2", operacion: paso?.accion, narracion: paso?.explica }, "d");
-        return e.focos.length > 0 && e.focos[0].narracion === paso?.explica;
+        const e = escenaDeLinea({ latex: "2x/2 = 10/2", operacion: paso?.accion, narracion: paso?.explica }, "d");
+        return (
+          e.focos.length > 0 &&
+          /^Dividimos los dos lados entre 2\.$/.test(e.focos[0].narracion) &&
+          !/queda/.test(e.focos[0].narracion)
+        );
       })(),
+      JSON.stringify(escenaDeLinea({ latex: "2x/2 = 10/2", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "d").focos),
+    );
+    check(
+      "…y marca los DOS denominadores, uno en cada miembro, como dice el pie",
+      (() => {
+        const e = escenaDeLinea({ latex: "2x/2 = 10/2", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "d");
+        const [izq, der] = String(e.latex).split("=");
+        return (
+          JSON.stringify(e.focos[0]?.piezas) === JSON.stringify(["pz-divisor-izq", "pz-divisor-der"]) &&
+          /pz-divisor-izq/.test(izq) && /pz-divisor-der/.test(der) &&
+          !/pz-divisor-der/.test(izq) && !/pz-divisor-izq/.test(der)
+        );
+      })(),
+      escenaDeLinea({ latex: "2x/2 = 10/2", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "d").latex,
+    );
+    check(
+      "y sobre «2x = 10» el pie habla del coeficiente que está marcado, no de «los dos lados»",
+      (() => {
+        const e = escenaDeLinea({ latex: "2x = 10", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "c");
+        return (
+          e.focos.length === 1 &&
+          /multiplicada por 2/.test(e.focos[0].narracion) &&
+          !/dos lados|ambos lados/i.test(e.focos[0].narracion)
+        );
+      })(),
+      escenaDeLinea({ latex: "2x = 10", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "c").focos[0]?.narracion,
     );
 
     // CADA LÍNEA, CON SU FRASE — Y LA MISMA EN EL MOTOR Y EN LA PIZARRA.

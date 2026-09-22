@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **106.561 comprobaciones en Chrome y 0
+> las de la última pasada completa): **107.181 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.586
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **749** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **751** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3319,3 +3319,50 @@ Con la clave puesta en **Production** y un despliegue nuevo, `/api/voz?probar=1`
 responde `"prueba": "ok"` y la línea bajo el avatar pasa de «falta
 GOOGLE_TTS_API_KEY en el servidor» a «voz neuronal (google)». La síntesis del
 navegador —la Microsoft Raul que está oyendo— se apaga en ese momento.
+
+
+## 47. Undécima ronda: el pie dice lo que se señala, y la división se escribe como fracción
+
+Tres observaciones del cliente sobre la misma zona de la pizarra, y las tres
+eran ciertas.
+
+### 1. «Dice "dividimos los dos lados entre 2" pero sólo señala el 2 del 2x»
+
+En la línea `2x = 10` el pie anunciaba la división en los dos lados mientras la
+caja marcaba un solo número —y no podía marcar otro: **a la derecha no hay
+ningún 2**—. Ahora el pie cuenta lo que de verdad está señalado: «La x está
+multiplicada por 2». Que se divide en los dos lados lo enseña el renglón
+siguiente, donde sí hay dos cosas que marcar.
+
+### 2. «Dice "al dividir queda x = 5" pero muestra esto»
+
+El pie de la línea de la división traía la frase del paso SIGUIENTE —el
+resultado, que en esa línea todavía no está—. Era el efecto de una regla general
+que hasta ahora funcionaba: cada línea se etiqueta con la operación que se va a
+hacer sobre ella. En esta no valía, porque lo que viene después no es una
+operación sino la respuesta.
+
+La línea de la división tiene ahora su propia escena y su propio pie:
+«Dividimos los dos lados entre 2», con **los dos denominadores marcados, uno en
+cada miembro** —ninguna marca cruza el igual—.
+
+### 3. «Crea la regla general: se divide como fracción»
+
+Hecho. Donde antes se escribía `2x ÷ 2 = 10 ÷ 2`, ahora se escribe la fracción,
+que es como se hace en clase y como se ve que el 2 de arriba y el de abajo se
+van:
+
+```
+2x + 6 − 6 = 16 − 6
+2x + 6̶ − 6̶ = 16 − 6
+2x = 10
+2x     10
+── = ──
+ 2      2
+x = [5] ✓
+```
+
+Tres comprobaciones nuevas lo fijan: que el pie de la división hable de dividir
+y no del resultado, que marque los dos denominadores (uno por miembro), y que el
+pie de `2x = 10` hable del coeficiente que está marcado y **no** de «los dos
+lados».
