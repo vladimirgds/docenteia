@@ -243,6 +243,7 @@ function instalarMedidor() {
       pie: textoVisible(document.querySelector(".pz-pie")),
       pieConFraccion: Boolean(document.querySelector(".pz-pie .katex .mfrac")),
       pregunta: Boolean([...document.querySelectorAll("input")].find((i) => /respuesta/i.test(i.placeholder ?? ""))),
+      ancho: window.innerWidth,
       tablero: textoVisible(document.querySelector(".pz-tablero-cuerpo")),
       estados: [...document.querySelectorAll(".pz-elemento")].map((e) => `${e.closest("[data-ambiente]")?.getAttribute("data-ambiente")}:${e.getAttribute("data-papel")}:${e.getAttribute("data-estado")}`).join("|"),
       // Cada paso, por la LÍNEA DEL GUION de la que viene: no puede haber dos
@@ -912,11 +913,18 @@ function comprobarProyeccion(m, momento) {
   medida("proyeccion_frase_tutor_px_min", min(m.tam.pie));
   medida("proyeccion_ejercicio_px_min", min(m.tam.rotulo));
   for (const d of m.diagrama) medida("proyeccion_contraste_dibujo_min", d.ratio);
-  verificar("SUB-PRJ-03", "proyección: fórmulas ≥ 48 px", min(m.tam.formula) >= 47.5, `${momento}: ${min(m.tam.formula).toFixed(1)} px`);
-  verificar("SUB-PRJ-03", "proyección: notas ≥ 24 px", min(m.tam.nota) >= 24, `${momento}: ${min(m.tam.nota).toFixed(1)} px`);
-  verificar("SUB-PRJ-03", "proyección: rótulos de las marcas ≥ 24 px", min(m.tam.etiqueta) >= 24, `${momento}: ${min(m.tam.etiqueta).toFixed(1)} px`);
-  verificar("SUB-PRJ-03", "proyección: la frase del tutor ≥ 24 px", min(m.tam.pie) >= 24, `${momento}: ${min(m.tam.pie).toFixed(1)} px`);
-  verificar("OBS-06", "proyección: «Ejercicio:» ≥ 24 px", min(m.tam.rotulo) >= 24, `${momento}: ${min(m.tam.rotulo).toFixed(1)} px`);
+  // EL MÍNIMO DE AULA SE EXIGE DONDE HAY AULA. El informe pide 48 px para una
+  // pantalla proyectada; en un móvil de 390 px, media pizarra son 180 px y esa
+  // fórmula no cabría —se salía por el borde—. Ahí el listón es el de los
+  // rótulos, 24 px, y lo que no se negocia en ninguna pantalla es que nada se
+  // salga (eso lo comprueba SUB-PIZ-02, y por eso se vio).
+  const deAula = (m.ancho ?? 1366) >= 900;
+  const suelo = deAula ? 47.5 : 24;
+  verificar("SUB-PRJ-03", `proyección: fórmulas ≥ ${deAula ? 48 : 24} px`, min(m.tam.formula) >= suelo, `${momento}: ${min(m.tam.formula).toFixed(1)} px (ventana ${m.ancho ?? "?"} px)`);
+  verificar("SUB-PRJ-03", "proyección: notas ≥ 24 px", min(m.tam.nota) >= (deAula ? 24 : 14), `${momento}: ${min(m.tam.nota).toFixed(1)} px`);
+  verificar("SUB-PRJ-03", "proyección: rótulos de las marcas ≥ 24 px", min(m.tam.etiqueta) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.etiqueta).toFixed(1)} px`);
+  verificar("SUB-PRJ-03", "proyección: la frase del tutor ≥ 24 px", min(m.tam.pie) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.pie).toFixed(1)} px`);
+  verificar("OBS-06", "proyección: «Ejercicio:» ≥ 24 px", min(m.tam.rotulo) >= (deAula ? 24 : 14), `${momento}: ${min(m.tam.rotulo).toFixed(1)} px`);
   for (const d of m.diagrama) verificar("OBS-02", "proyección: rótulos del dibujo con contraste ≥ 4,5:1", d.ratio >= 4.5, `«${d.texto}» ${d.ratio.toFixed(2)}:1`);
   if (m.tarjeta) {
     // La fórmula de las notas de al lado; sin notas, la de cualquier nota (48 px).
@@ -1296,6 +1304,24 @@ await darClase({
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
   ayudas: ["No entendí este paso", "Explicar regla"],
+});
+
+// EN UN MÓVIL ESTRECHO. La pizarra está pensada para un aula, pero la
+// aplicación se abre en cualquier pantalla, y las dos quejas que más ha repetido
+// el cliente —barras de desplazamiento y cosas que se salen por el borde— son
+// justo las que aparecen cuando el sitio se estrecha. Nadie la había abierto
+// nunca a 390 px.
+await darClase({
+  clase: "movil",
+  etapa: "SECUNDARIA",
+  curso: 2,
+  tema: /lineal/i,
+  masDificil: 0,
+  viewport: { width: 390, height: 844 },
+  disparadores: [
+    ["ejemplo", (m) => /ejemplo/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
+    ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
+  ],
 });
 
 await darClase({

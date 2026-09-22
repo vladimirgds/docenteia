@@ -1068,8 +1068,8 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
     reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]),
   );
   check(
-    "…y no salta de columna en el segundo paso, que es lo que se leía como un borrado",
-    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]) === "1112",
+    "…y al enunciado le acompaña UN paso: el resto baja por el panel de desarrollo, sin dejarlo vacío",
+    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]) === "1122",
     reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]),
   );
   check(
@@ -2773,8 +2773,10 @@ titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
     ["división", () => divisionResueltaLSG({ concepto: true }), 3],
     ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 2],
     ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 4],
-    // Cuatro: la resta escrita, la resta tachada, la división y el cierre.
-    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 4],
+    // Cinco: la resta escrita, la resta tachada, la división escrita, su
+    // resultado y el cierre. Todo lo que el tutor nombra queda etiquetado, que
+    // es lo que permite a la pizarra seguirlo frase a frase.
+    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 5],
     ["derivadas", () => derivadaResueltaLSG({ concepto: true }), 1],
     ["factorización", () => factorizacionResueltaLSG({ concepto: true }), 1],
   ];
@@ -4893,6 +4895,41 @@ if (!vivo) {
       /sin voz neuronal: falta \$\{this\.claveQueFalta/.test(ttsSrc),
   );
 
+  // CUANDO LE TOCA AL ALUMNO, SE NOTA. El cliente lo pidió con la pantalla
+  // delante: la lección se para esperando respuesta, el avatar se queda en "Te
+  // acompaño" y nada dice que hay que escribir abajo —"el estudiante piensa que
+  // el sistema se congeló"—.
+  {
+    const player = readFileSync(new URL("../public/pseLight.js", import.meta.url), "utf8");
+    const estilos2 = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+    check(
+      "el avatar dice, en toda pregunta, que le toca al alumno y dónde escribir",
+      /export const INVITACION_A_RESPONDER\s*=\s*\n?\s*"Ahora te toca a ti: resuelve el ejercicio y escribe tu respuesta en la caja de abajo\."/.test(player) &&
+        /await this\._speak\(INVITACION_A_RESPONDER, "preguntando", signal\);/.test(player),
+    );
+    check(
+      "…y la interfaz enseña esa MISMA frase junto al formulario",
+      /INVITACION_A_RESPONDER/.test(aulaSrc) && /className="pz-aviso-turno/.test(aulaSrc),
+    );
+    check(
+      "el formulario de respuesta se resalta y la vista va hasta él",
+      /pz-turno-alumno border-2 border-primary/.test(aulaSrc) &&
+        /cajaRespuesta\.current\?\.scrollIntoView/.test(aulaSrc) &&
+        /\.pz-turno-alumno \{[\s\S]{0,80}animation: pz-turno/.test(estilos2),
+    );
+    check(
+      "…sin marear a quien pide menos movimiento",
+      /prefers-reduced-motion: reduce\)[\s\S]{0,120}\.pz-turno-alumno \{[\s\S]{0,40}animation: none/.test(estilos2),
+    );
+    check(
+      "y el rótulo del avatar dice de quién es el turno, no sólo que acompaña",
+      /etiqueta=\{pregunta \? "Te toca a ti" : undefined\}/.test(aulaSrc) &&
+        /const rotulo = etiqueta\?\.trim\(\) \|\| ETIQUETA\[modo\]/.test(
+          readFileSync(new URL("../components/leccion/avatar-2d.tsx", import.meta.url), "utf8"),
+        ),
+    );
+  }
+
   // TODA OPERACIÓN QUE EL AVATAR NOMBRA SE ESCRIBE ANTES DE ENSEÑAR SU
   // RESULTADO (regla que pidió el cliente con "x/3 + 7 = 12" delante: el tutor
   // decía "multiplicamos ambos lados por 3" y la pizarra saltaba a "x + 21 =
@@ -4940,6 +4977,25 @@ if (!vivo) {
       "y una ecuación con x en los dos lados escribe la resta antes de juntar los términos",
       (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe === "5x - 7 - 2x = 2x + 5 - 2x",
       (solveLinearSteps("5x - 7 = 2x + 5")?.steps ?? [])[0]?.escribe,
+    );
+    // DIVIDIR TAMBIÉN SE ESCRIBE (regla general del cliente: "en los ejercicios
+    // con multiplicación o división en ambos miembros… la pizarra salta
+    // directamente a la ecuación resultante sin proyectar el paso operativo").
+    check(
+      "dividir entre el coeficiente se escribe antes de enseñar la solución",
+      (() => {
+        const p = (solveLinearSteps("2x + 5 = 15")?.steps ?? []).map((x) => x.escribe);
+        return p.includes("2x ÷ 2 = 10 ÷ 2") && p.indexOf("2x ÷ 2 = 10 ÷ 2") === p.indexOf("x = 5") - 1;
+      })(),
+      (solveLinearSteps("2x + 5 = 15")?.steps ?? []).map((x) => x.escribe).join(" | "),
+    );
+    check(
+      "…y esa línea lleva su foco, para que no aparezca antes de que la voz la cuente",
+      (() => {
+        const paso = (solveLinearSteps("2x + 5 = 15")?.steps ?? []).find((x) => x.escribe === "x = 5");
+        const e = escenaDeLinea({ latex: "2x ÷ 2 = 10 ÷ 2", operacion: paso?.accion, narracion: paso?.explica }, "d");
+        return e.focos.length > 0 && e.focos[0].narracion === paso?.explica;
+      })(),
     );
 
     // CADA LÍNEA, CON SU FRASE — Y LA MISMA EN EL MOTOR Y EN LA PIZARRA.

@@ -795,11 +795,26 @@ export function solveLinearSteps(text) {
     });
   }
   if (coef !== 1) {
+    // DIVIDIR TAMBIÉN SE ESCRIBE. El cliente lo puso como regla general: "en los
+    // ejercicios con multiplicación o división en ambos miembros, el avatar
+    // menciona verbalmente la operación, pero la pizarra salta directamente a la
+    // ecuación resultante sin proyectar el paso operativo". Así que primero se
+    // escribe la división en los dos lados y en el renglón siguiente su
+    // resultado, igual que con la multiplicación y con la resta.
     steps.push({
       explica: `Dividimos ambos lados entre ${fmt(coef)} para dejar ${v} sola.`,
-      escribe: `${v} = ${answerStr}`,
+      escribe: `${xc(coef)}${v} ÷ ${fmt(coef)} = ${fmt(c - konst)} ÷ ${fmt(coef)}`,
       // Con coeficiente -1 no hay cifra escrita que recuadrar ("-x = 3"): sin términos, sin etiqueta.
       ...(Math.abs(coef) !== 1 ? { accion: { tipo: "factor", terminosFoco: [fmt(Math.abs(coef))] } } : {}),
+    });
+    steps.push({
+      explica: `Al dividir queda ${v} = ${answerStr}.`,
+      escribe: `${v} = ${answerStr}`,
+      // El gesto sobre la línea ANTERIOR —la división escrita—: se señala el
+      // número entre el que se divide, que ahí sí está escrito en los dos
+      // miembros. Sin esta etiqueta esa línea se quedaba sin foco, y una línea
+      // sin foco no se sincroniza con la voz: aparecería de golpe.
+      accion: { tipo: "factor", terminosFoco: [fmt(coef)] },
     });
   }
   if (steps.length === 0 || !steps[steps.length - 1].escribe.startsWith(`${v} =`)) {

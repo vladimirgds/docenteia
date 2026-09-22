@@ -1,10 +1,18 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **3.588 comprobaciones automáticas, 0
-fallos** (`npm test`, código de salida 0), de las cuales **329 son nuevas** y
-específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
-Chrome de verdad** (`qa/navegador.mjs`).
+verificado con la suite del proyecto.
+
+> **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
+> las de la última pasada completa): **106.635 comprobaciones en Chrome y 0
+> fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
+> (`qa/observaciones.mjs`), **31.586
+> afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
+> **744** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
+> (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
+> 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
+> turnos sin violaciones. `npm ci`, `tsc --noEmit` y `npm run build`, limpios.
 
 ---
 
@@ -21,6 +29,9 @@ Chrome de verdad** (`qa/navegador.mjs`).
 | **Modo Proyección**: pantalla completa + alto contraste, líneas KaTeX gruesas, tipografía escalada | `components/leccion/pizarra-animada.tsx` + `app/globals.css` | ✅ |
 | Backlog UX del Hito 1: reordenar bloques de `/docente/crear-tema` | `components/docente/formulario-tema.tsx` | ✅ |
 | `qa/hito2.mjs`: inicialización de la pizarra, máquina de estados del avatar, ausencia de excepciones de render | `qa/hito2.mjs` | ✅ |
+| Los cuatro mandos y los cinco estados del avatar, comprobados **en un Chrome de verdad** durante una clase entera | `qa/mandos.mjs` | ✅ |
+| Voz neuronal del tutor por endpoint propio (Google Cloud TTS / ElevenLabs), con vuelta a la del navegador si no hay clave | `app/api/voz/route.ts` + `lib/voz/config.ts` + `public/tts.js` | ✅ (falta la clave en el servidor del cliente) |
+| Que lo desplegado sea lo entregado: salud con el commit vivo y batería que lo comprueba desde fuera | `qa/despliegue.mjs` + `scripts/despliegue.mjs` + `render.yaml` | ✅ |
 
 ---
 
@@ -3113,3 +3124,139 @@ con incógnita. `qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826; `qa/navegador.mjs`:
 87; matemáticas 100; hito 1 124; diagnóstico por nivel 94; aceptación **24/24**;
 diagnóstico, sesiones, paso 1 y frontend sin fallos; barrido de **200 sesiones y
 1.800 turnos, 0 violaciones**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 44. Novena ronda: dividir también se escribe, y se ve cuándo le toca al alumno
+
+El cliente cerró él mismo el primer punto —«ya verifiqué /api/voz… ya tengo
+identificado dónde cargar la variable en el panel de Vercel»—, así que la voz
+neuronal queda a la espera de su clave. Los otros dos son míos y están hechos.
+
+### 1. Toda acción verbalizada se escribe (ahora también la división)
+
+La regla que puso el cliente es general: *si el avatar dice «multiplicamos por 7
+ambos miembros», la pizarra debe renderizar primero la expresión formal* y en el
+renglón siguiente el resultado. La multiplicación y la resta ya lo hacían; **la
+división no**: el tutor decía «dividimos ambos lados entre 2» y la pizarra
+saltaba a `x = 5`.
+
+Ahora son dos renglones, como todo lo demás:
+
+```
+2x = 10
+2x ÷ 2 = 10 ÷ 2     ← «dividimos ambos lados entre 2»
+x = 5               ← «al dividir queda x = 5»
+[5] ✓
+```
+
+Y la línea nueva lleva su etiqueta —el número entre el que se divide, que ahí sí
+está escrito en los dos miembros—, porque **una línea sin foco no se sincroniza
+con la voz**: sería exactamente el defecto de la ronda anterior. Lo cazó la
+batería en el acto, con `−x ÷ −1 = −9 ÷ −1`, que era el único caso sin cifra que
+señalar.
+
+**El reparto entre los dos ambientes se ha reajustado en consecuencia.** Con dos
+tiempos por operación, un despeje son cinco o seis renglones: dejarlos todos en
+la columna izquierda vaciaba el panel de desarrollo —lo que el cliente pidió
+evitar en su día—. Ahora al enunciado le acompaña **un** paso (el que cierra la
+operación empezada sobre él) y el resto baja por el Ambiente 2, de corrido.
+
+### 2. Se ve —y se oye— cuándo le toca al alumno
+
+En la práctica, la lección se para esperando respuesta. El cliente lo describió
+sin rodeos: el avatar se queda en «Te acompaño» y *«el estudiante no piensa que
+debe interactuar; piensa que el sistema se congeló»*. Tres cosas, y las tres a la
+vez:
+
+- **El avatar lo dice.** Al plantear cualquier pregunta —venga del generador que
+  venga, porque va en el reproductor— añade: «Ahora te toca a ti: resuelve el
+  ejercicio y escribe tu respuesta en la caja de abajo».
+- **El rótulo del avatar cambia** de «Te acompaño» a **«Te toca a ti»** mientras
+  hay una pregunta delante.
+- **El formulario se resalta**: marco grueso, la misma frase en azul sobre la
+  pregunta, un latido de dos pulsos al aparecer y la vista que baja sola hasta
+  él. Con `prefers-reduced-motion` no late, sólo se queda marcado.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **101.867 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **744**, con las
+comprobaciones nuevas —la división escrita y con foco, la invitación al alumno
+en el reproductor, la frase repetida junto al formulario, el resalte, el
+desplazamiento hasta la caja y el respeto a `prefers-reduced-motion`—. Rigor:
+**31.586 afirmaciones matemáticas recalculadas, 0 incorrectas**. `qa/qa.mjs`:
+1.465; `qa/leccion.mjs`: 827; `qa/navegador.mjs`: 87; matemáticas 100; hito 1
+124; diagnóstico por nivel 94; aceptación **24/24**; diagnóstico, sesiones, paso
+1 y frontend sin fallos; barrido de **200 sesiones y 1.800 turnos, 0
+violaciones**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 45. Qué faltaba de verdad en el Hito 2, revisado punto por punto
+
+Con todas las rondas cerradas, esta es la revisión de lo que quedaba. Se ha
+repasado el pliego del hito entero, no sólo lo último que se pidió.
+
+### Lo que faltaba y ya está hecho
+
+**Dos de los cuatro mandos no se habían probado nunca en un navegador.** El
+pliego pide «Pausar, Reanudar, Repetir paso y Avanzar manualmente». La batería de
+Chrome llegaba a pulsar Pausar y Reanudar; que **«Avanzar» avance** y que
+**«Repetir paso» repita** sólo estaba comprobado por dentro, simulando el
+reproductor en Node. Ahora hay una batería que da una clase entera en Chrome
+—`qa/mandos.mjs`, 19 comprobaciones— y pulsa los cuatro:
+
+- pausar deja de hablar (se cuentan las locuciones, interceptando el
+  sintetizador);
+- «Avanzar» mueve el paso: cambia lo resaltado o la línea activa;
+- «Repetir paso» vuelve a contarlo: se oye otra vez;
+- reanudar y la clase sigue sola.
+
+**Los cinco estados del avatar tampoco se habían visto cambiar en una clase
+real.** La máquina de estados estaba comprobada como función. Ahora se anota el
+estado del avatar durante toda la clase y se exige verlo pasar por
+**EXPLICANDO**, **APOYO** al preguntar —con su rótulo «Te toca a ti» y la
+invitación dicha en voz alta— y **CELEBRANDO** tras una respuesta correcta.
+
+Y la cabecera de esta entrega, que seguía anunciando las 3.588 comprobaciones
+del primer día, ahora dice las de verdad.
+
+### Lo que no depende de este repositorio
+
+1. **La clave de la voz neuronal.** El código está terminado y probado; sin
+   `GOOGLE_TTS_API_KEY` (o `ELEVENLABS_API_KEY`) en Vercel, `/api/voz` responde
+   `sin_configurar` —lo dice él mismo, y también la pantalla bajo el avatar— y la
+   clase habla con la voz del navegador. Es lo único que separa al tutor de su
+   voz neuronal.
+2. **Dos flujos de GitHub Actions** (`verificacion.yml` y `despliegue.yml`), que
+   contestan solos «¿compila main?» y «¿es eso lo que está desplegado?». Van
+   adjuntos con la entrega: crear ficheros en `.github/workflows` exige un
+   permiso de GitHub que la credencial de esta entrega no tiene.
+
+### Lo que no es de este hito
+
+Hito 3 (Colegios y tareas) y Hito 4 (Reportes y cierre) no están empezados, y
+Hito 3 necesita antes tres decisiones del cliente: cómo se une un alumno a un
+aula, si un docente puede pertenecer a varias instituciones y qué cuenta como
+«reintento» en una tarea.
+
+### Y un defecto que apareció al buscar lo que faltaba: la pizarra en un móvil
+
+Repasando qué no se había mirado nunca, salió esto: **la lección no se había
+abierto jamás en una pantalla estrecha**. La batería daba clase a 1366 px y una
+a 1920; nadie la había visto a 390. Y las dos quejas que más ha repetido el
+cliente —cosas que se salen por el borde y barras de desplazamiento— son
+exactamente las que aparecen cuando el sitio se estrecha.
+
+Estaba rota: en modo proyección, el Ambiente 1 **se salía 59,5 px por la
+derecha**. La causa es que el mínimo de 48 px por fórmula que pide el informe
+está pensado para un aula; en 390 px de ancho, media pizarra son 180 px y esa
+fórmula no cabe de ninguna manera.
+
+**Corregido:** por debajo del tamaño de un portátil, el suelo de la fórmula
+proyectada baja (`clamp(1.5rem, 7vw, 3rem)`), así que sigue siendo letra grande
+—por encima de los 24 px que el informe pide para los rótulos— y no se sale
+nada. En 1366 y en 1920 no cambia ni un píxel: ahí el mínimo de aula se respeta
+igual que antes. La batería exige lo uno o lo otro según el ancho de la ventana,
+y lo que no se negocia en ninguna pantalla es que nada se salga.
+
+Y la clase de móvil se queda en la batería: **ocho clases** en lugar de siete.

@@ -75,13 +75,22 @@ export function Avatar2D({
   estado,
   hablando,
   className,
+  etiqueta,
 }: {
   estado: EstadoAvatar | EstadoPedagogico;
   /** Anima la boca mientras el sintetizador está emitiendo. */
   hablando: boolean;
   className?: string;
+  /**
+   * Qué se lee bajo el avatar, cuando hay algo más concreto que su estado.
+   * Se usa al dejarle la palabra al alumno: "Te acompaño" no dice que haya que
+   * hacer nada, y el cliente vio a un estudiante esperando a que la pantalla
+   * siguiera sola.
+   */
+  etiqueta?: string;
 }) {
   const modo = estadoPedagogico(estado);
+  const rotulo = etiqueta?.trim() || ETIQUETA[modo];
   const boca = BOCAS[modo];
   const cejas = CEJAS[modo];
 
@@ -91,7 +100,7 @@ export function Avatar2D({
         viewBox="0 0 120 120"
         className="h-28 w-28 sm:h-32 sm:w-32"
         role="img"
-        aria-label={`Tutor: ${ETIQUETA[modo]}`}
+        aria-label={`Tutor: ${rotulo}`}
         data-estado={modo}
       >
         <g className={cn("avatar-pieza", ANIMACION_CABEZA[modo])}>
@@ -150,7 +159,7 @@ export function Avatar2D({
       {/* Lo que "dice" el avatar de sí mismo —"Explicando", "¡Muy bien!"— es
           voz del tutor: rol TUTOR_DIALOG (Segoe Print). */}
       <span data-rol="TUTOR_DIALOG" className={cn("pz-avatar-estado text-xs font-medium tabular-nums", COLOR_ESTADO[modo])}>
-        {ETIQUETA[modo]}
+        {rotulo}
       </span>
     </div>
   );

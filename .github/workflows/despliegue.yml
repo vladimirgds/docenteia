@@ -1,0 +1,61 @@
+# ¿LO QUE ESTÁ DESPLEGADO ES LO QUE HAY EN `main`?
+#
+# La otra mitad de la pregunta. `verificacion.yml` dice que el código compila y
+# pasa sus pruebas; esto dice si el sitio en vivo está sirviendo ESE código.
+#
+# Durante un mes se sirvió una versión de agosto mientras cada entrega se
+# fusionaba sin que nadie se enterara de que no llegaba. Con esto, eso se ve en
+# la pestaña Actions del propio repositorio: en rojo mientras el despliegue no
+# llegue, en verde en cuanto llegue.
+#
+# Se puede lanzar a mano (Actions → despliegue → Run workflow) indicando otra
+# dirección, que es como se comprueba una instalación distinta.
+name: despliegue
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"    # cuatro veces al día: suficiente para enterarse, poco para molestar
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Dirección a comprobar"
+        required: false
+        default: "https://docenteia-nu.vercel.app"
+      commit:
+        description: "Commit que se espera desplegado (vacío = el de esta rama)"
+        required: false
+        default: ""
+
+concurrency:
+  group: despliegue
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    name: la versión viva es la de main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+
+      # La batería no necesita dependencias: sólo `fetch` y `git`.
+      - name: Comprobar la versión desplegada
+        run: node qa/despliegue.mjs "${{ github.event.inputs.url || 'https://docenteia-nu.vercel.app' }}" "${{ github.event.inputs.commit || github.sha }}"
+
+      - name: Qué mirar si ha fallado
+        if: failure()
+        run: |
+          echo "El sitio no está sirviendo el código de main. En el panel del servicio:"
+          echo "  1. ¿está conectado a ESTE repositorio y a la rama main?"
+          echo "  2. ¿está activado el despliegue automático?"
+          echo "  3. en el último despliegue, ¿qué dice el registro? (la causa está ahí)"
+          echo "  4. ¿están puestas DATABASE_URL, DIRECT_URL y AUTH_SECRET?"
+          echo ""
+          echo "La aplicación se compila sola al instalar (gancho postinstall), así que"
+          echo "no hace falta cambiar la orden de construcción del panel."

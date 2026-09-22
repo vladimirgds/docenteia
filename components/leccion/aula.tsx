@@ -13,7 +13,7 @@ import {
   VolumeX,
 } from "lucide-react";
 
-import { PSELight } from "@/public/pseLight.js";
+import { INVITACION_A_RESPONDER, PSELight } from "@/public/pseLight.js";
 import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
@@ -159,6 +159,8 @@ export function Aula({
   const pseRef = useRef<PSELight | null>(null);
   const ttsRef = useRef<TTS | null>(null);
   const resolverRespuesta = useRef<((valor: string | null) => void) | null>(null);
+  /** La tarjeta de respuesta, para llevar la vista hasta ella cuando aparece. */
+  const cajaRespuesta = useRef<HTMLDivElement | null>(null);
   const idLinea = useRef(0);
   const conversacion = useRef<EstadoConversacion>(estadoInicial());
 
@@ -370,6 +372,16 @@ export function Aula({
   });
   const [pregunta, setPregunta] = useState<string | null>(null);
   const [borrador, setBorrador] = useState("");
+  // Cuando le toca al alumno, la vista va a donde hay que escribir. En una
+  // pantalla de portátil la caja de respuesta cae por debajo del pliegue y el
+  // cliente vio a un estudiante esperando a que la lección siguiera sola.
+  useEffect(() => {
+    if (!pregunta) return;
+    const t = setTimeout(() => {
+      cajaRespuesta.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [pregunta]);
   const [intento, setIntento] = useState(1);
   const [veredicto, setVeredicto] = useState<Veredicto | null>(null);
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -1525,7 +1537,12 @@ export function Aula({
         <div className="space-y-4">
           <Card>
             <CardContent className="flex flex-col items-center gap-3 pt-6">
-              <Avatar2D estado={avatarPizarra ?? estadoAvatar} hablando={hablando} />
+              <Avatar2D
+                estado={avatarPizarra ?? estadoAvatar}
+                hablando={hablando}
+                // Con una pregunta delante, el rótulo dice lo que toca hacer.
+                etiqueta={pregunta ? "Te toca a ti" : undefined}
+              />
               <div className="flex gap-2">
                 {controles.playing && !controles.paused ? (
                   <Button size="sm" variant="outline" onClick={() => pseRef.current?.pause()}>
@@ -1662,10 +1679,22 @@ export function Aula({
             </p>
           )}
 
-          {/* Entorno de resolución interactiva */}
+          {/* Entorno de resolución interactiva.
+
+              SE VE QUE LE TOCA AL ALUMNO. La lección se para aquí esperando una
+              respuesta, y el cliente vio la consecuencia de no decirlo: "el
+              estudiante no sabe que debe interactuar y piensa que el sistema se
+              congeló". Ahora la tarjeta se anuncia sola —marco, aviso y un
+              latido al aparecer—, se lleva la vista hasta ella y dice, con las
+              mismas palabras que acaba de decir el avatar, qué hay que hacer. */}
           {pregunta && (
-            <Card className="border-primary/50">
+            <Card ref={cajaRespuesta} className="pz-turno-alumno border-2 border-primary shadow-md">
               <CardHeader className="pb-3">
+                <TextoTutor
+                  como="p"
+                  className="pz-aviso-turno text-sm font-semibold text-primary"
+                  texto={INVITACION_A_RESPONDER}
+                />
                 <CardTitle className="text-base font-medium">
                   <TextoTutor como="span" className="pz-pregunta" texto={pregunta} />
                 </CardTitle>

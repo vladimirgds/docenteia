@@ -54,9 +54,13 @@
  * un paso debajo de otro en el orden en que la voz los cuenta:
  *
  *   · si el propio enunciado es ya el primer eslabón —"2x + 6 = 16", sobre el
- *     que se cancela—, la cadena baja por el Ambiente 1: la resta a los dos
- *     lados, "2x = 10" con su solución, y a la derecha la respuesta enmarcada,
- *     que es donde el informe pone "la respuesta final consolidada";
+ *     que se cancela—, le acompaña en el Ambiente 1 UN paso: el que cierra esa
+ *     operación (la línea tachada). Desde ahí la cadena sigue por el Ambiente 2,
+ *     que es donde el informe pone "la continuación operativa" y "la respuesta
+ *     final consolidada". Con los dos tiempos de cada operación —escribirla y
+ *     tacharla— un despeje son cinco o seis renglones: amontonarlos todos a la
+ *     izquierda dejaría el panel de desarrollo vacío, que es justo lo que el
+ *     cliente pidió evitar cuando vio "un enorme espacio vacío" en el Ambiente 2;
  *   · si el enunciado se transforma primero —repartir un paréntesis, amplificar
  *     una fracción—, esa transformación se queda en el Ambiente 1 y la cadena
  *     entera baja por el Ambiente 2.
@@ -91,6 +95,8 @@ export function repartirEnAmbientes(pasos: readonly PasoDeLaPizarra[]): Ambiente
   let segundoAbierto = false;
   /** La cadena de resolución empezó sobre el propio enunciado, en el Ambiente 1. */
   let cadenaEnElUno = false;
+  /** Cuántos pasos de esa cadena se han quedado ya en el Ambiente 1. */
+  let pasosEnElUno = 0;
   return pasos.map((p) => {
     if (p.papel === "planteamiento") {
       // Un planteamiento que ya opera (la distributiva que se anima sobre el
@@ -111,8 +117,17 @@ export function repartirEnAmbientes(pasos: readonly PasoDeLaPizarra[]): Ambiente
       acompana = true;
       return 1;
     }
-    // Y una cadena de resolución no se parte por la mitad: sigue donde empezó.
-    if (!segundoAbierto && !transforma && cadenaEnElUno) return 1;
+    // Y una cadena de resolución no se parte por la mitad: sigue donde empezó…
+    // pero no se queda entera en una sola columna. Con los dos tiempos de cada
+    // operación —escribirla y tacharla— un despeje son cinco o seis renglones,
+    // y amontonarlos a la izquierda deja el panel de desarrollo vacío, que es
+    // justo lo que el cliente pidió evitar en su día. Al enunciado le acompaña
+    // UN paso —el que cierra la operación empezada sobre él— y el resto baja
+    // por el Ambiente 2, donde se lee de corrido.
+    if (!segundoAbierto && !transforma && cadenaEnElUno && pasosEnElUno < 1) {
+      pasosEnElUno++;
+      return 1;
+    }
     segundoAbierto = true;
     return 2;
   });

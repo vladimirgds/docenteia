@@ -99,6 +99,9 @@ export interface UIPSELight {
   onExerciseResolved?(resultado: { acerto: boolean; respuesta: string; pregunta?: string | null }): void;
 }
 
+/** Lo que el tutor dice —y la interfaz enseña— al dejarle la palabra al alumno. */
+export const INVITACION_A_RESPONDER: string;
+
 export function flattenLSG(lsg: LSG): Directiva[];
 export function extractExpectedAnswer(timeline: Directiva[], indicePregunta: number): string | null;
 export function normalizeAnswer(s: string): string;

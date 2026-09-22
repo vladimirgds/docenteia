@@ -244,6 +244,16 @@ export function checkAnswer(student, expected) {
 
 // --- Reproductor (navegador) -------------------------------------------------
 
+/**
+ * LO QUE SE DICE AL DEJAR LA PALABRA AL ALUMNO.
+ *
+ * Una sola frase, en un solo sitio: la dice el avatar al plantear cualquier
+ * pregunta y la enseña la interfaz junto al formulario, para que lo que se oye
+ * y lo que se lee sean lo mismo.
+ */
+export const INVITACION_A_RESPONDER =
+  "Ahora te toca a ti: resuelve el ejercicio y escribe tu respuesta en la caja de abajo.";
+
 const sleep = (ms, signal) =>
   new Promise((resolve) => {
     if (signal?.aborted) return resolve();
@@ -471,6 +481,16 @@ export class PSELight {
   // Ramificación ligera: pregunta, evalúa y decide (un reintento).
   async _handleQuestion(d, index, timeline, signal) {
     await this._speak(d.texto, "preguntando", signal);
+    if (signal.aborted) return;
+
+    // Y SE DICE CON TODAS LAS LETRAS QUÉ HAY QUE HACER.
+    //
+    // El cliente lo pidió con la pantalla delante: la lección se para esperando
+    // al alumno, el avatar se queda en "Te acompaño" y nada indica que hay que
+    // escribir abajo. "El estudiante no piensa que debe interactuar, piensa que
+    // el sistema se congeló." Va aquí, en el reproductor, para que valga para
+    // TODA pregunta venga del generador que venga.
+    await this._speak(INVITACION_A_RESPONDER, "preguntando", signal);
     if (signal.aborted) return;
 
     // Verdad-base para calificar: la respuesta que dio la IA (d.respuesta) o, en su

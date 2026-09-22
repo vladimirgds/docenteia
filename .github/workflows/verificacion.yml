@@ -1,0 +1,73 @@
+# QUE EL CÓDIGO DE `main` COMPILA Y PASA SUS PRUEBAS, DICHO EN EL PROPIO REPOSITORIO.
+#
+# Existe por una discusión que costó cinco entregas: el cliente veía siempre la
+# misma versión en su sitio y no había forma de saber si el problema era el
+# código o el despliegue. Esto responde a la mitad de la pregunta, desde una
+# máquina limpia y a la vista de todos:
+#
+#   · `npm ci` desde cero (sin node_modules, sin caché de nadie),
+#   · comprobación de tipos,
+#   · compilación de producción,
+#   · y las baterías que no necesitan navegador ni base de datos.
+#
+# Si esto está en verde y el sitio sigue enseñando una versión vieja, el
+# problema NO está en el código: está en el servicio que despliega.
+name: verificacion
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: verificacion-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    name: compila y pasa las pruebas
+    runs-on: ubuntu-latest
+    env:
+      # Valores de mentira: compilar no necesita una base de verdad, pero las
+      # variables tienen que existir. Ninguna credencial real vive aquí.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      AUTH_SECRET: solo-para-compilar-en-integracion-continua
+      AUTH_TRUST_HOST: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # La siembra del banco usa el intérprete de tipos de Node (≥ 22.6), y el
+      # paquete lo declara en `engines`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: npm
+
+      # `npm ci` dispara `postinstall`, que aquí sólo genera el cliente de
+      # Prisma: compilar es el paso siguiente, y se quiere ver por separado.
+      - name: Instalar
+        run: npm ci
+
+      - name: Comprobar tipos
+        run: npm run typecheck
+
+      - name: Compilar
+        run: npm run build
+
+      # Baterías sin navegador ni base de datos: el guion de la pizarra, la
+      # sincronía con la voz, el despliegue declarado y la aritmética.
+      - name: Pizarra y avatar (hito 2)
+        run: node qa/hito2.mjs
+
+      - name: Rigor matemático
+        run: node qa/rigor.mjs
+
+      - name: Matemáticas del motor
+        run: node qa/matematicas.mjs
