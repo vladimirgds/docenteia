@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **107.181 comprobaciones en Chrome y 0
+> las de la última pasada completa): **94.398 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.183
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **761** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **768** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3461,3 +3461,91 @@ que tarda la lección con la voz real del navegador marcando el ritmo.
 
 Es el tipo de fallo que sólo aparece corriendo las baterías enteras después de
 cada cambio, no sólo la del hito.
+
+## 49. Decimotercera ronda: la regla general de `ax + b = c`, sin desfase
+
+El cliente lo pidió como **regla, no como parche**: «no podemos seguir parcheando
+paso a paso para un ejercicio específico; se requiere una regla general
+algorítmica para ecuaciones de la forma `ax + b = c` que garantice sincronización
+estricta entre lo que dice la locución y lo que dibuja la pizarra».
+
+Y tenía razón en que no la había del todo: los tres primeros tiempos sí estaban,
+pero **la división iba un renglón adelantada**.
+
+### La causa: el motor habla y DESPUÉS escribe
+
+La frase del paso *k* acompaña a la línea *k−1*, que es la que el alumno tiene
+delante. Para la resta y la cancelación eso encaja. Para la división no:
+
+| se oía | y en la pizarra estaba |
+| --- | --- |
+| «dividimos ambos lados entre 2» | `2x = 10` — donde **sólo hay un 2 que señalar** |
+| «al dividir queda x = 5» | `2x/2 = 10/2` — **la respuesta, antes de su renglón** |
+
+Las dos capturas del cliente son exactamente esas dos filas.
+
+### La regla, ahora
+
+Cada frase se corrió un renglón, y el resultado es el algoritmo que pidió, igual
+para **cualquier** `ax + b = c` —con paréntesis, con denominador, con la incógnita
+a los dos lados o con solución fraccionaria—:
+
+| # | la pizarra enseña | la voz dice | marcas |
+| --- | --- | --- | --- |
+| 1 | `2x + 6 − 6 = 16 − 6` | «Restamos 6 en los dos lados» | **2 cajas**, una por miembro |
+| 2 | `2x + 6̶ − 6̶ = 16 − 6` | «A la izquierda se cancela +6 con −6…» | tachado, dentro de un miembro |
+| 3 | `2x = 10` | «Ahora la x está multiplicada por 2…» | 1 caja · etiqueta **`× 2`** |
+| 4 | `2x/2 = 10/2` | «Dividimos los dos lados entre 2» | **2 cajas** · etiqueta **`÷ 2`** |
+| 5 | `x = 5` | «¡Y listo! Resultado final: x = 5» | recuadro + visto |
+
+Medido en un Chrome de verdad sobre el ejercicio del cliente, ése es el registro
+que sale: `cajas: 2` en el tiempo 1, `cajas: 1` y `× 2` en el 3, `cajas: 2` y
+`÷ 2` en el 4.
+
+### Y la etiqueta ya no contradice a su propio pie
+
+Sobre el `2` de `2x = 10` ponía **`÷ 2`** mientras el pie decía «la x está
+multiplicada por 2» —«pero sólo divide al 2x, y no al 10», anotó el cliente sobre
+la captura—. Es que ahí todavía no se divide nada: esa caja enseña la
+multiplicación que hay que deshacer. Ahora la etiqueta dice `× 2`, y el `÷ 2`
+aparece **sólo** en el renglón donde la división está escrita en los dos
+miembros.
+
+Como la cancelación, la frase de la división se construye **una sola vez**
+(`fraseDivisionEnDosLados`) y la usan el motor y la pizarra: si se separaran, los
+denominadores se marcarían cuando el tutor ya está en otra cosa. La batería lo
+fija letra por letra.
+
+### 2. La voz neuronal: la clave exacta
+
+> «Confírmame qué clave exacta (GOOGLE_TTS_API_KEY o ELEVENLABS_API_KEY) debo
+> registrar en Vercel.»
+
+**`GOOGLE_TTS_API_KEY`**. Pero el nombre solo no basta —hay dos formas de
+ponerla y que siga sin sonar—, así que ahora lo contesta el propio endpoint:
+
+```
+GET /api/voz
+{
+  "disponible": false,
+  "motivo": "sin_configurar",
+  "ayuda": "Defina UNA de estas dos en Vercel → Settings → Environment Variables →
+            Production, y vuelva a desplegar: GOOGLE_TTS_API_KEY = clave de API de
+            Google Cloud (empieza por «AIza…», NO es el JSON de una cuenta de
+            servicio) del proyecto que tenga habilitada la API «Cloud
+            Text-to-Speech»; o ELEVENLABS_API_KEY = clave de ElevenLabs. Después
+            compruebe que FUNCIONA en /api/voz?probar=1: responde {prueba:\"ok\"}
+            o el error exacto del proveedor."
+}
+```
+
+Las dos maneras de equivocarse son pegar el JSON de una cuenta de servicio en vez
+de una clave de API, y crear la clave sin habilitar la API de Text-to-Speech en
+ese proyecto: en los dos casos la variable **está** puesta y la voz sigue sin
+sonar. Por eso `?probar=1` sintetiza una palabra de verdad y devuelve el error
+literal del proveedor.
+
+Lo que **no** se puede hacer es servir audio neuronal sin proveedor: no existe un
+endpoint gratuito y con licencia para producción. Mientras la clave no esté, el
+tutor habla con la mejor voz que ofrezca el navegador —desde la ronda anterior,
+la neuronal del sistema si la hay— y la pantalla dice, con su nombre, qué falta.

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { CLAVES_DE_VOZ, configuracionDeVoz, type Config } from "@/lib/voz/config";
+import { AYUDA_DE_VOZ, CLAVES_DE_VOZ, configuracionDeVoz, type Config } from "@/lib/voz/config";
 
 /**
  * LA VOZ DEL TUTOR, SINTETIZADA FUERA DEL NAVEGADOR.
@@ -107,9 +107,7 @@ export async function GET(peticion: Request) {
         voz: null,
         motivo: "sin_configurar",
         variables: CLAVES_DE_VOZ,
-        ayuda:
-          "Defina en el servidor GOOGLE_TTS_API_KEY (Google Cloud Text-to-Speech) o ELEVENLABS_API_KEY (ElevenLabs). " +
-          "Sin ninguna de las dos, la clase habla con la voz del navegador.",
+        ayuda: AYUDA_DE_VOZ,
       },
       { headers: { "cache-control": "no-store" } },
     );
@@ -143,7 +141,7 @@ export async function POST(peticion: Request) {
         disponible: false,
         motivo: "sin_configurar",
         variables: CLAVES_DE_VOZ,
-        ayuda: "Defina GOOGLE_TTS_API_KEY o ELEVENLABS_API_KEY en el servidor. Mientras tanto, la clase usa la voz del navegador.",
+        ayuda: AYUDA_DE_VOZ,
       },
       { status: 503, headers: { "cache-control": "no-store" } },
     );

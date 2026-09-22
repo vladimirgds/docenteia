@@ -40,6 +40,7 @@ import {
   escenaDeAmplificacion,
   escenaDeCierre,
   escenaDeDistributiva,
+  escenaDeDivisionEnFraccion,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
@@ -65,6 +66,7 @@ import {
   sincronizarPasosConVoz,
   solveLinearSteps,
   fraseCancelacionIncognita,
+  fraseDivisionEnDosLados,
   TIPOS_OPERACION as TIPOS_OPERACION_SERVIDOR,
 } from "../src/preLight.js";
 import {
@@ -1831,13 +1833,64 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
         return !(e.escenas?.[e.escena]?.texto === "2x + 6 = 16" && f?.tipo === "tachado");
       }),
     );
-    const iDivide = ev.findIndex((e) => e.d.tipo === "hablar" && /Dividimos ambos lados entre 2/.test(e.d.texto));
-    const enDivide = ev[iDivide];
+    // LA DIVISIÓN, SIN DESFASE (la regla general que pidió el cliente para
+    // ax + b = c). Dos renglones y dos frases, y cada frase con SU renglón
+    // delante:
+    //
+    //   · "2x = 10"      → «ahora la x está multiplicada por 2» (una caja, el
+    //                      coeficiente: en esta línea no hay nada más que marcar)
+    //   · "2x/2 = 10/2"  → «dividimos los dos lados entre 2» (dos cajas, un
+    //                      denominador por miembro)
+    //   · "x = 5"        → el cierre, enmarcado y con el visto
+    //
+    // Antes las dos frases iban un renglón adelantadas: se oía «dividimos ambos
+    // lados entre 2» con "2x = 10" a la vista —donde sólo hay un 2 que señalar—
+    // y «al dividir queda x = 5» con la fracción a la vista. El cliente
+    // fotografió las dos cosas.
+    const dondeSuena = (re) => {
+      const e = ev.find((x) => x.d.tipo === "hablar" && re.test(x.d.texto));
+      const esc = e ? e.escenas[e.escena] : null;
+      return { texto: esc?.texto ?? null, foco: esc?.focos?.[e.foco] ?? null, dicho: e?.d.texto ?? null };
+    };
+    const enCoef = dondeSuena(/está multiplicada por 2/);
     check(
-      "la división entre 2 se señala en SU línea, 2x = 10, con una caja —no con el visto—",
-      enDivide?.escenas[enDivide.escena]?.texto === "2x = 10" &&
-        enDivide.escenas[enDivide.escena].focos[enDivide.foco]?.tipo === "caja",
-      `${enDivide?.escenas[enDivide.escena]?.texto} foco ${enDivide?.foco}`,
+      "con «2x = 10» delante se cuenta el COEFICIENTE, y se señala con una caja",
+      enCoef.texto === "2x = 10" && enCoef.foco?.tipo === "caja" && /pz-coef/.test(enCoef.foco?.clase ?? ""),
+      `${enCoef.texto} · ${enCoef.foco?.clase} ${enCoef.foco?.tipo}`,
+    );
+    check(
+      "y su etiqueta dice lo mismo que su pie: es la multiplicación que hay que deshacer, no una división",
+      enCoef.foco?.etiqueta === "× 2" && /multiplicada por 2/.test(enCoef.foco?.narracion ?? ""),
+      `${enCoef.foco?.etiqueta} · ${enCoef.foco?.narracion}`,
+    );
+    const enDivide = dondeSuena(/Dividimos los dos lados entre 2/);
+    check(
+      "«dividimos los dos lados entre 2» suena con la FRACCIÓN ya escrita, no con 2x = 10",
+      enDivide.texto === "2x/2 = 10/2",
+      `${enDivide.texto}`,
+    );
+    check(
+      "…y marcando los DOS denominadores, uno por miembro: lo dicho y lo señalado son lo mismo",
+      enDivide.foco?.tipo === "caja" &&
+        enDivide.foco?.clase === "pz-divisor" &&
+        (enDivide.foco?.piezas ?? []).length === 2,
+      `${enDivide.foco?.clase} ${JSON.stringify(enDivide.foco?.piezas)}`,
+    );
+    check(
+      "la frase del motor y el pie de la pizarra son la MISMA, letra por letra",
+      fraseDivisionEnDosLados(2) === escenaDeDivisionEnFraccion("2x/2 = 10/2", "e").focos[0].narracion &&
+        enDivide.dicho === fraseDivisionEnDosLados(2),
+      `${fraseDivisionEnDosLados(2)} ≠ ${escenaDeDivisionEnFraccion("2x/2 = 10/2", "e").focos[0].narracion}`,
+    );
+    check(
+      "y NINGUNA frase canta la respuesta antes de que su renglón esté escrito",
+      ev
+        .filter((e) => e.d.tipo === "hablar" && /x\s*=\s*5|queda x = 5|vale 5/.test(e.d.texto))
+        .every((e) => e.escenas[e.escena]?.texto === "x = 5"),
+      ev
+        .filter((e) => e.d.tipo === "hablar" && /x\s*=\s*5|queda x = 5|vale 5/.test(e.d.texto))
+        .map((e) => `«${e.d.texto}» sobre ${e.escenas[e.escena]?.texto}`)
+        .join(" · "),
     );
     const poli = escenaDePolinomio("3x⁴ - 2x²", "p");
     check(
@@ -4958,7 +5011,7 @@ if (!vivo) {
   );
 
   // El endpoint, de verdad: sin claves en el entorno dice que no hay voz.
-  const { configuracionDeVoz } = await import("../lib/voz/config.ts");
+  const { configuracionDeVoz, CLAVES_DE_VOZ } = await import("../lib/voz/config.ts");
   check(
     "sin claves, la configuración de voz es nula (y con una, la elige)",
     configuracionDeVoz({}) === null &&
@@ -4979,10 +5032,36 @@ if (!vivo) {
       configuracionDeVoz({ ELEVEN_LABS_API_KEY: "y" })?.proveedor === "elevenlabs" &&
       configuracionDeVoz({ XI_API_KEY: "z" })?.variable === "XI_API_KEY",
   );
+  // Y NO SÓLO EL NOMBRE: LA RECETA. El cliente preguntó «confírmame qué clave
+  // exacta debo registrar en Vercel». Decir "GOOGLE_TTS_API_KEY" no basta: se
+  // puede pegar el JSON de una cuenta de servicio, o crear la clave sin
+  // habilitar la API. En los dos casos la variable está puesta y no suena nada.
+  {
+    const { AYUDA_DE_VOZ } = await import("../lib/voz/config.ts");
+    check(
+      "la ayuda de /api/voz dice qué credencial es, qué API hay que habilitar y dónde se comprueba",
+      /GOOGLE_TTS_API_KEY/.test(AYUDA_DE_VOZ) &&
+        /ELEVENLABS_API_KEY/.test(AYUDA_DE_VOZ) &&
+        /AIza/.test(AYUDA_DE_VOZ) &&
+        /cuenta de\s+servicio/.test(AYUDA_DE_VOZ) &&
+        /Text-to-Speech/.test(AYUDA_DE_VOZ) &&
+        /probar=1/.test(AYUDA_DE_VOZ),
+      AYUDA_DE_VOZ,
+    );
+    check(
+      "y es la MISMA respuesta la falte quien la falte: la consulta y la síntesis dicen lo mismo",
+      (vozSrc.match(/ayuda: AYUDA_DE_VOZ,/g) ?? []).length === 2,
+    );
+  }
   check(
     "sin clave, /api/voz dice exactamente qué variable falta —y no sólo que no hay voz—",
-    /motivo: "sin_configurar"/.test(vozSrc) && /variables: CLAVES_DE_VOZ/.test(vozSrc) &&
-      /GOOGLE_TTS_API_KEY[\s\S]{0,80}ELEVENLABS_API_KEY/.test(vozSrc),
+    // Se comprueba lo que el endpoint DEVUELVE, no cómo está escrito: la lista
+    // de nombres y la ayuda viven en `lib/voz/config.ts` y la ruta las publica.
+    /motivo: "sin_configurar"/.test(vozSrc) &&
+      /variables: CLAVES_DE_VOZ/.test(vozSrc) &&
+      /ayuda: AYUDA_DE_VOZ/.test(vozSrc) &&
+      CLAVES_DE_VOZ.google[0] === "GOOGLE_TTS_API_KEY" &&
+      CLAVES_DE_VOZ.elevenlabs[0] === "ELEVENLABS_API_KEY",
   );
   check(
     "y con clave puesta se puede comprobar si FUNCIONA, que no es lo mismo, sin gastar una clase",

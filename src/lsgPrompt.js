@@ -830,7 +830,11 @@ function pasoDeFraccionEnDuda(A, paso) {
 function andamiajeLineal(explica) {
   const e = String(explica ?? "").toLowerCase();
   if (/par[eé]ntesis|distributiva/.test(e)) return "La clave de este paso: el número de fuera multiplica a CADA término de dentro del paréntesis, no sólo al primero. Así el paréntesis desaparece sin cambiar lo que vale.";
-  if (/divid/.test(e)) return "La clave de este paso: si la x está multiplicada por un número, para dejarla sola dividimos LOS DOS lados entre ese número. Dividir deshace lo que hacía multiplicar.";
+  // "Ahora la x está multiplicada por 2" es el primer tiempo de la división —la
+  // línea que enseña el coeficiente— y le toca el mismo andamiaje que al
+  // segundo: la frase ya no lleva la palabra "dividir", a propósito, para que la
+  // pizarra no confunda ese renglón con el de la fracción.
+  if (/divid|multiplicada por/.test(e)) return "La clave de este paso: si la x está multiplicada por un número, para dejarla sola dividimos LOS DOS lados entre ese número. Dividir deshace lo que hacía multiplicar.";
   // Va antes que "juntar": "juntamos los términos con x: restamos 3x en ambos lados" mueve un término
   // de un lado al otro, y eso es la balanza, no sumar términos semejantes.
   if (/ambos lados|los dos lados|restamos|sumamos/.test(e)) return "La clave de este paso es la balanza: si quitas o pones lo mismo en los dos platillos, sigue equilibrada. Por eso lo que hacemos a un lado del igual lo hacemos también al otro.";

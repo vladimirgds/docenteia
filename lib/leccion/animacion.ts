@@ -709,7 +709,12 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       // renglón siguiente, con los dos denominadores marcados. El cliente
       // fotografió justo esto: «dice "los dos lados" y sólo señala el 2 del 2x».
       narracion: `La ${variable} está multiplicada por ${coeficiente}.`,
-      etiqueta: `÷ ${coeficiente}`,
+      // LA ETIQUETA DICE LO MISMO QUE EL PIE. Ponía "÷ 2" sobre el coeficiente,
+      // y el cliente lo fotografió: «dice dividimos entre 2 a ambos lados, pero
+      // sólo divide al 2x, y no al 10». Es que aquí todavía no se divide nada:
+      // esta caja enseña la multiplicación que hay que deshacer. El "÷ 2" está
+      // en el renglón siguiente, donde sí aparece en los dos miembros.
+      etiqueta: `× ${coeficiente}`,
     });
   }
   if (marcaElTermino) {
@@ -722,7 +727,12 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       // renglón siguiente, con los dos denominadores marcados. El cliente
       // fotografió justo esto: «dice "los dos lados" y sólo señala el 2x».
       narracion: `La ${variable} está multiplicada por ${coeficiente}.`,
-      etiqueta: `÷ ${coeficiente}`,
+      // LA ETIQUETA DICE LO MISMO QUE EL PIE. Ponía "÷ 2" sobre el coeficiente,
+      // y el cliente lo fotografió: «dice dividimos entre 2 a ambos lados, pero
+      // sólo divide al 2x, y no al 10». Es que aquí todavía no se divide nada:
+      // esta caja enseña la multiplicación que hay que deshacer. El "÷ 2" está
+      // en el renglón siguiente, donde sí aparece en los dos miembros.
+      etiqueta: `× ${coeficiente}`,
     });
   }
   if (llegaALaSolucion) {

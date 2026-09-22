@@ -37,6 +37,23 @@ export const CLAVES_DE_VOZ = {
   elevenlabs: ["ELEVENLABS_API_KEY", "ELEVEN_LABS_API_KEY", "ELEVENLABS_KEY", "XI_API_KEY"],
 } as const;
 
+/**
+ * LA RECETA, NO SÓLO EL NOMBRE DE LA VARIABLE.
+ *
+ * El cliente preguntó «confírmame qué clave exacta debo registrar en Vercel», y
+ * decir «GOOGLE_TTS_API_KEY» no basta: las dos formas de equivocarse aquí son
+ * pegar el JSON de una cuenta de servicio en vez de una clave de API, y crear la
+ * clave sin habilitar la API de Text-to-Speech en ese proyecto. En los dos casos
+ * la variable ESTÁ puesta y la voz sigue sin sonar. Así que el endpoint contesta
+ * los dos nombres, qué clase de credencial es cada uno y dónde se comprueba.
+ */
+export const AYUDA_DE_VOZ =
+  "Defina UNA de estas dos en Vercel → Settings → Environment Variables → Production, y vuelva a desplegar: " +
+  "GOOGLE_TTS_API_KEY = clave de API de Google Cloud (empieza por «AIza…», NO es el JSON de una cuenta de " +
+  "servicio) del proyecto que tenga habilitada la API «Cloud Text-to-Speech»; o ELEVENLABS_API_KEY = clave " +
+  "de ElevenLabs. Después compruebe que FUNCIONA en /api/voz?probar=1: responde {prueba:\"ok\"} o el error " +
+  "exacto del proveedor. Sin ninguna de las dos, la clase habla con la voz del navegador.";
+
 /** El primer valor no vacío de una lista de nombres, y cuál de ellos era. */
 function primeraClave(entorno: NodeJS.ProcessEnv, nombres: readonly string[]) {
   for (const nombre of nombres) {
