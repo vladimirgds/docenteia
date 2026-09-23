@@ -63,6 +63,17 @@ export interface LineaPizarra {
   /** Lo que el tutor dice mientras se marca este paso, si el generador lo envía. */
   narracion?: string;
   /**
+   * EN QUÉ COLUMNA VA, dicho por el motor. `2` es el taller de operaciones
+   * auxiliares; sin valor, el hilo conductor. Se declara en vez de deducirse:
+   * adivinarlo leyendo la ecuación es lo que mezclaba las dos columnas.
+   */
+  ambiente?: 1 | 2;
+  /**
+   * `"explicacion"` es el texto que explica el objetivo del paso, escrito en la
+   * pizarra ANTES de su ecuación. Es prosa, pero prosa que va en el tablero.
+   */
+  papelDelPaso?: "explicacion";
+  /**
    * La línea pertenece a una ACLARACIÓN pedida por el alumno, no al hilo de la
    * lección. Se agrupa aparte y se sustituye en la siguiente aclaración, para
    * que pedir ayuda tres veces no deje tres muros de texto en la pizarra.
@@ -307,11 +318,21 @@ export function Pizarra({
       return !(anterior && mismaEcuacion(anterior, e.linea.texto));
     });
 
+    // QUÉ ES HILO Y QUÉ ES TALLER LO DICE EL MOTOR.
+    //
+    // La pizarra lo deducía de la escena compuesta, y con eso el desglose
+    // aritmético y la ecuación canónica acababan mezclados: el cliente puso la
+    // línea compensada —"11x − 8 + 8 = 25 + 8"— en el HILO, y al taller sólo la
+    // cuenta que la justifica —"−8 + 8 = 0"—. Eso no se ve mirando la ecuación;
+    // lo sabe quien la genera. La deducción queda de red para lo que llegue sin
+    // declarar (una aclaración que el modelo escribe en vivo).
     const sitios = repartirEnAmbientes(
-      sinRepetir.map(({ papel, gesto, escena }) => ({
+      sinRepetir.map(({ papel, gesto, escena, linea }) => ({
         papel,
         gesto,
-        auxiliar: esGestoDeBorrador(gesto, escena?.focos ?? []),
+        auxiliar:
+          linea.ambiente === 2 ||
+          (linea.ambiente == null && esGestoDeBorrador(gesto, escena?.focos ?? [])),
       })),
     );
     return sinRepetir.map((e, i) => ({ ...e, ambiente: sitios[i] }));
@@ -957,11 +978,14 @@ function latexDeLaSubrutina(linea: LineaPizarra): string | null {
  * entregarle a la subrutina exactamente lo mismo, o volverían a componer la
  * misma línea de dos maneras.
  */
-export function pasoDeLinea(linea: Pick<LineaPizarra, "texto" | "operacion" | "narracion">): PasoSemantico {
+export function pasoDeLinea(
+  linea: Pick<LineaPizarra, "texto" | "operacion" | "narracion" | "ambiente">,
+): PasoSemantico {
   return {
     latex: linea.texto,
     ...(linea.operacion ? { operacion: linea.operacion } : {}),
     ...(linea.narracion ? { narracion: linea.narracion } : {}),
+    ...(linea.ambiente === 2 ? { ambiente: 2 as const } : {}),
   };
 }
 

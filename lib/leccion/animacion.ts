@@ -1699,14 +1699,20 @@ export function escenaEstatica(texto: string, id: string, latex?: string | null)
  */
 export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena {
   const texto = typeof paso === "string" ? paso : String(paso.latex ?? "");
+  // UNA CUENTA DEL TALLER NO ES LA RESPUESTA DEL EJERCICIO. "−8 + 8 = 0" es una
+  // igualdad como cualquier otra y se componía como resultado: cápsula esmeralda
+  // y visto verde, en la columna de apoyo. La respuesta es UNA y está en el hilo.
+  const delTaller = typeof paso !== "string" && paso.ambiente === 2;
+  const sinCierre = (e: Escena): Escena =>
+    delTaller ? { ...e, focos: e.focos.map(({ final: _final, ...f }) => f) } : e;
 
   if (typeof paso !== "string" && paso.operacion && etiquetaValida(texto, paso.operacion)) {
     const porEtiqueta =
       COMPOSITOR[paso.operacion.tipo]?.(texto, id, paso.narracion) ??
       escenaDePasoSemantico(paso, id, componerPaso);
     if (porEtiqueta) {
-      const escena = paso.operacion.final ? conCierre(porEtiqueta) : porEtiqueta;
-      return { ...escena, origen: "etiqueta" };
+      const escena = paso.operacion.final && !delTaller ? conCierre(porEtiqueta) : porEtiqueta;
+      return { ...sinCierre(escena), origen: "etiqueta" };
     }
   }
 
@@ -1719,7 +1725,7 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
     escenaDeSimplificacion(texto, id) ??
     escenaDePolinomio(texto, id) ??
     escenaDeTexto(texto, id);
-  return { ...deducida, origen: "deduccion" };
+  return { ...sinCierre(deducida), origen: "deduccion" };
 }
 
 /**

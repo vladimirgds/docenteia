@@ -71,33 +71,29 @@ export interface PasoDeLaPizarra {
 }
 
 /**
- * LOS GESTOS DE BORRADOR.
+ * ¿ES UNA OPERACIÓN DE APOYO? LO DICE EL MOTOR, NO LA ECUACIÓN.
  *
- * Tachar un par de términos, dividir los dos miembros entre el coeficiente y
- * simplificar son, con las palabras del cliente, «cálculos de apoyo, desgloses y
- * cancelaciones de términos». Lo demás —repartir un paréntesis, amplificar una
- * fracción, escribir la línea que queda, cerrar con la respuesta— es hilo.
+ * Esto se dedujo un tiempo de lo que la escena SEÑALABA —un tachado era una
+ * cancelación, dos marcas sobre los denominadores una división— y con esa regla
+ * acababan en la columna de apoyo ecuaciones que son del hilo: el cliente puso
+ * «11x − 8 + 8 = 25 + 8» y «11x/11 = 33/11» en el desarrollo formal, y al taller
+ * sólo la cuenta que los justifica («−8 + 8 = 0»). Eso no se ve mirando la
+ * ecuación: lo sabe quien la genera, y por eso ahora lo declara (`ambiente: 2`
+ * en la directiva, `papel: "auxiliar"` en las notas al margen).
+ *
+ * Queda aquí la red para lo que llegue SIN declarar —una aclaración que el
+ * modelo escribe en vivo—: una nota al margen reconocible por su gesto. Todo lo
+ * demás es hilo, que es lo que el alumno tiene que poder leer de corrido.
  */
-const GESTOS_DE_BORRADOR = new Set(["cancelacion", "factor", "simplificacion", "columna"]);
+const GESTOS_DE_NOTA_AL_MARGEN = new Set(["columna"]);
 
-/**
- * ¿La escena de este paso es una operación de apoyo?
- *
- * Se mira lo que la escena SEÑALA, que es la forma más general de preguntarlo:
- * un tachado es una cancelación, y una marca por miembro sobre los dos
- * denominadores es una división hecha a los dos lados. Las dos son borrador.
- * Una caja sobre un coeficiente, una amplificación o un resultado, no.
- */
 export function esGestoDeBorrador(
   gesto: string | null | undefined,
   focos: readonly { tipo?: string; clase?: string }[] = [],
 ): boolean {
-  if (focos.some((f) => f.tipo === "tachado")) return true;
-  if (focos.some((f) => f.clase === "pz-divisor")) return true;
-  // Sin escena compuesta, la etiqueta del motor: es lo que hay en las notas al
-  // margen y en los pasos que la pizarra no llega a animar.
-  if (!focos.length && gesto && GESTOS_DE_BORRADOR.has(gesto)) return true;
-  return false;
+  // Con escena compuesta no se deduce nada: si fuera apoyo, vendría declarado.
+  if (focos.length) return false;
+  return Boolean(gesto && GESTOS_DE_NOTA_AL_MARGEN.has(gesto));
 }
 
 /**

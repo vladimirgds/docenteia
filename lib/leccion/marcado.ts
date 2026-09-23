@@ -93,6 +93,14 @@ export interface PasoSemantico {
   latex: string;
   operacion?: OperacionPaso;
   narracion?: string;
+  /**
+   * En qué columna va el paso. `2` es el taller de operaciones auxiliares, y lo
+   * declara el motor. Aquí importa por una razón concreta: una cuenta del taller
+   * —"−8 + 8 = 0"— es una igualdad como cualquier otra y se componía como
+   * RESPUESTA, con su cápsula esmeralda y su visto, en la columna de apoyo. La
+   * respuesta del ejercicio es una y está en el hilo.
+   */
+  ambiente?: 1 | 2;
 }
 
 /** Cómo se dibuja cada operación. */

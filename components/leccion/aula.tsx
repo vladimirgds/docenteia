@@ -436,6 +436,7 @@ export function Aula({
       clase: "formula" | "explicacion",
       operacion?: OperacionPaso | null,
       narracion?: string | null,
+      sitio?: { ambiente?: 1 | 2; papel?: "explicacion" } | null,
     ) => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
@@ -446,6 +447,8 @@ export function Aula({
         aclaracion: esAclaracion.current,
         ...(operacion ? { operacion } : {}),
         ...(narracion ? { narracion } : {}),
+        ...(sitio?.ambiente === 2 ? { ambiente: 2 as const } : {}),
+        ...(sitio?.papel === "explicacion" ? { papelDelPaso: "explicacion" as const } : {}),
       };
       asegurarFase();
 
@@ -690,7 +693,7 @@ export function Aula({
       // fórmulas y el ejercicio. Un párrafo explicativo va al subtítulo, aunque
       // llegue por una directiva de pizarra: desde que las aclaraciones las
       // redacta el modelo en vivo, eso puede pasar.
-      writeBoard: (texto, operacion, narracion) => {
+      writeBoard: (texto, operacion, narracion, sitio) => {
         const contenido = String(texto ?? "").trim();
         if (!contenido) return;
 
@@ -709,8 +712,15 @@ export function Aula({
         // líneas, cada una la usa sólo si sus términos están en ella —la
         // subrutina lo comprueba—, así que no se cuela en la línea de al lado.
         for (const linea of lineas) {
-          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula", operacion, narracion);
-          else fijarSubtitulo(linea);
+          // EL TEXTO EXPLICATIVO DEL PASO SÍ SUBE A LA PIZARRA.
+          //
+          // La regla de que a la pizarra sólo suben ideas fuerza sigue en pie
+          // para la prosa suelta; pero el cliente pidió que el objetivo del paso
+          // se ESCRIBA en el Ambiente 1, encima de su ecuación, y eso lo marca
+          // el motor con `papel: "explicacion"`.
+          if (sitio?.papel === "explicacion" || esIdeaFuerza(linea)) {
+            anadirLinea(linea, "formula", operacion, narracion, sitio);
+          } else fijarSubtitulo(linea);
         }
       },
       // La explicación hablada NO va a la pizarra. El motor la escribía además

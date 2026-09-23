@@ -4,14 +4,14 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **108.068 comprobaciones en Chrome y 0
+> las de la última pasada completa): **108.773 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
-> (`qa/observaciones.mjs`), **31.371
+> (`qa/observaciones.mjs`), **31.867
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **780** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **787** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
-> 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
+> 828 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
 > turnos sin violaciones. `npm ci`, `tsc --noEmit` y `npm run build`, limpios.
 
 ---
@@ -3740,3 +3740,77 @@ La frase de la división sigue siendo **letra por letra** la misma que la pizarr
 pone en el pie del renglón, porque el panel sigue a la voz comparando lo dicho
 con cada foco; y a la lista de palabras con las que reconoce la marca uniforme se
 le añadió «ambos miembros», que es como se dice ahora.
+
+## 52. Decimosexta ronda: el esquema exacto de los dos ambientes
+
+El cliente mandó el esquema, con un ejemplo dibujado y el modelo de datos
+escrito por él. El diagnóstico: «la pantalla se ve desordenada porque estás
+mezclando los cálculos auxiliares dentro de la columna principal».
+
+### Dónde estaba la frontera, y dónde está ahora
+
+La ronda anterior mandó al apoyo todo lo que la escena SEÑALABA como
+cancelación o división. Con su ejemplo delante, esa frontera estaba mal puesta:
+
+> «Ecuación canónica resultante: muestra la ecuación simplificada (por ejemplo:
+> 11x − 8 = 25, luego **11x − 8 + 8 = 25 + 8**, y luego 11x = 33).»
+
+La línea compensada es del **hilo**. Al taller va la **aritmética** que la
+justifica, no la ecuación:
+
+| Ambiente 1 — hilo conductor | Ambiente 2 — taller |
+| --- | --- |
+| «Agrupamos las x, sumando: 6x + 5x.» | «entonces sumamos:» |
+| `11x - 8 = 25` | `6x + 5x = 11x` |
+| «Para eliminar el -8, sumamos 8 a cada miembro de la ecuación.» | «Entonces, colocamos los 11x en la ecuación» |
+| `11x = 33` | «Por qué se cancela el -8:» · `-8 + 8 = 0` |
+| … | «Y a la derecha, 25 más 8 es 33» |
+| `x = 3` enmarcada | |
+
+Y eso **no se ve mirando la ecuación**: lo sabe quien la genera. Así que la
+columna dejó de deducirse y pasa a declararse —`ambiente: 2` en la directiva—,
+con la deducción sólo como red para lo que llegue sin declarar.
+
+### El texto explicativo, escrito y no sólo dicho
+
+> «Texto explicativo de la acción principal: explicar el objetivo del paso ANTES
+> de escribir la ecuación.»
+
+Hasta ahora ese texto sólo se oía y aparecía en el pie del renglón activo.
+Ahora se **escribe** en el Ambiente 1, encima de su ecuación, y se queda. La
+regla de que a la pizarra sólo suben ideas fuerza sigue en pie para la prosa
+suelta; esta prosa viene marcada (`papel: "explicacion"`) y sube.
+
+Las explicaciones se acortaron a una línea, en el registro de sus ejemplos:
+«Agrupamos las x, sumando: 6x + 5x» · «Para eliminar el -8, sumamos 8 a cada
+miembro de la ecuación».
+
+### El modelo de datos, tal cual
+
+`lib/leccion/paso-leccion.ts` es el contrato que él escribió, sin cambiarle un
+nombre, y el motor lo cumple para **todo el catálogo**: 209 pasos de 52
+ecuaciones, 0 incumplimientos, 79 con taller.
+
+```ts
+interface PasoLeccion {
+  ambiente1: { explicacion: string; ecuacionKaTeX: string };
+  ambiente2?: { textoAuxiliar?: string; calculoKaTeX?: string; conclusion?: string };
+}
+```
+
+### Un defecto que salió de camino
+
+`-8 + 8 = 0` es una igualdad como cualquier otra, y la pizarra la componía como
+**respuesta**: cápsula esmeralda y visto verde, en la columna de apoyo. La
+respuesta del ejercicio es una y está en el hilo, así que a lo que va al taller
+se le quita esa marca —y se le quita en `escenaDeLinea`, para que el guion
+simulado y la pizarra vean exactamente lo mismo—.
+
+### Lo que NO está hecho
+
+Los bloques del taller **no se alinean horizontalmente** con el paso del hilo que
+justifican: cada columna se llena por su cuenta, así que en un ejercicio largo la
+columna derecha puede quedar fuera de la vista mientras la izquierda sigue
+bajando. El esquema del cliente los dibuja a la misma altura. Hacerlo pide
+maquetar los dos ambientes como una rejilla de filas —una fila por paso— en vez
+de dos listas independientes.

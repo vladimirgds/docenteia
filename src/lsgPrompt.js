@@ -47,6 +47,35 @@ function escribePaso(contenido, operacion, narracion) {
   }
   return d;
 }
+
+/**
+ * EL TEXTO QUE EXPLICA EL OBJETIVO DEL PASO, ESCRITO EN LA PIZARRA.
+ *
+ * «Texto explicativo de la acción principal: explicar el objetivo del paso ANTES
+ * de escribir la ecuación». Va en el Ambiente 1, encima de su ecuación, y se
+ * queda escrito. Se marca con `papel: "explicacion"` porque es prosa, y la prosa
+ * suelta va al subtítulo: ésta no.
+ */
+const explicaEnPizarra = (texto) => ({
+  tipo: "pizarra",
+  accion: "escribir",
+  contenido: String(texto ?? "").trim(),
+  papel: "explicacion",
+});
+
+/**
+ * EL TALLER DE OPERACIONES AUXILIARES, en el Ambiente 2.
+ *
+ * «Aquí se detalla el cálculo de dónde sale cada valor intermedio»: el texto que
+ * lo presenta, la cuenta suelta y qué se hace con ella. Cada trozo es una línea
+ * de la columna derecha, y se quedan todas a la vista (regla de persistencia).
+ */
+function tallerAuxiliar(apoyo) {
+  if (!apoyo) return [];
+  return [apoyo.textoAuxiliar, apoyo.calculoKaTeX, apoyo.conclusion]
+    .filter((t) => String(t ?? "").trim())
+    .map((texto) => ({ tipo: "pizarra", accion: "escribir", contenido: String(texto).trim(), ambiente: 2 }));
+}
 // Una fracción llevada a otro denominador: "1/2 = 3/6", amplificada por 3. Sólo se etiqueta si de
 // verdad se multiplica: "1/6 = 1/6" —la que ya tenía el denominador común— no tiene gesto que enseñar.
 function amplifica(n, d, nuevoN, nuevoD) {
@@ -1978,6 +2007,7 @@ export function linealResueltaLSG(opts = {}) {
     escribePaso(sol.original, gestoSobre(0), sol.steps[0]?.explica),
     { tipo: "esperar", segundos: 1 },
   );
+  if (sol.steps[0]?.explica) dir.push(explicaEnPizarra(sol.steps[0].explica));
   // Si la ecuación empieza repartiendo un paréntesis, el reparto se cuenta foco a foco —2 × x, 2 × 4 y lo
   // que queda— con su pausa de lectura: es lo que hace que la animación de abajo termine de repartir los
   // dos términos, en vez de quedarse en el primero mientras el tutor ya habla del paso siguiente.
@@ -1993,11 +2023,18 @@ export function linealResueltaLSG(opts = {}) {
     if (s.accion?.tipo === "cancelacion") {
       dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
     }
+    // El desglose de dónde sale el valor, al taller de la derecha: «aquí se
+    // detalla el cálculo de dónde sale cada valor intermedio ANTES o durante su
+    // incorporación al Ambiente 1».
+    dir.push(...tallerAuxiliar(s.apoyo));
     // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
     if (k === sol.steps.length - 1) {
       dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
     } else {
       dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+      // Y el objetivo del paso SIGUIENTE, escrito encima de la ecuación que va
+      // a producir: primero para qué, luego la ecuación.
+      if (sol.steps[k + 1]?.explica) dir.push(explicaEnPizarra(sol.steps[k + 1].explica));
     }
   });
   dir.push({ tipo: "hablar", texto: "Ahora te toca a ti con otra ecuación parecida." }, { ...PAUSA_LECTURA });

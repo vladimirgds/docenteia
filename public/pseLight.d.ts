@@ -73,7 +73,13 @@ export interface UIPSELight {
    * —qué se opera y sobre qué términos— y `narracion` lo que el tutor dice
    * mientras se marca, cuando el generador los envía.
    */
-  writeBoard(texto: string, operacion?: OperacionPaso | null, narracion?: string | null): unknown;
+  writeBoard(
+    texto: string,
+    operacion?: OperacionPaso | null,
+    narracion?: string | null,
+    /** En qué columna va y con qué papel, declarado por el motor. */
+    sitio?: { ambiente?: 1 | 2; papel?: "explicacion" } | null,
+  ): unknown;
   writeBoardExplain?(texto: string): unknown;
   highlightBoard(objetivo: string | null): void;
   clearBoard(): void;

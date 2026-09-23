@@ -641,6 +641,16 @@ for (const tema of TEMAS_LECCION) {
   }
   check(`${etiqueta} las fórmulas de la explicación se componen`, fallosProsa === 0, `${fallosProsa} fallo(s)`);
   const pizarras = pasos.filter((p) => p.tipo === "pizarra").map((p) => p.contenido);
+  // EL TEXTO QUE EXPLICA EL OBJETIVO DEL PASO SÍ VA ESCRITO EN LA PIZARRA.
+  //
+  // «Texto explicativo de la acción principal: explicar el objetivo del paso
+  // ANTES de escribir la ecuación», con el ejemplo del cliente delante. Es prosa
+  // a propósito, y el motor la marca con `papel: "explicacion"`. Las dos reglas
+  // de abajo —nada de prosa suelta en la pizarra, y lo narrado no se duplica—
+  // siguen valiendo para todo lo demás, que es de donde venían sus defectos.
+  const delTablero = pasos
+    .filter((p) => p.tipo === "pizarra" && p.papel !== "explicacion")
+    .map((p) => p.contenido);
   check(`${etiqueta} escribe en la pizarra`, pizarras.length > 0);
 
   let fallosKatex = 0;
@@ -682,9 +692,9 @@ for (const tema of TEMAS_LECCION) {
 
   // Ninguna línea que el motor escribe en la pizarra puede ser un párrafo: la
   // explicación hablada es cosa del subtítulo.
-  const parrafos = pizarras.filter((linea) => !esIdeaFuerza(linea));
+  const parrafos = delTablero.filter((linea) => !esIdeaFuerza(linea));
   check(
-    `${etiqueta} la pizarra no recibe párrafos explicativos`,
+    `${etiqueta} la pizarra no recibe prosa SUELTA (el objetivo del paso sí se escribe)`,
     parrafos.length === 0,
     parrafos.map((l) => `«${l.slice(0, 50)}…»`).join(" · "),
   );
@@ -693,9 +703,9 @@ for (const tema of TEMAS_LECCION) {
   // locución. El motor manda el mismo texto por las dos vías, y la interfaz se
   // queda sólo con la de la voz.
   const narrado = pasos.filter((p) => p.tipo === "hablar").map((p) => String(p.texto ?? "").trim());
-  const repetidas = pizarras.filter((l) => narrado.includes(String(l).trim()));
+  const repetidas = delTablero.filter((l) => narrado.includes(String(l).trim()));
   check(
-    `${etiqueta} nada de lo narrado se escribe también en la pizarra`,
+    `${etiqueta} nada de lo narrado se duplica en la pizarra, salvo el objetivo del paso`,
     repetidas.length === 0,
     repetidas.map((l) => `«${l.slice(0, 40)}…»`).join(" · "),
   );

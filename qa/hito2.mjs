@@ -190,7 +190,19 @@ function simularLeccion(lsg) {
     let dicho = "";
     for (const d of m.directivas) {
       if (d.tipo === "pizarra") {
-        lineas.push(d.operacion ? { latex: d.contenido, operacion: d.operacion, narracion: d.narracion } : d.contenido);
+        // La simulación tiene que ver lo MISMO que la pizarra: sin el ambiente,
+        // una cuenta del taller —"6 - 6 = 0"— se compone aquí como respuesta
+        // final aunque en pantalla no lo sea.
+        lineas.push(
+          d.operacion || d.ambiente === 2
+            ? {
+                latex: d.contenido,
+                ...(d.operacion ? { operacion: d.operacion } : {}),
+                ...(d.narracion ? { narracion: d.narracion } : {}),
+                ...(d.ambiente === 2 ? { ambiente: 2 } : {}),
+              }
+            : d.contenido,
+        );
         escenas = guionDeLeccion(lineas);
       } else if (d.tipo === "hablar") dicho = d.texto;
       if (dicho && escenas.length) {
@@ -1115,14 +1127,71 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
   // ES LA ESCENA LA QUE DICE SI UN PASO ES DE APOYO, no una lista por tema: un
   // tachado es una cancelación y dos marcas sobre los denominadores son una
   // división hecha a los dos lados.
+  // LA COLUMNA NO SE DEDUCE DE LA ECUACIÓN: LA DECLARA EL MOTOR. Con la regla
+  // vieja acababan en la columna de apoyo ecuaciones que son del hilo —el
+  // cliente puso "11x − 8 + 8 = 25 + 8" y "11x/11 = 33/11" en el desarrollo—.
   check(
-    "un tachado y una división en los dos miembros son apoyo; un coeficiente o una amplificación, no",
-    esGestoDeBorrador("despeje", [{ clase: "pz-cancela", tipo: "tachado" }]) &&
-      esGestoDeBorrador("despeje", [{ clase: "pz-divisor", tipo: "caja" }]) &&
+    "una ecuación con tachado o con la división en los dos miembros es HILO, no apoyo",
+    !esGestoDeBorrador("despeje", [{ clase: "pz-cancela", tipo: "tachado" }]) &&
+      !esGestoDeBorrador("despeje", [{ clase: "pz-divisor", tipo: "caja" }]) &&
       !esGestoDeBorrador("despeje", [{ clase: "pz-coef-despeje", tipo: "caja" }]) &&
-      !esGestoDeBorrador("despeje", [{ clase: "pz-uniforme", tipo: "caja" }]) &&
       !esGestoDeBorrador("amplificacion", [{ clase: "pz-amplifica", tipo: "caja" }]),
   );
+  check(
+    "y sin escena que animar, una nota de columna sigue yendo al margen",
+    esGestoDeBorrador("columna", []) && !esGestoDeBorrador("despeje", []),
+  );
+  // ── EL MODELO DE DATOS DE UN PASO, TAL COMO LO PIDIÓ EL CLIENTE ────────────
+  //
+  // «Para que no dependa de un ejercicio en específico, estructura la respuesta
+  // de cada paso con esta forma»: ambiente1 { explicacion, ecuacionKaTeX } y un
+  // ambiente2 opcional { textoAuxiliar, calculoKaTeX, conclusion }.
+  {
+    const { esPasoLeccion } = await import("../lib/leccion/paso-leccion.ts");
+    const { bancoDeEjercicios } = await import("../src/lsgPrompt.js");
+    const ecuaciones = bancoDeEjercicios()
+      .filter((e) => (e.tema ?? e.materia) === "ECUACIONES_LINEALES")
+      .map((e) => e.enunciado ?? e.texto);
+    const pasos = ecuaciones.flatMap((eq) => solveLinearSteps(eq)?.steps ?? []);
+    check(
+      "cada paso del motor cumple el contrato PasoLeccion, en TODO el catálogo de ecuaciones",
+      pasos.length > 100 && pasos.every(esPasoLeccion),
+      `${pasos.filter((x) => !esPasoLeccion(x)).length} de ${pasos.length} no lo cumplen`,
+    );
+    check(
+      "…y unos cuantos traen taller: el desglose de dónde sale el valor intermedio",
+      pasos.filter((x) => x.ambiente2).length >= 40,
+      `${pasos.filter((x) => x.ambiente2).length} pasos con ambiente2`,
+    );
+    // El ejemplo que mandó el cliente, con sus palabras.
+    const ejemplo = solveLinearSteps("6x + 5x - 8 = 25");
+    const juntar = ejemplo.steps[0];
+    const cancelar = ejemplo.steps.find((x) => /eliminar el/.test(x.explica));
+    check(
+      "6x + 5x − 8 = 25: al hilo va «11x − 8 = 25» y al taller «6x + 5x = 11x»",
+      juntar.ambiente1.ecuacionKaTeX === "11x - 8 = 25" &&
+        /Agrupamos las x, sumando: 6x \+ 5x/.test(juntar.ambiente1.explicacion) &&
+        juntar.ambiente2?.calculoKaTeX === "6x + 5x = 11x" &&
+        juntar.ambiente2?.textoAuxiliar === "entonces sumamos:" &&
+        /colocamos los 11x en la ecuación/.test(juntar.ambiente2?.conclusion ?? ""),
+      JSON.stringify(juntar),
+    );
+    check(
+      "…y la cancelación se justifica al margen con «-8 + 8 = 0»",
+      cancelar?.ambiente2?.calculoKaTeX === "-8 + 8 = 0",
+      JSON.stringify(cancelar?.ambiente2),
+    );
+    const motorSrc = readFileSync(new URL("../src/preLight.js", import.meta.url), "utf8");
+    const guionSrc = readFileSync(new URL("../src/lsgPrompt.js", import.meta.url), "utf8");
+    check(
+      "el objetivo del paso se ESCRIBE en la pizarra, no sólo se dice",
+      /papel: "explicacion"/.test(guionSrc) && /raw\.papel\) === "explicacion"/.test(motorSrc),
+    );
+    check(
+      "y el taller se declara con `ambiente: 2`: la pizarra obedece en vez de adivinar",
+      /ambiente: 2/.test(guionSrc) && /if \(raw\.ambiente === 2\) d\.ambiente = 2;/.test(motorSrc),
+    );
+  }
   check(
     "el MCM, los múltiplos y lo que sale de cada columna son cálculos auxiliares",
     esCalculoAuxiliar("MCM(2, 3): 2 × 3 = 6") && esCalculoAuxiliar("Múltiplos de 4: 4, 8, 12") &&
@@ -1818,11 +1887,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
-    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 en ambos miembros/.test(e.d.texto));
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 a cada miembro/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "cuando el tutor dice «restamos 6 en ambos miembros», la pizarra ESCRIBE la resta y NO tacha nada",
+      "cuando el tutor dice «restamos 6 a cada miembro», la pizarra ESCRIBE la resta y NO tacha nada",
       enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
@@ -1839,12 +1908,16 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     check(
       "los dos renglones existen en el guion, en orden: primero la resta escrita, debajo la cancelada",
       (() => {
-        const escritos = ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir").map((e) => e.d.contenido);
+        // Sólo el HILO: el taller de la derecha y el texto explicativo son otra
+        // columna y otro papel, y se intercalan entre estos dos renglones.
+        const delHilo = (e) =>
+          e.d.tipo === "pizarra" && e.d.accion === "escribir" && e.d.ambiente !== 2 && e.d.papel !== "explicacion";
+        const escritos = ev.filter(delHilo).map((e) => e.d.contenido);
         const i1 = escritos.indexOf("2x + 6 = 16");
         const i2 = escritos.indexOf("2x + 6 - 6 = 16 - 6");
         return i1 >= 0 && i2 === i1 + 1;
       })(),
-      ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir").map((e) => e.d.contenido).join(" · "),
+      ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir" && e.d.ambiente !== 2 && e.d.papel !== "explicacion").map((e) => e.d.contenido).join(" · "),
     );
     check(
       "la frase que tacha es la MISMA en el motor y en la pizarra: si no, se tacharía a destiempo",
@@ -5425,7 +5498,15 @@ if (!vivo) {
       // foco, y su foco tiene que decir lo que el tutor dice en ese momento.
       const enLeccion = (crudo) => processLSG(crudo, crudo.intencion, "prueba").lsg;
       const ev = simularLeccion(enLeccion(linealResueltaLSG({ nivel: "dificil", instancia: "2(x + 4) = 3x - 1" })));
-      const escritas = ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir");
+      // Las ECUACIONES del hilo: el texto que explica el objetivo del paso y las
+      // cuentas del taller son otra cosa —prosa y apoyo—, y no se animan.
+      const escritas = ev.filter(
+        (e) =>
+          e.d.tipo === "pizarra" &&
+          e.d.accion === "escribir" &&
+          e.d.papel !== "explicacion" &&
+          e.d.ambiente !== 2,
+      );
       const sinFoco = escritas
         .map((e) => ({ texto: e.d.contenido, escena: escenaDeLinea({ latex: e.d.contenido, operacion: e.d.operacion, narracion: e.d.narracion }, "x") }))
         .filter(({ escena }) => !escena || escena.focos.length === 0 || escena.clase === "polinomio");

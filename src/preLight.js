@@ -791,13 +791,42 @@ export function solveLinearSteps(text) {
       explica: fraseCancelacionIncognita(coefL, coefR, v),
       escribe: `${xc(coef)}${v}${konstStr(konst)} = ${fmt(c)}`,
       accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
+      // «Justificación de cancelaciones»: por qué desaparece el término de la
+      // derecha, con la cuenta hecha al margen. El encabezado nombra SU término
+      // para que dos cancelaciones del mismo ejercicio no escriban lo mismo.
+      apoyo: {
+        textoAuxiliar: `Por qué se cancelan los ${xc(coefR)}${v}:`,
+        calculoKaTeX: `${xc(coefR)}${v} - ${xc(coefR)}${v} = 0`,
+        conclusion: `Y a la izquierda, ${xc(coefL)}${v} ${coefR > 0 ? "menos" : "más"} ${xc(Math.abs(coefR))}${v} es ${xc(coef)}${v}`,
+      },
     });
   }
   if (xTerms > 1 && rhsX === 0) {
+    // LOS TÉRMINOS CON x, TAL COMO ESTÁN ESCRITOS EN EL ENUNCIADO ("6x", "5x"):
+    // es lo que el taller suma al margen para justificar el "11x" del hilo. Sin
+    // espacios y con un literal de expresión regular: dentro de una plantilla
+    // las barras se pierden y "\d" acabaría siendo una "d" suelta.
+    const crudos = String(lhs).replace(/\s+/g, "").match(/[+-]?\d*[a-zA-Z]/g) ?? [];
+    const sumaEscrita = crudos
+      .map((t, i) => (i === 0 ? t.replace(/^\+/, "") : t.startsWith("-") ? ` - ${t.slice(1)}` : ` + ${t.replace(/^\+/, "")}`))
+      .join("");
     const combined = konst === 0
       ? `${xc(coef)}${v} = ${fmt(c)}`
       : `${xc(coef)}${v} ${konst > 0 ? "+ " + fmt(konst) : "- " + fmt(-konst)} = ${fmt(c)}`;
-    steps.push({ explica: `Para simplificar el miembro, juntamos los términos que tienen ${v}: en total son ${xc(coef)}${v}.`, escribe: combined });
+    steps.push({
+      explica: `Agrupamos las ${v}, sumando: ${sumaEscrita || `${xc(coef)}${v}`}.`,
+      escribe: combined,
+      // «Desglose de operaciones específicas: por ejemplo, para justificar la
+      // reducción de términos semejantes: "entonces sumamos:" 6x + 5x = 11x
+      // "Entonces, colocamos los 11x en la ecuación"». Sus palabras.
+      apoyo: crudos.length > 1
+        ? {
+            textoAuxiliar: "entonces sumamos:",
+            calculoKaTeX: `${sumaEscrita} = ${xc(coef)}${v}`,
+            conclusion: `Entonces, colocamos los ${xc(coef)}${v} en la ecuación`,
+          }
+        : undefined,
+    });
   }
   // `accion` es el GESTO que este paso hace sobre la línea ANTERIOR —cancelar la constante, dividir
   // entre el coeficiente— y los términos sobre los que lo hace, tal como están escritos allí. Con
@@ -806,9 +835,16 @@ export function solveLinearSteps(text) {
   if (konst !== 0) {
     const op = konst > 0 ? `restamos ${fmt(konst)}` : `sumamos ${fmt(-konst)}`;
     steps.push({
-      explica: `Para despejar el término con la ${v}, aplicamos el inverso aditivo: ${op} en ambos miembros.`,
+      explica: `Para eliminar el ${konst > 0 ? "+" : "-"}${fmt(Math.abs(konst))}, ${op} a cada miembro de la ecuación.`,
       escribe: `${xc(coef)}${v} = ${fmt(c - konst)}`,
       accion: { tipo: "cancelacion", terminosFoco: [fmt(Math.abs(konst))] },
+      // «Justificación de cancelaciones: por ejemplo, debajo de un separador
+      // visual: −8 + 8 = 0». Literalmente su ejemplo.
+      apoyo: {
+        textoAuxiliar: `Por qué se cancela el ${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))}:`,
+        calculoKaTeX: `${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))} ${konst > 0 ? "-" : "+"} ${fmt(Math.abs(konst))} = 0`,
+        conclusion: `Y a la derecha, ${fmt(c)} ${konst > 0 ? "menos" : "más"} ${fmt(Math.abs(konst))} es ${fmt(c - konst)}`,
+      },
     });
   }
   if (coef !== 1) {
@@ -835,7 +871,7 @@ export function solveLinearSteps(text) {
       // esa línea enseña —que la x está multiplicada por 2, que es lo que dice
       // su pie—, y «dividimos los dos lados entre 2» se guarda para cuando la
       // fracción, con sus DOS denominadores marcados, ya esté en la pizarra.
-      explica: `Para dejar la ${v} sola hay que deshacer la multiplicación: la ${v} está multiplicada por ${fmt(coef)}, y lo contrario de multiplicar es dividir.`,
+      explica: `Para dejar la ${v} sola, deshacemos la multiplicación: la ${v} está multiplicada por ${fmt(coef)}.`,
       // COMO SE ESCRIBE EN CLASE: en fracción, no con el signo de dividir. Lo
       // pidió el cliente como regla general —"2x/2 = 10/2"—, y es además la
       // forma en que se ve la simplificación del coeficiente.
@@ -865,6 +901,12 @@ export function solveLinearSteps(text) {
   }
   if (steps.length === 0 || !steps[steps.length - 1].escribe.startsWith(`${v} =`)) {
     steps.push({ explica: `Entonces, ${v} vale ${answerStr}.`, escribe: `${v} = ${answerStr}` });
+  }
+  // CADA PASO, EN LA FORMA QUE PIDIÓ EL CLIENTE (ver lib/leccion/paso-leccion.ts).
+  // Se deriva de lo que el paso ya trae, para que no haya dos verdades.
+  for (const paso of steps) {
+    paso.ambiente1 = { explicacion: paso.explica, ecuacionKaTeX: paso.escribe };
+    if (paso.apoyo) paso.ambiente2 = paso.apoyo;
   }
   return { original, steps, answer: answerStr, varName: v };
 }
@@ -1697,6 +1739,16 @@ function sanitizeDirectiva(raw, warnings, context) {
       // Y la locución del paso: lo que el tutor dice mientras se marca. Con ella
       // la pizarra reconoce la frase exacta en vez de aproximarla.
       if (str(raw.narracion)) d.narracion = sanitizeMath(str(raw.narracion)).slice(0, 400);
+      // EN QUÉ COLUMNA VA, Y CON QUÉ PAPEL, dicho por el motor y no deducido.
+      //
+      // El cliente fijó los dos ambientes por su papel —«Ambiente 1, el hilo
+      // conductor; Ambiente 2, el taller de operaciones auxiliares»— y el motor
+      // es quien sabe cuál es cuál: adivinarlo leyendo la ecuación es lo que
+      // llevaba a mezclarlos. `papel: "explicacion"` marca la prosa que SÍ va
+      // escrita en la pizarra —«explicar el objetivo del paso antes de escribir
+      // la ecuación»—, que por defecto iría al subtítulo.
+      if (raw.ambiente === 2) d.ambiente = 2;
+      if (str(raw.papel) === "explicacion") d.papel = "explicacion";
       break;
     case "puntero":
       d.accion = str(raw.accion) || "resaltar";
