@@ -315,6 +315,66 @@ export function Pizarra({
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [desarrollo.length, ejercicio?.id, actual?.id]);
 
+  /**
+   * LA PIZARRA SIGUE AL PASO QUE SE ESTÁ EXPLICANDO.
+   *
+   * Un despeje largo baja más de lo que mide la pantalla, y entonces el paso
+   * que la voz está contando —y, al final, la respuesta— se quedaban por debajo
+   * del borde. El cliente lo pidió con estas palabras: «los últimos pasos y el
+   * resultado final quedan ocultos debajo de la pantalla, obligando a usar
+   * scroll. Sería ideal implementar un autodesplazamiento suave hacia el paso
+   * activo… para que el estudiante siempre vea el paso que se explica y la
+   * respuesta final sin tener que mover la pantalla manualmente».
+   *
+   * Así que la pizarra se desplaza sola al renglón activo cada vez que la voz
+   * cambia de paso. La otra salida que él mismo apuntaba —«limpiar etapas
+   * intermedias»— no se toma: el informe pide lo contrario («todos los pasos
+   * deben permanecer en pantalla simultáneamente al concluir la explicación»),
+   * y borrar lo ya explicado es justo lo que en su día se leyó como que la
+   * pizarra se borraba sola.
+   *
+   * `block: "nearest"` mueve lo justo: si el paso ya se ve, no se mueve nada.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const quieto = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const acercar = () => {
+      // Desde el cuerpo del tablero, que es el que se desplaza: así se busca en
+      // ESTA pizarra y no en otra que hubiera en la página.
+      const activo = finRef.current
+        ?.closest(".pz-tablero-cuerpo")
+        ?.querySelector<HTMLElement>('.pz-elemento[data-estado="activa"]');
+      activo?.scrollIntoView({ behavior: quieto ? "auto" : "smooth", block: "nearest" });
+    };
+    // Y SE VUELVE A MIRAR CUANDO EL RENGLÓN YA MIDE LO QUE VA A MEDIR.
+    //
+    // Un paso no tiene su altura definitiva en el momento en que se vuelve
+    // activo: las fuentes de KaTeX llegan después, una fracción crece al
+    // componerse y un renglón que no cabía de ancho se encoge en una segunda
+    // pasada. Mirando sólo al principio, la línea de "-x/-1 = -9/-1" se quedaba
+    // 23 px por debajo del borde con la pizarra sin desplazar.
+    acercar();
+    const cuadro = requestAnimationFrame(acercar);
+    const reposo = window.setTimeout(acercar, 350);
+    // Y MIENTRAS ESE PASO SIGA CRECIENDO, SE VUELVE A ACERCAR.
+    //
+    // El renglón del cierre —"x = 5" con su cápsula, su visto y su frase— no
+    // tiene su altura final hasta que la capa de marcas se mide y le reserva el
+    // aire de arriba y abajo. Se quedaba 35 px por debajo del borde: justo la
+    // respuesta final, que es lo que el cliente pidió no tener que ir a buscar.
+    const activo = finRef.current
+      ?.closest(".pz-tablero-cuerpo")
+      ?.querySelector<HTMLElement>('.pz-elemento[data-estado="activa"]');
+    const observador =
+      activo && typeof ResizeObserver !== "undefined" ? new ResizeObserver(acercar) : null;
+    if (activo && observador) observador.observe(activo);
+    return () => {
+      cancelAnimationFrame(cuadro);
+      window.clearTimeout(reposo);
+      observador?.disconnect();
+    };
+  }, [animacion?.escena, animacion?.terminada]);
+
   /** El estado de la escena de un elemento, según por dónde va la voz. */
   const estadoDe = (indiceGuion: number): EstadoEscena => {
     if (!animacion || indiceGuion < 0) return "completada";

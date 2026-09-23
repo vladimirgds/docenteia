@@ -102,6 +102,16 @@ type RectDeRotulo = Rect & { yTexto: number };
 const SIN_MEDIDAS: Medidas = { cajas: {}, glifos: [], fuente: null, limites: null };
 
 /**
+ * HASTA DÓNDE SE DEJA ENCOGER UN RENGLÓN QUE NO CABE.
+ *
+ * Tres cuartos del tamaño de su pantalla. Por debajo, una ecuación proyectada
+ * deja de leerse desde el fondo del aula —que es el mínimo que el informe puso
+ * en 24 px para los rótulos— y entonces es mejor partirla que empequeñecerla
+ * más. Con el suelo de 36 px del modo proyección, 0,75 deja 27 px.
+ */
+const ENCAJE_MINIMO = 0.75;
+
+/**
  * ¿La hoja lleva texto que SE VE? KaTeX mete en sus columnas y fracciones
  * espacios de anchura cero (U+200B, los `vlist-s`): cajas de 2 px de ancho y
  * tan altas como la columna entera, invisibles. Contadas como cifras, apartaban
@@ -160,8 +170,24 @@ export function PizarraAnimada({
   // fórmula se recompone en un solo bloque alineado, así que las marcas del
   // guion siguen donde estaban y la capa de resaltados las encuentra igual.
   const [filas, setFilas] = useState<string[] | null>(null);
+  /**
+   * PRIMERO SE ENCOGE, Y SÓLO SI NO HAY MÁS REMEDIO SE PARTE.
+   *
+   * El cliente lo fotografió con "2x + 8 − 3x = 3x − 1 − 3x": la igualdad se
+   * partía en dos renglones —"2x + 8 − 3x" arriba y "= 3x − 1 − 3x" debajo— y
+   * «la pizarra se llena muy rápido, activando la barra de desplazamiento».
+   * Partir era lo único que esta pizarra sabía hacer cuando una línea no cabía.
+   *
+   * Una ecuación quebrada se lee peor que una ecuación pequeña, así que ahora se
+   * prueba antes a ENCOGER ESE RENGLÓN —y sólo ése— hasta que quepa entero. El
+   * factor vive aquí, en `em`, de modo que se compone con el tamaño base de cada
+   * pantalla y no lo sustituye. Partir sigue existiendo como último recurso,
+   * para la línea que ni encogida al suelo cabe.
+   */
+  const [encaje, setEncaje] = useState(1);
   useEffect(() => {
     setFilas(null);
+    setEncaje(1);
   }, [escena?.latex, proyeccion]);
 
   const latexCompuesto = useMemo(() => {
@@ -206,12 +232,28 @@ export function PizarraAnimada({
       ...piezas.map((el) => el.getBoundingClientRect().right),
     );
     if (derecha <= limite - 4) return;
+    // Cuánto sobra, medido desde donde EMPIEZA la fórmula: encogerla mueve su
+    // borde derecho, no el izquierdo.
+    const izquierda = raiz.getBoundingClientRect().left;
+    const necesita = derecha - izquierda;
+    const cabe = limite - 4 - izquierda;
+    if (necesita > 0 && cabe > 0) {
+      // Un pelín menos de lo justo (0,98): KaTeX redondea y una fórmula clavada
+      // al milímetro vuelve a dispararlo en el siguiente pintado.
+      const propuesto = Math.max(ENCAJE_MINIMO, encaje * (cabe / necesita) * 0.98);
+      // Sólo se encoge, nunca se estira: si no baja de verdad, es que ya está en
+      // el suelo y lo que toca es partir.
+      if (propuesto < encaje - 0.005) {
+        setEncaje(propuesto);
+        return;
+      }
+    }
     setFilas((actuales) => {
       const previas = actuales ?? [base];
       if (previas.length >= 4) return actuales;
       return partirLaMasLarga(previas) ?? actuales;
     });
-  }, [escena?.latex]);
+  }, [escena?.latex, encaje]);
 
   useLayoutEffect(revisarAncho);
 
@@ -423,7 +465,14 @@ export function PizarraAnimada({
         ref={contenedor}
         id={idPizarra}
         className="pz-animada-formula relative inline-block max-w-full"
-        style={{ marginTop: aire.arriba, marginBottom: aire.abajo }}
+        // El encaje va en `em` para componerse con el tamaño de cada pantalla.
+        // Al cambiarlo, el `ResizeObserver` de abajo vuelve a medir las cifras,
+        // así que los recuadros y los tachados siguen donde están las letras.
+        style={{
+          marginTop: aire.arriba,
+          marginBottom: aire.abajo,
+          ...(encaje < 1 ? { fontSize: `${encaje}em` } : null),
+        }}
       >
         {/* LO QUE SE VA DESTAPANDO, declarado como REGLA CSS y no tocando el
             DOM a mano: una regla la vuelve a aplicar el navegador siempre, y

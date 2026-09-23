@@ -90,8 +90,14 @@
   font-size: 0.72em;
 }
 
+/* Y CON SU SUELO EN PÍXELES, NO SÓLO EN `em`.
+   Las palabras dentro de una fórmula —"llevamos 1", "Resultado:"— se miden
+   contra ella, así que al bajar la escala base de las fórmulas bajaron con
+   ella: 0,52 × 37 px son 19 px, por debajo de los 24 px que el informe fija
+   para leer desde el fondo del aula. El factor sigue mandando cuando la fórmula
+   es grande; el suelo, cuando no. */
 .modo-proyeccion .pz-palabra {
-  font-size: 0.52em;
+  font-size: max(1.5rem, 0.52em);
 }
 
 /* El rótulo del cierre ("Resultado:"), como el de cualquier nota: a su tamaño
@@ -103,7 +109,7 @@
 }
 
 .modo-proyeccion .pz-palabra.pz-rotulo {
-  font-size: 0.62em;
+  font-size: max(1.5rem, 0.62em);
   color: hsl(45 96% 62%);
 }
 
@@ -179,9 +185,27 @@
   font-size: 1.6em;
 }
 
+/* EL ANCHO ÚTIL, REPARTIDO SEGÚN LO QUE LLEVA CADA COLUMNA.
+ *
+ * Estaban al 50/50, y el cliente midió lo que eso deja en pantalla: «la columna
+ * izquierda sólo muestra el planteamiento inicial y queda vacía en la parte
+ * inferior, mientras que la columna derecha concentra todo el desarrollo y se
+ * satura hacia abajo. Conviene balancear mejor el ancho útil entre ambas
+ * columnas».
+ *
+ * Y es que las dos no llevan lo mismo, ni por diseño: en el Ambiente 1 va el
+ * planteamiento y UN paso —líneas cortas, "2x + 8 = 3x - 1"—, y por el Ambiente
+ * 2 baja la cadena entera, con los renglones más largos que tiene un despeje
+ * ("2x + 8 - 3x = 3x - 1 - 3x"). Darles el mismo ancho deja la izquierda medio
+ * vacía y obliga a la derecha a encoger o a partir.
+ *
+ * 42/58. La proporción es la del contenido, no un capricho: el reparto vertical
+ * —planteamiento y un paso a la izquierda, la cadena a la derecha— lo decide
+ * `lib/leccion/ambientes.ts`, y los dos paneles siguen siendo continuos y
+ * visibles a la vez, que es lo que pedía el informe. */
 .pz-ambientes {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
   gap: 1.25rem;
 }
 
@@ -805,18 +829,26 @@
   border-left-color: hsl(210 40% 60% / 0.35);
 }
 
-/* Nunca por debajo del espaciado del informe (gap-6, 24 px). */
+/* Nunca por debajo del espaciado del informe (gap-6, 24 px), y nunca por encima
+   de lo que hace falta: el tope baja de 2,25rem a 1,75rem. Con siete u ocho
+   renglones —que es lo que tiene "2(x + 4) = 3x - 1"— eso son casi cien píxeles
+   de alto recuperados, y el cliente pidió «ajustar el espaciado vertical». */
 .modo-proyeccion .pz-ambiente {
-  gap: clamp(1.5rem, 3vh, 2.25rem);
+  gap: clamp(1.5rem, 2.2vh, 1.75rem);
 }
 
-/* LAS FÓRMULAS, A TAMAÑO DE AULA: 48 px como mínimo ("fórmulas >= 48px").
-   El factor por anchura baja de 3,6vw a 3,4vw: en una pantalla de 1366 la
-   fórmula se queda en el suelo de 48 px —se sigue cumpliendo el mínimo— y una
-   línea larga como "-x + 8 - 8 = -1 - 8" cabe entera en su ambiente en lugar de
-   asomarse a la mitad de al lado. En 1920 no cambia nada: sigue en 64 px. */
+/* LAS FÓRMULAS, A TAMAÑO DE AULA — PERO NO MÁS GRANDES DE LO QUE CABE.
+   El informe pedía 48 px como mínimo y así estaba: de 48 a 64 px. Con ese
+   tamaño, un despeje de ocho renglones no entra en una pantalla y el cliente lo
+   midió: «la fuente matemática está demasiado grande… la ecuación se parte en
+   dos renglones y la pizarra se llena muy rápido, activando la barra de
+   desplazamiento». Así que la escala base baja un escalón —de 36 a 52 px— y lo
+   que se gana es alto: ocho renglones donde antes cabían seis.
+   Sigue muy por encima de los 24 px que el informe fija para que se lea desde el
+   fondo del aula, y ningún renglón se parte ya: el que no cabe de ancho se
+   encoge solo (ver ENCAJE_MINIMO en pizarra-animada.tsx). */
 .modo-proyeccion .katex {
-  font-size: clamp(3rem, 3.4vw, 4rem);
+  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
   font-weight: 600;
   color: hsl(0 0% 100%);
 }
@@ -846,7 +878,7 @@
 }
 
 .modo-proyeccion .pz-encabezado-formula .katex {
-  font-size: clamp(3rem, 3.4vw, 4rem);
+  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
 }
 
 /* Y los dos ambientes se dan la mano con menos aire entre ellos: lo que se gana

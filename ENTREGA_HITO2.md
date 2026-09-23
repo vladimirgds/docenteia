@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **94.398 comprobaciones en Chrome y 0
+> las de la última pasada completa): **107.421 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.183
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **768** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **775** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3549,3 +3549,101 @@ Lo que **no** se puede hacer es servir audio neuronal sin proveedor: no existe u
 endpoint gratuito y con licencia para producción. Mientras la clave no esté, el
 tutor habla con la mejor voz que ofrezca el navegador —desde la ronda anterior,
 la neuronal del sistema si la hay— y la pantalla dice, con su nombre, qué falta.
+
+## 50. Decimocuarta ronda: el sitio de la pizarra, repartido
+
+La sincronización quedó resuelta —«probamos la sincronización de la pizarra con
+la voz del avatar en pantalla completa y la secuencia animada quedó muy bien»—, y
+lo que llegó esta vez fue de diseño visual: **tres observaciones sobre el uso del
+espacio**, todas ciertas y todas reproducidas aquí antes de tocar nada.
+
+Medido en un Chrome de verdad sobre el ejercicio de la captura,
+`2(x + 4) = 3x − 1`, en proyección a 1536×864 (que es un 1920×1080 con la escala
+de Windows al 125 %):
+
+| | antes | después |
+| --- | --- | --- |
+| `2x + 8 − 3x = 3x − 1 − 3x` | partida en **dos renglones** | **una sola línea** |
+| Alto que sobra por debajo del borde | **308 px** | 31 px, y ninguno a ciegas |
+| Pasos que se quedaban fuera de la pantalla | 2 (y la respuesta final) | **ninguno** |
+| Ancho de las columnas | 627 / 627 | **527 / 728** |
+
+Y a 1920×1080 el ejercicio entero **cabe en una pantalla sin desplazar nada**:
+0 px de sobra.
+
+### 1. «La fuente matemática está demasiado grande»
+
+Tenía dos causas, y las dos se arreglan por separado.
+
+**La escala base.** Estaba en 48–64 px porque el informe pedía «fórmulas ≥ 48 px»
+para que se lean desde el fondo del aula. Con ese tamaño, un despeje de ocho
+renglones no entra en una pantalla. Baja un escalón, a **36–52 px**: sigue al
+doble de los 24 px con los que el propio informe mide un rótulo legible en
+proyección, y lo que se gana es alto —ocho renglones donde antes cabían seis—.
+
+**Y partir ya no es la primera salida.** Cuando una línea no cabía de ancho, esta
+pizarra sólo sabía **partirla** (`partirLaMasLarga`), y eso es lo que produjo el
+`2x + 8 − 3x` / `= 3x − 1 − 3x` de la captura. Una ecuación quebrada se lee peor
+que una ecuación pequeña, así que ahora **ese renglón —y sólo ése— se encoge**
+hasta que quepa entero, con un suelo de tres cuartos de su tamaño
+(`ENCAJE_MINIMO`). Partir sigue existiendo, como último recurso, para la línea
+que ni encogida al suelo entra.
+
+El encaje va en `em`, así que se compone con el tamaño de cada pantalla en vez de
+sustituirlo, y al cambiarlo el `ResizeObserver` del panel vuelve a medir las
+cifras: los recuadros y los tachados siguen donde están las letras.
+
+### 2. «Conviene balancear mejor el ancho útil entre ambas columnas»
+
+Estaban al **50/50**, y las dos no llevan lo mismo ni por diseño: en el Ambiente 1
+van el planteamiento y **un** paso —líneas cortas—, y por el Ambiente 2 baja la
+cadena entera, con los renglones más largos que tiene un despeje. Ahora se
+reparten **42/58**. La proporción es la del contenido, y los dos paneles siguen
+siendo continuos y visibles a la vez, que es lo que pedía el informe.
+
+### 3. «Los últimos pasos y el resultado final quedan ocultos debajo»
+
+La pizarra **se desplaza sola, suavemente, al renglón que se está explicando**, y
+`block: "nearest"` hace que no se mueva nada si ese paso ya se ve.
+
+De las dos salidas que apuntaba el cliente —autodesplazamiento o «limpiar etapas
+intermedias»— se toma la primera. Borrar lo ya explicado contradice al informe
+(«todos los pasos deben permanecer en pantalla simultáneamente al concluir la
+explicación») y es justo lo que en su día se leyó como que la pizarra se borraba
+sola.
+
+Un detalle que costó encontrar: **un paso no tiene su altura definitiva cuando se
+vuelve activo**. Las fuentes de KaTeX llegan después, una fracción crece al
+componerse y un renglón que no cabía se encoge en una segunda pasada. Mirando
+sólo al principio, la línea del cierre —`x = 5` con su cápsula, su visto y su
+frase— se quedaba **35 px por debajo del borde**: precisamente la respuesta
+final. Ahora se vuelve a acercar en el fotograma siguiente, a los 350 ms y cada
+vez que ese renglón cambia de tamaño.
+
+### Lo que queda fijado
+
+Dos comprobaciones nuevas en las ocho clases de Chrome, y siete en la batería del
+hito:
+
+* **R5-01** — ninguna ecuación se parte en dos renglones. Se cuenta el número de
+  rectángulos que devuelve cada fórmula: un elemento en línea da **uno por
+  fragmento de línea**, así que contarlos es contar los renglones que ocupa.
+* **R5-03** — el paso que se está explicando se ve **entero**, sin desplazar a
+  mano. Con una excepción honesta: un paso más alto que la propia pizarra —una
+  nota de prosa larga— no cabe entero y de ése se exige lo que sí se puede dar,
+  que empiece a la vista.
+* **OBS-08** pasa de «los dos ambientes miden lo mismo» a «el ancho se reparte
+  42/58, y el panel de desarrollo es el más ancho».
+* **SUB-PRJ-03** baja su suelo de 48 a 36 px, con el porqué escrito al lado.
+
+Y dos cosas que la pasada de las ocho clases sacó a la luz, y que ninguna prueba
+de una sola clase habría visto:
+
+* Las **palabras dentro de una fórmula** —«llevamos 1», «Resultado:»— se miden en
+  `em` contra ella, así que bajaron con la escala base: 0,52 × 37 px son 19 px,
+  por debajo del mínimo de 24. Ahora llevan su suelo en píxeles
+  (`max(1.5rem, 0.52em)`): el factor manda cuando la fórmula es grande, el suelo
+  cuando no.
+* **En un móvil no hay dos columnas que repartir.** Por debajo de 640 px los dos
+  ambientes se apilan a todo el ancho, y ahí lo que toca es que midan lo mismo.
+  OBS-08 comprueba el 42/58 cuando van al lado y la igualdad cuando van apilados.

@@ -4533,10 +4533,23 @@ titulo("D. Máquina de estados del avatar");
   );
 
   check("existe el tema de proyección", estilos.includes(".modo-proyeccion"));
-  // Escalada a los mínimos del informe: fórmulas ≥ 48 px y notas ≥ 24 px.
+  // ESCALADA, PERO NO MÁS GRANDE DE LO QUE CABE.
+  //
+  // El informe pedía fórmulas ≥ 48 px y así estaba (`clamp(3rem, …, 4rem)`).
+  // Con ese tamaño un despeje de ocho renglones no entra en una pantalla, y el
+  // cliente lo midió: «la fuente matemática está demasiado grande… la ecuación
+  // se parte en dos renglones y la pizarra se llena muy rápido, activando la
+  // barra de desplazamiento». El suelo baja a 2,25rem —36 px—, que sigue muy por
+  // encima de los 24 px con los que el mismo informe mide lo que se lee desde el
+  // fondo del aula. Las notas no se tocan.
   check(
-    "con la tipografía escalada",
-    /\.modo-proyeccion \.katex \{\s*font-size: clamp\(3rem,/.test(estilos) &&
+    "con la tipografía escalada: el suelo de una fórmula proyectada, entre 36 y 48 px",
+    (() => {
+      const m = estilos.match(/\.modo-proyeccion \.katex \{\s*font-size: clamp\(([\d.]+)rem,\s*([\d.]+)vw,\s*([\d.]+)rem\)/);
+      if (!m) return false;
+      const [, suelo, , techo] = m.map(Number);
+      return suelo >= 2.25 && suelo <= 3 && techo >= suelo;
+    })() &&
       /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);/.test(estilos),
   );
   check(
@@ -4544,6 +4557,57 @@ titulo("D. Máquina de estados del avatar");
     estilos.includes(".modo-proyeccion .katex .frac-line"),
   );
   check("el trazo del resaltado también engorda", /modo-proyeccion \.pz-trazo/.test(estilos));
+
+  // ── LO QUE NO CABE SE ENCOGE ANTES DE PARTIRSE ─────────────────────────────
+  //
+  // «Al escribir pasos con varios términos, como 2x + 8 - 3x = 3x - 1 - 3x, la
+  // ecuación se parte en dos renglones y la pizarra se llena muy rápido.»
+  // Partir era lo único que la pizarra sabía hacer con una línea que no cabía.
+  check(
+    "una línea que no cabe se encoge primero, y sólo se parte si ni al suelo entra",
+    /const ENCAJE_MINIMO = 0\.\d+;/.test(panel) &&
+      /propuesto = Math\.max\(ENCAJE_MINIMO,/.test(panel) &&
+      // El encoger va ANTES del partir, no después.
+      panel.indexOf("setEncaje(propuesto)") < panel.indexOf("partirLaMasLarga(previas)"),
+  );
+  check(
+    "el encaje se aplica en `em`, para componerse con el tamaño de cada pantalla",
+    /fontSize: `\$\{encaje\}em`/.test(panel) && /setEncaje\(1\)/.test(panel),
+  );
+
+  // ── LA PIZARRA SIGUE AL PASO QUE SE EXPLICA ────────────────────────────────
+  //
+  // «Los últimos pasos y el resultado final quedan ocultos debajo de la
+  // pantalla, obligando a usar scroll.» El cliente apuntaba dos salidas:
+  // autodesplazamiento o limpiar etapas intermedias. Se toma la primera: borrar
+  // lo ya explicado contradice al informe («todos los pasos deben permanecer en
+  // pantalla simultáneamente al concluir la explicación»).
+  {
+    const tablero = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+    check(
+      "la pizarra se desplaza sola al paso activo, suavemente y sin mover de más",
+      /\.pz-elemento\[data-estado="activa"\]/.test(tablero) &&
+        /scrollIntoView\(\{ behavior: quieto \? "auto" : "smooth", block: "nearest" \}\)/.test(tablero),
+    );
+    check(
+      "…y respeta a quien ha pedido no ver animaciones",
+      /prefers-reduced-motion: reduce/.test(tablero),
+    );
+    check(
+      "…y vuelve a mirar cuando el renglón termina de crecer: el cierre es el que más tarda",
+      /new ResizeObserver\(acercar\)/.test(tablero) && /requestAnimationFrame\(acercar\)/.test(tablero),
+    );
+    check(
+      "y NO se limpian las etapas intermedias: al terminar, el procedimiento entero sigue escrito",
+      !/limpiarIntermedios|borrarPasosPrevios/.test(tablero) && /animacion\?\.terminada \|\|/.test(tablero),
+    );
+  }
+
+  // ── EL ANCHO ÚTIL, REPARTIDO SEGÚN LO QUE LLEVA CADA COLUMNA ───────────────
+  check(
+    "los dos ambientes ya no van al 50/50: el panel de desarrollo es el más ancho",
+    /grid-template-columns: minmax\(0, 42fr\) minmax\(0, 58fr\);/.test(estilos),
+  );
 
   // Lo que el cliente echó en falta probando en pantalla grande: la fórmula
   // quedaba diminuta en medio de un lienzo en blanco y el avatar desaparecía.

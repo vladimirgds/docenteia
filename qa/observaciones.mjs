@@ -47,6 +47,10 @@
 //          del ejercicio a la vez, y varias barras de desplazamiento encima).
 //   R4-02  El tachado rojo de la cancelación llega CON su frase, no antes.
 //   R4-03  Ninguna barra gris de desplazamiento dentro de la pizarra.
+//   R5-01  Ninguna ecuación partida en dos renglones: la que no cabe de ancho
+//          se encoge (el cliente lo midió con 2x + 8 - 3x = 3x - 1 - 3x).
+//   R5-03  El paso que se está explicando se ve ENTERO, sin desplazar a mano:
+//          la pizarra se mueve sola al renglón activo.
 //   R3-04  Los dos ambientes se aprovechan: las dos conversiones de una suma de
 //          fracciones no caen en el mismo lado.
 //
@@ -294,6 +298,12 @@ function instalarMedidor() {
       pieActivo: textoVisible(document.querySelector(".pz-elemento[data-estado='activa'] .pz-pie")),
       // R4-03: ninguna barra gris nativa dentro de la pizarra.
       barrasScroll: [],
+      // R5-01/R5-03: renglones partidos y cuánto se sale el paso activo.
+      partidas: [],
+      activoRecortado: 0,
+      activoTexto: "",
+      activoAlto: 0,
+      cuerpoAlto: 0,
       // La misma pregunta, con cada fórmula en su TeX: el texto visible de una
       // fracción de KaTeX pone el denominador ANTES que el numerador.
       preguntaFuente: fuenteTex(document.querySelector(".pz-pregunta")),
@@ -512,6 +522,36 @@ function instalarMedidor() {
     for (const k of document.querySelectorAll(".pz-ambientes .katex, .pz-encabezado-formula .katex")) {
       if (!visible(k) || k.closest(".pz-pie")) continue;
       out.tam.formula.push(px(k));
+    }
+    // R5-01: UNA ECUACIÓN NO SE PARTE EN DOS RENGLONES. Un elemento en línea
+    // devuelve UN rectángulo POR FRAGMENTO DE LÍNEA, así que contar sus rects es
+    // contar los renglones que ocupa de verdad. Las fórmulas que el motor
+    // compone ya en varias filas (`\begin{aligned}`) no cuentan: esas están
+    // partidas a propósito y KaTeX las devuelve igualmente en un solo fragmento.
+    for (const k of document.querySelectorAll(".pz-formula .katex-html")) {
+      if (!visible(k)) continue;
+      const trozos = k.getClientRects().length;
+      if (trozos > 1) out.partidas.push(`${(k.textContent ?? "").replace(/\s+/g, "").slice(0, 40)} en ${trozos} renglones`);
+    }
+    // R5-03: el paso que se está explicando, entero dentro del cuerpo que se
+    // desplaza. Es lo que el autodesplazamiento tiene que garantizar.
+    const cuerpoPizarra = document.querySelector(".pz-tablero-cuerpo");
+    const pasoActivo = document.querySelector('.pz-elemento[data-estado="activa"]');
+    if (cuerpoPizarra && pasoActivo && visible(pasoActivo)) {
+      const a = pasoActivo.getBoundingClientRect();
+      const c = cuerpoPizarra.getBoundingClientRect();
+      // UN PASO MÁS ALTO QUE LA PIZARRA NO CABE ENTERO, Y NO HAY DESPLAZAMIENTO
+      // QUE LO ARREGLE: una nota de prosa larga puede medir más que el cuerpo.
+      // De ésas se exige lo que sí se puede dar: que EMPIECEN a la vista, que es
+      // por donde se leen. De las demás, que se vean enteras.
+      out.activoRecortado =
+        a.height > c.height
+          ? Math.round(Math.max(0, c.top - a.top))
+          : Math.round(Math.max(0, a.bottom - c.bottom) + Math.max(0, c.top - a.top));
+      out.activoTexto =
+        (pasoActivo.getAttribute("data-texto") || (pasoActivo.textContent ?? "").replace(/\s+/g, " ")).slice(0, 40);
+      out.activoAlto = Math.round(a.height);
+      out.cuerpoAlto = Math.round(c.height);
     }
     for (const n of document.querySelectorAll(".pz-nota, .pz-palabra")) if (visible(n)) out.tam.nota.push(px(n));
     for (const t of document.querySelectorAll(".pz-etiqueta[data-etiqueta]")) if (visible(t)) out.tam.etiqueta.push(px(t));
@@ -837,7 +877,32 @@ function comprobarSiempre(m, clase) {
   }
   if (m.ambientes.length === 2) {
     const [a1, a2] = m.ambientes;
-    verificar("OBS-08", "los dos ambientes miden lo mismo (50 % / 50 %)", Math.abs(a1.caja.w - a2.caja.w) <= 2, `${a1.caja.w.toFixed(0)} / ${a2.caja.w.toFixed(0)}`);
+    // EL ANCHO SE REPARTE SEGÚN LO QUE LLEVA CADA COLUMNA, NO A PARTES IGUALES.
+    //
+    // Estaban al 50/50 y el cliente midió el resultado: «la columna izquierda
+    // sólo muestra el planteamiento inicial y queda vacía en la parte inferior,
+    // mientras que la columna derecha concentra todo el desarrollo y se satura
+    // hacia abajo. Conviene balancear mejor el ancho útil entre ambas
+    // columnas». Por el Ambiente 2 baja la cadena entera —y con ella los
+    // renglones más largos del despeje—, así que se lleva 58 de cada 100.
+    const total = a1.caja.w + a2.caja.w;
+    const parte = total > 0 ? a2.caja.w / total : 0;
+    // EN UN MÓVIL NO HAY DOS COLUMNAS QUE REPARTIR. Por debajo de 640 px los dos
+    // ambientes se apilan —uno debajo del otro, a todo el ancho— y ahí lo que
+    // toca es que midan lo mismo. El reparto 42/58 es para cuando van al lado.
+    const enParalelo = a2.caja.x > a1.caja.x + 1;
+    verificar(
+      "OBS-08",
+      enParalelo
+        ? "el ancho se reparte 42/58: el panel de desarrollo, el más ancho"
+        : "apilados en pantalla estrecha, los dos ambientes ocupan lo mismo",
+      total === 0
+        ? true
+        : enParalelo
+          ? parte > 0.5 && Math.abs(parte - 0.58) <= 0.04
+          : Math.abs(a1.caja.w - a2.caja.w) <= 2,
+      `${a1.caja.w.toFixed(0)} / ${a2.caja.w.toFixed(0)} (${(parte * 100).toFixed(0)} % al Ambiente 2, ${enParalelo ? "en paralelo" : "apilados"})`,
+    );
   }
 
   // R3-01: ninguna marca de cancelación a la derecha del igual.
@@ -895,6 +960,31 @@ function comprobarSiempre(m, clase) {
     );
   }
 
+  // R5-01: NINGUNA ECUACIÓN SE PARTE EN DOS RENGLONES.
+  //
+  // «Al escribir pasos con varios términos, como 2x + 8 - 3x = 3x - 1 - 3x, la
+  // ecuación se parte en dos renglones»: el cliente lo fotografió. Partir era lo
+  // único que la pizarra sabía hacer cuando una línea no cabía; ahora ese
+  // renglón se encoge primero, y sólo se parte si ni encogido al suelo entra.
+  verificar(
+    "R5-01",
+    "ninguna ecuación se parte en dos renglones: la que no cabe se encoge",
+    (m.partidas ?? []).length === 0,
+    `${(m.partidas ?? []).slice(0, 2).join(" · ")} (${clase}${m.proy ? ", proyección" : ""})`,
+  );
+
+  // R5-03: EL PASO QUE SE EXPLICA, SIEMPRE ENTERO A LA VISTA.
+  //
+  // «Los últimos pasos y el resultado final quedan ocultos debajo de la
+  // pantalla, obligando a usar scroll». La pizarra se desplaza sola al renglón
+  // activo, así que ninguno puede quedarse a medias fuera del cuerpo.
+  verificar(
+    "R5-03",
+    "el paso que se está explicando se ve entero, sin tener que desplazar a mano",
+    (m.activoRecortado ?? 0) <= 2,
+    `«${m.activoTexto ?? ""}» se sale ${m.activoRecortado ?? 0} px (paso ${m.activoAlto ?? 0} px, pizarra ${m.cuerpoAlto ?? 0} px; ${clase}${m.proy ? ", proyección" : ""})`,
+  );
+
   // R4-03: ninguna barra gris nativa, ni en pantalla ni proyectando.
   verificar(
     "R4-03",
@@ -922,8 +1012,18 @@ function comprobarProyeccion(m, momento) {
   // rótulos, 24 px, y lo que no se negocia en ninguna pantalla es que nada se
   // salga (eso lo comprueba SUB-PIZ-02, y por eso se vio).
   const deAula = (m.ancho ?? 1366) >= 900;
-  const suelo = deAula ? 47.5 : 24;
-  verificar("SUB-PRJ-03", `proyección: fórmulas ≥ ${deAula ? 48 : 24} px`, min(m.tam.formula) >= suelo, `${momento}: ${min(m.tam.formula).toFixed(1)} px (ventana ${m.ancho ?? "?"} px)`);
+  // EL SUELO BAJA DE 48 A 36 PX, Y LO PIDIÓ EL CLIENTE.
+  //
+  // El informe puso 48 px y así estuvo. Pero con ese tamaño un despeje de ocho
+  // renglones no entra en una pantalla, y él lo midió delante: «la fuente
+  // matemática está demasiado grande… la ecuación se parte en dos renglones y
+  // la pizarra se llena muy rápido, activando la barra de desplazamiento».
+  // 36 px es el suelo de la escala nueva (2,25rem) y sigue a kilómetros de los
+  // 24 px que el mismo informe fija para leer un rótulo desde el fondo del
+  // aula. Lo que ya no se negocia lo comprueban R5-01 —ningún renglón partido—
+  // y R5-03 —el paso que se explica, siempre entero a la vista—.
+  const suelo = deAula ? 35.5 : 24;
+  verificar("SUB-PRJ-03", `proyección: fórmulas ≥ ${deAula ? 36 : 24} px`, min(m.tam.formula) >= suelo, `${momento}: ${min(m.tam.formula).toFixed(1)} px (ventana ${m.ancho ?? "?"} px)`);
   verificar("SUB-PRJ-03", "proyección: notas ≥ 24 px", min(m.tam.nota) >= (deAula ? 24 : 14), `${momento}: ${min(m.tam.nota).toFixed(1)} px`);
   verificar("SUB-PRJ-03", "proyección: rótulos de las marcas ≥ 24 px", min(m.tam.etiqueta) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.etiqueta).toFixed(1)} px`);
   verificar("SUB-PRJ-03", "proyección: la frase del tutor ≥ 24 px", min(m.tam.pie) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.pie).toFixed(1)} px`);
@@ -1382,7 +1482,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 
