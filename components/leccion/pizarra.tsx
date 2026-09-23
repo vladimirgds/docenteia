@@ -27,7 +27,7 @@ import {
   lineaResaltada,
 } from "@/lib/leccion/destacar";
 import { escenaDeLinea, identidadDeEscena, type Escena } from "@/lib/leccion/animacion";
-import { esCalculoAuxiliar, repartirEnAmbientes, type PapelDelPaso } from "@/lib/leccion/ambientes";
+import { esCalculoAuxiliar, esGestoDeBorrador, repartirEnAmbientes, type PapelDelPaso } from "@/lib/leccion/ambientes";
 import { partirLaMasLarga } from "@/lib/leccion/ajuste";
 import { ROL, rol } from "@/lib/leccion/roles";
 import { esEnunciadoParaResolver } from "@/lib/leccion/seguimiento-lsg";
@@ -290,8 +290,31 @@ export function Pizarra({
       };
     });
 
-    const ambientes = repartirEnAmbientes(conEscena.map(({ papel, gesto }) => ({ papel, gesto })));
-    return conEscena.map((e, i) => ({ ...e, ambiente: ambientes[i] }));
+    // QUÉ ES HILO CONDUCTOR Y QUÉ ES BORRADOR lo dice la escena ya compuesta: un
+    // tachado es una cancelación y dos marcas sobre los denominadores son una
+    // división hecha a los dos lados. Las dos son apoyo; la línea que queda, no.
+    // Y LO QUE UNA ESCENA YA DEJA ESCRITO NO SE ESCRIBE OTRA VEZ.
+    //
+    // El reparto de un paréntesis se compone en dos renglones y el segundo es ya
+    // la ecuación sin paréntesis —"2x + 8 = 3x − 1"—, que el motor escribe
+    // además como paso propio. Mientras ese paso vivía en el Ambiente 2 no se
+    // notaba; con el hilo conductor entero en el Ambiente 1, salía dos veces
+    // seguidas. Se compara sin espacios y con el guion de resta normalizado.
+    const mismaEcuacion = (a: string, b: string) =>
+      a.replace(/[−–—]/g, "-").replace(/\s+/g, "") === b.replace(/[−–—]/g, "-").replace(/\s+/g, "");
+    const sinRepetir = conEscena.filter((e, i) => {
+      const anterior = conEscena[i - 1]?.escena?.continuacion;
+      return !(anterior && mismaEcuacion(anterior, e.linea.texto));
+    });
+
+    const sitios = repartirEnAmbientes(
+      sinRepetir.map(({ papel, gesto, escena }) => ({
+        papel,
+        gesto,
+        auxiliar: esGestoDeBorrador(gesto, escena?.focos ?? []),
+      })),
+    );
+    return sinRepetir.map((e, i) => ({ ...e, ambiente: sitios[i] }));
   }, [actual, planteaEjercicio, ejercicio, desarrollo, paraResolver, enunciadoExplicado, animacion?.escenas]);
 
   /**
@@ -362,12 +385,20 @@ export function Pizarra({
     // tiene su altura final hasta que la capa de marcas se mide y le reserva el
     // aire de arriba y abajo. Se quedaba 35 px por debajo del borde: justo la
     // respuesta final, que es lo que el cliente pidió no tener que ir a buscar.
-    const activo = finRef.current
-      ?.closest(".pz-tablero-cuerpo")
-      ?.querySelector<HTMLElement>('.pz-elemento[data-estado="activa"]');
-    const observador =
-      activo && typeof ResizeObserver !== "undefined" ? new ResizeObserver(acercar) : null;
-    if (activo && observador) observador.observe(activo);
+    const cuerpo = finRef.current?.closest(".pz-tablero-cuerpo") ?? null;
+    const activo = cuerpo?.querySelector<HTMLElement>('.pz-elemento[data-estado="activa"]') ?? null;
+    // Y TAMBIÉN CUANDO LO QUE TIENE ENCIMA CRECE.
+    //
+    // El paso activo puede bajar sin cambiar de tamaño: basta con que se escriba
+    // un renglón por encima, o que uno de ellos se componga y crezca. Vigilando
+    // sólo al propio paso, una amplificación de fracciones se quedaba 42 px por
+    // debajo del borde. Se vigila por tanto el bloque entero de los ambientes.
+    const contenido = cuerpo?.querySelector<HTMLElement>(".pz-ambientes") ?? null;
+    const observador = typeof ResizeObserver !== "undefined" ? new ResizeObserver(acercar) : null;
+    if (observador) {
+      if (activo) observador.observe(activo);
+      if (contenido) observador.observe(contenido);
+    }
     return () => {
       cancelAnimationFrame(cuadro);
       window.clearTimeout(reposo);
@@ -415,7 +446,25 @@ export function Pizarra({
    * procedimiento entero, que es lo que pidió el informe.
    */
   const visibles = useMemo(
-    () => elementos.filter((e) => animacion?.terminada || estadoDe(e.indiceGuion) !== "pendiente"),
+    () => {
+      const escritos = elementos.filter((e) => animacion?.terminada || estadoDe(e.indiceGuion) !== "pendiente");
+      /**
+       * NADA SE BORRA, NI EN UNA COLUMNA NI EN LA OTRA.
+       *
+       * La regla de limpieza del Ambiente 2 llegó primero al revés y así se
+       * entregó; el cliente la corrigió después de probarla: «cuando concluye
+       * una operación auxiliar y su resultado se traslada formalmente al
+       * siguiente renglón del Ambiente 1, el Ambiente 2 NO debe limpiarse. Las
+       * operaciones auxiliares deben permanecer visibles para que el estudiante
+       * pueda revisar y comprender la evolución progresiva de todo el
+       * desarrollo».
+       *
+       * Así que aquí sólo se filtra lo que la voz aún no ha contado. Lo escrito
+       * se queda escrito, y lo que evita tener que buscarlo es que la pizarra se
+       * desplaza sola al renglón que se está explicando.
+       */
+      return escritos;
+    },
     // `estadoDe` sólo depende de la escena en curso.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [elementos, animacion?.escena, animacion?.terminada],
@@ -527,7 +576,12 @@ export function Pizarra({
                 )}
 
                 <div className="pz-ambientes">
-                  <section className="pz-ambiente" data-ambiente="1" aria-label="Ambiente 1">
+                  <section
+                    className="pz-ambiente"
+                    data-ambiente="1"
+                    data-papel-ambiente="hilo"
+                    aria-label="Ambiente 1"
+                  >
                     {planteaEjercicio
                       ? visibles.filter((e) => e.ambiente === 1).map(renderElemento)
                       : (
@@ -558,12 +612,19 @@ export function Pizarra({
                         </>
                       )}
                   </section>
-                  <section className="pz-ambiente" data-ambiente="2" aria-label="Ambiente 2">
+                  <section
+                    className="pz-ambiente"
+                    data-ambiente="2"
+                    data-papel-ambiente="apoyo"
+                    aria-label="Ambiente 2"
+                  >
                     {planteaEjercicio
                       ? visibles.filter((e) => e.ambiente === 2).map(renderElemento)
                       : notasAmbiente2.map(nota)}
                   </section>
                 </div>
+
+
 
                 {/* Qué significa cada color: sin la leyenda, el resaltado es
                     decoración. */}

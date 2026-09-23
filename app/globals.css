@@ -752,6 +752,17 @@
   }
 }
 
+/* Y CUANDO EL DESTAPADO SE RECOGE, LO PRESTADO NO DEJA HUECO.
+   Una línea del hilo conductor enseña la operación que se le va a hacer —"− 8"
+   en los dos miembros— mientras el tutor la cuenta, y la recoge al terminar su
+   paso: la operación entera queda en el borrador, que es su sitio. Apagarla no
+   basta, porque seguiría ocupando su espacio y la ecuación quedaría con un
+   agujero en medio ("−x + 8    = −1") o partida en dos renglones por un ancho
+   que ya no usa. Recogida, se va del todo. */
+.pz-animada.pz-recogida [class*="pz-rev-"] {
+  display: none;
+}
+
 /* ── Modo proyección (SUB-PRJ-03) ───────────────────────────────────────────
    Para la pizarra digital del aula. NO es otra vista: es ESTE MISMO panel —la
    misma pizarra, el mismo estado— en pantalla completa y con este tema: fondo

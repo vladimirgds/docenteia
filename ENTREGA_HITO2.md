@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **107.421 comprobaciones en Chrome y 0
+> las de la última pasada completa): **108.068 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
-> (`qa/observaciones.mjs`), **31.183
+> (`qa/observaciones.mjs`), **31.371
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **775** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **780** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 827 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3647,3 +3647,96 @@ de una sola clase habría visto:
 * **En un móvil no hay dos columnas que repartir.** Por debajo de 640 px los dos
   ambientes se apilan a todo el ancho, y ahí lo que toca es que midan lo mismo.
   OBS-08 comprueba el 42/58 cuando van al lado y la igualdad cuando van apilados.
+
+## 51. Decimoquinta ronda: los cuatro puntos de la prueba a fondo en producción
+
+Con la voz neuronal ya conectada —`GOOGLE_TTS_API_KEY` puesta en Vercel, y
+`/api/voz` respondiendo `{"disponible": true, "proveedor": "google"}`—, el
+cliente probó el flujo entero en producción y trajo cuatro observaciones.
+
+### 1. Los papeles de los dos ambientes… y la regla al revés
+
+Las dos primeras reglas son las de la ronda anterior, y ya estaban hechas:
+Ambiente 1 el hilo conductor limpio, Ambiente 2 **exclusivamente** los cálculos
+de apoyo, desgloses, operaciones inversas y cancelaciones.
+
+La tercera **cambia de sentido**. En la ronda anterior decía:
+
+> «El Ambiente 2 debe limpiarse o refrescarse para dar paso al siguiente cálculo
+> auxiliar.»
+
+y ahora:
+
+> «Regla de persistencia: cuando concluye una operación auxiliar y su resultado
+> se traslada formalmente al siguiente renglón del Ambiente 1, el Ambiente 2 **NO
+> debe limpiarse**. Las operaciones auxiliares deben permanecer visibles para que
+> el estudiante pueda revisar y comprender la evolución progresiva de todo el
+> desarrollo.»
+
+Manda la de ahora: **nada se borra**, ni en una columna ni en la otra. Se han
+retirado, por tanto, el borrado por bloques y las dos piezas que existían sólo
+para descongestionar la columna derecha —el relevo del hilo al Ambiente 2 cuando
+el 1 se llenaba, y el cuadro flotante «Borrador»—. Con «exclusivamente» en la
+definición del Ambiente 2, ese relevo además ya no cabía.
+
+Lo que evita que haya que ir a buscar un paso sigue en pie: la pizarra **se
+desplaza sola al renglón que se está explicando**.
+
+### 2. Dos voces a la vez
+
+> «Ocasionalmente se escuchan dos voces al mismo tiempo: la voz neuronal actual
+> (Google Cloud TTS) montada sobre la voz sintética básica del navegador.»
+
+El diagnóstico del cliente era exacto, y las dos causas que apuntaba se daban:
+
+* al arrancar el audio neuronal **no se cancelaba la cola del navegador**;
+* y dos eventos asíncronos podían solaparse: un MP3 que tardaba en llegar sonaba
+  cuando la frase siguiente ya había empezado.
+
+Empezar una locución hace ahora dos cosas antes de nada: **callar lo que estuviera
+sonando** por las dos vías (`speechSynthesis.cancel()` y `pause()` del
+reproductor neuronal) y **tomar un número de turno**. Todo lo que llega después
+por la vía asíncrona comprueba que sigue siendo su turno; si no lo es, se calla.
+
+### 3. «Más difícil» tiene que ser más difícil
+
+> «Al pulsar "Más difícil", el sistema únicamente reemplaza el ejercicio por otro
+> de estructura idéntica (7x + 6 = 1x + 36 por 5x + 12 = 1x + 44).»
+
+Cierto: los cuatro peldaños generados eran todos `ax + b = cx + d` con otras
+cifras. Ahora cada peldaño pide una **técnica** más, como ya hacía la escalera de
+factorización:
+
+| peldaño | técnica nueva | ejemplo |
+| --- | --- | --- |
+| 1 | coeficiente **negativo** al otro lado | `3x + 2 = -x + 10` |
+| 2 | **paréntesis**: hay que repartir antes de despejar | `3(x + 3) = 2x + 13` |
+| 3 | **término fraccionario**: hay que quitar el denominador | `x/3 + 6 = 11` |
+| 4 | **paréntesis en los dos lados** | `2(x + 4) = 3(x + 1)` |
+
+Todo lo generado se construye **desde su solución**, entera por construcción, para
+que el motor determinista pueda resolverlo y calificarlo sin recurrir a la IA.
+`qa/rigor.mjs` recalcula cada peldaño: 31.371 afirmaciones, 0 incorrectas.
+
+### 4. Notación canónica y el «por qué» de cada paso
+
+**«1x» no existe.** Salía del generador, que construía el lado derecho con un
+coeficiente que podía valer 1. Los coeficientes unitarios se escriben ahora como
+manda el álgebra: `x`, y `-x`. De paso se cerraron dos agujeros del mismo sitio:
+un paréntesis vacío (`4(x)` → `4x`) y dos ecuaciones que salían como identidades
+(`2(x + 6) = 2x + 12`, verdadera para cualquier x y por tanto sin nada que
+despejar).
+
+**Y el avatar explica para qué opera, no sólo qué hace.** Cada frase abre con el
+propósito:
+
+| antes | ahora |
+| --- | --- |
+| «Primero juntamos los términos con x en el lado izquierdo: restamos x en los dos lados.» | «**Para cancelar la x del miembro derecho y agrupar las incógnitas a la izquierda**, restamos x en ambos miembros de la ecuación.» |
+| «Para despejar, restamos 12 en ambos lados (operación inversa).» | «**Para despejar el término con la x, aplicamos el inverso aditivo**: restamos 12 en ambos miembros.» |
+| «Dividimos los dos lados entre 4.» | «**Aplicamos la operación inversa**: dividimos los dos lados entre 4.» |
+
+La frase de la división sigue siendo **letra por letra** la misma que la pizarra
+pone en el pie del renglón, porque el panel sigue a la voz comparando lo dicho
+con cada foco; y a la lista de palabras con las que reconoce la marca uniforme se
+le añadió «ambos miembros», que es como se dice ahora.

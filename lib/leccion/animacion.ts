@@ -133,6 +133,19 @@ export interface Escena {
    * suposición.
    */
   origen?: "etiqueta" | "deduccion";
+  /**
+   * LA LÍNEA QUE ESTA ESCENA YA DEJA ESCRITA POR DEBAJO.
+   *
+   * El reparto de un paréntesis se compone en DOS renglones —"2(x + 4) = 3x − 1"
+   * y, alineado por el igual, "2x + 8 = 3x − 1"—, porque repartir cambia un
+   * miembro y la línea siguiente es la ecuación ya sin paréntesis. Esa segunda
+   * línea es, a la vez, el eslabón siguiente del hilo conductor, y el motor la
+   * escribe además como paso propio: desde que el hilo vive entero en el
+   * Ambiente 1, salía dos veces seguidas.
+   *
+   * Declarándola aquí, la pizarra sabe que ya está escrita y no la repite.
+   */
+  continuacion?: string;
 }
 
 /** Nombre de cada posición decimal, de derecha a izquierda. */
@@ -844,6 +857,31 @@ export function fraseDeCancelacionDeIncognita(
  * exactamente esa —«dice "dividimos los dos lados entre 2" pero sólo señala el 2
  * del 2x»—. Aquí lo que se dice y lo que se señala son la misma cosa.
  */
+/**
+ * LO QUE SE ESCRIBE PARA OPERAR NO SE QUEDA EN EL HILO CONDUCTOR.
+ *
+ * El cliente dividió la pizarra en dos papeles: «Ambiente 1 — el hilo conductor
+ * limpio del ejercicio: planteamiento inicial, ecuaciones simplificadas
+ * resultantes y, al final, la respuesta definitiva. Aquí el estudiante sigue la
+ * secuencia principal SIN SOBRECARGA DE CÁLCULOS INTERMEDIOS».
+ *
+ * Y una línea del hilo —"−x + 8 = −1"— se escribe encima la operación que se le
+ * va a hacer: aparece "− 8" en los dos miembros mientras la voz cuenta que se
+ * resta 8 a los dos lados. Eso está bien MIENTRAS se cuenta —es el renglón al
+ * que se refiere el tutor—, pero si se queda puesto, el hilo termina lleno de
+ * "−x + 8 − 8 = −1 − 8" en vez de las ecuaciones limpias.
+ *
+ * Así que ese destapado es PRESTADO: dura lo que dura su paso. La operación
+ * entera —escrita y tachada— queda en el borrador, que es su sitio, y el hilo
+ * vuelve a su ecuación. Se reconoce por sus focos: una escena cuyo único gesto
+ * es la marca uniforme (`pz-uniforme`) es exactamente eso, una línea del hilo
+ * enseñando lo que se le va a hacer.
+ */
+export function elDestapadoEsPrestado(escena: Escena | null | undefined): boolean {
+  const focos = escena?.focos ?? [];
+  return focos.length > 0 && focos.every((f) => f.clase === "pz-uniforme");
+}
+
 export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | null {
   const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
   // ax/n = c/n  (el mismo divisor en los dos lados)
@@ -862,7 +900,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
     id,
     texto,
     latex: `${numerador(arribaIzq, "pz-divisor pz-divisor-izq")} = ${numerador(dividendo, "pz-divisor pz-divisor-der")}`,
-    narracion: `Dividimos los dos lados entre ${divisor}.`,
+    narracion: `Aplicamos la operación inversa: dividimos los dos lados entre ${divisor}.`,
     clase: "despeje",
     focos: [
       {
@@ -870,7 +908,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
         // Una caja por miembro: ninguna marca cruza el igual.
         piezas: ["pz-divisor-izq", "pz-divisor-der"],
         tipo: "caja",
-        narracion: `Dividimos los dos lados entre ${divisor}.`,
+        narracion: `Aplicamos la operación inversa: dividimos los dos lados entre ${divisor}.`,
         etiqueta: `÷ ${divisor}`,
       },
     ],
@@ -1362,6 +1400,10 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
       `${marcar(`${final} pz-resultado`, expandido)} &${marcar(`${final} pz-resultado`, `{}= ${planoALatex(m[3])}`)} \\end{aligned}`
     : `${cabeza} ${marcar(final, `= ${marcar("pz-resultado", expandido)}`)}`;
 
+  // Con ecuación, el SEGUNDO renglón de esta escena es ya la línea siguiente del
+  // hilo conductor: se declara para que la pizarra no la escriba otra vez.
+  const continuacion = m[3] ? `${expandido} = ${m[3]}` : undefined;
+
   const focos: Foco[] = interior.map((t, i) => ({
     clase: "pz-reparte",
     // El factor y el sumando al que llega: el conector sale del uno y entra en
@@ -1395,6 +1437,7 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     // nadie hubiera dicho nada de repartir.
     narracion: `Vamos a repartir el ${factor} en ${String(texto ?? "").trim()}.`,
     clase: "distributiva",
+    continuacion,
     focos,
   };
 }
@@ -2002,7 +2045,11 @@ function clavesDeFoco(foco: Foco): string[] {
   // Tachar se dispara con "se cancela", y sólo con eso: "restamos 6 en ambos
   // lados" es el paso ANTERIOR —escribir la resta—, y con él se tachaba ya.
   if (foco.tipo === "tachado") return ["cancel"];
-  if (foco.clase === "pz-uniforme") return ["restamos", "sumamos", "quitamos", "los dos lados", "ambos lados"];
+  // «ambos miembros» entra en la lista porque desde que cada frase explica el
+  // PORQUÉ antes de operar, el tutor dice «restamos 12 en ambos miembros» con
+  // las palabras del álgebra, no «en los dos lados».
+  if (foco.clase === "pz-uniforme")
+    return ["restamos", "sumamos", "quitamos", "los dos lados", "ambos lados", "los dos miembros", "ambos miembros"];
   if (foco.clase === "pz-final") return ["resultado final", "respuesta final"];
   if (foco.clase === "pz-coef-despeje") return ["dividimos", "dividir", "divide", "multiplicada por"];
   // La división ya escrita en fracción: se enciende cuando la voz habla de

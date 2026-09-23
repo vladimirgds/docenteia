@@ -3698,15 +3698,87 @@ function generarDerivada(k, i) {
   return `${a}x${exponente(grado)} - ${b}x${exponente(grado - 2)} + ${c}x - ${d}`;
 }
 
-/** Ecuación con x a los dos lados, construida DESDE su solución entera. */
+/**
+ * CÓMO SE ESCRIBE UN COEFICIENTE.
+ *
+ * Nunca "1x" ni "-1x": en álgebra estándar el coeficiente unitario no se
+ * escribe. El cliente lo marcó sobre una captura —«las ecuaciones propuestas no
+ * deben tener "1x", corresponde sólo "x"»— y salía de aquí: la escalera
+ * generaba el lado derecho con un coeficiente que podía valer 1.
+ */
+const conCoeficiente = (k, v = "x") => (k === 1 ? v : k === -1 ? `-${v}` : `${k}${v}`);
+/** "+ 7" / "- 7", y nada cuando el término no está. */
+const conSigno = (n) => (n === 0 ? "" : n > 0 ? ` + ${n}` : ` - ${Math.abs(n)}`);
+
+/**
+ * LA ESCALERA DE ECUACIONES CAMBIA DE ESTRUCTURA, NO DE CIFRAS.
+ *
+ * «Al pulsar "Más difícil", el sistema únicamente reemplaza el ejercicio por
+ * otro de estructura idéntica (por ejemplo, cambiar 7x + 6 = 1x + 36 por
+ * 5x + 12 = 1x + 44, que tienen exactamente la misma estructura algebraica). La
+ * regla debe ser algorítmica: si el usuario pide "Más difícil", debe incrementar
+ * la complejidad del problema (por ejemplo: agregar coeficientes negativos,
+ * introducir paréntesis que requieran propiedad distributiva, términos
+ * fraccionarios o variables en ambos lados con mayor cantidad de pasos).»
+ *
+ * Tenía razón: los cuatro peldaños generados eran todos "ax + b = cx + d" con
+ * otros números. Ahora cada uno pide una TÉCNICA más —igual que ya hacía la
+ * escalera de factorización—, y en este orden:
+ *
+ *   k=0  x a los dos lados con COEFICIENTE NEGATIVO a la derecha
+ *   k=1  PARÉNTESIS a la izquierda: hay que repartir antes de despejar
+ *   k=2  TÉRMINO FRACCIONARIO: hay que quitar el denominador primero
+ *   k=3  PARÉNTESIS A LOS DOS LADOS: el mismo reparto, dos veces
+ *
+ * Y la regla que gobierna todo lo generado sigue en pie: se construye DESDE la
+ * solución, entera por construcción, para que el motor determinista pueda
+ * resolverlo y calificarlo sin recurrir a la IA. `qa/rigor.mjs` recalcula cada
+ * peldaño y comprueba que la solución salga exacta.
+ */
 function generarLineal(k, i) {
   const solucion = 2 + ((i + k) % 9);        // la respuesta, entera por construcción
-  const a = 4 + ((i + k) % 5);
-  const c = 1 + ((i + k) % 3);               // a > c, para que el coeficiente no se anule
-  const b = 3 + ((i * 2 + k) % 11);
-  const d = a * solucion + b - c * solucion; // se despeja para que cuadre
-  const signoD = d < 0 ? `- ${Math.abs(d)}` : `+ ${d}`;
-  return `${a}x + ${b} = ${c}x ${signoD}`;
+  switch (k % 4) {
+    case 0: {
+      // x a los dos lados, con el coeficiente de la derecha NEGATIVO.
+      const a = 3 + ((i + k) % 5);
+      const c = -(1 + (i % 3));
+      const b = 2 + ((i * 2 + k) % 9);
+      const d = a * solucion + b - c * solucion;
+      return `${conCoeficiente(a)}${conSigno(b)} = ${conCoeficiente(c)}${conSigno(d)}`;
+    }
+    case 1: {
+      // Paréntesis a la izquierda: "3(x + 4) = 2x + 11".
+      const f = 2 + (i % 4);                 // el factor que se reparte
+      const p = 1 + ((i + k) % 6);           // lo que va dentro
+      // El coeficiente de la derecha NO puede igualar al de la izquierda: con
+      // f = c la ecuación se vuelve una identidad ("2(x + 6) = 2x + 12", que es
+      // verdad para cualquier x) y deja de tener solución que despejar.
+      const bruto = 1 + (i % 3);
+      const c = bruto === f ? bruto + 1 : bruto;
+      const d = f * (solucion + p) - c * solucion;
+      return `${f}(x + ${p}) = ${conCoeficiente(c)}${conSigno(d)}`;
+    }
+    case 2: {
+      // Término fraccionario: "x/3 + 5 = 9". Primero se quita el denominador.
+      const n = 2 + (i % 4);
+      const x = solucion * n;                // para que x/n sea entero
+      const b = 1 + ((i * 3 + k) % 8);
+      return `x/${n} + ${b} = ${x / n + b}`;
+    }
+    default: {
+      // Paréntesis a los DOS lados: "2(x + 3) = 4(x - 1)" con solución entera.
+      const f = 2 + (i % 3);
+      const g = f + 1 + (i % 2);
+      const p = 1 + ((i + k) % 5);
+      // g(x + q) = f(x + p)  ⇒  q = (f·(sol + p) − g·sol) / g
+      const resto = f * (solucion + p) - g * solucion;
+      if (resto % g !== 0) return `${f}(x + ${p}) = ${conCoeficiente(g)}${conSigno(f * (solucion + p) - g * solucion)}`;
+      const q = resto / g;
+      // Sin término dentro, el paréntesis sobra: "4x", no "4(x)".
+      if (q === 0) return `${f}(x + ${p}) = ${conCoeficiente(g)}`;
+      return `${f}(x + ${p}) = ${g}(x${conSigno(q)})`;
+    }
+  }
 }
 
 /** Diferencia de dos cuadrados perfectos, cada vez más grandes. */

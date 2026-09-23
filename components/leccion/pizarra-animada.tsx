@@ -31,6 +31,7 @@ import {
   useSincronizadorLeccion,
 } from "@/components/leccion/sincronizador-leccion";
 import {
+  elDestapadoEsPrestado,
   guionDeLeccion,
   reglasDeRevelado,
   situacionParaNarracion,
@@ -185,10 +186,17 @@ export function PizarraAnimada({
    * para la línea que ni encogida al suelo cabe.
    */
   const [encaje, setEncaje] = useState(1);
+  /**
+   * ¿Se ha RECOGIDO el destapado prestado? Una línea del hilo conductor enseña
+   * la operación que se le va a hacer mientras se la cuenta, y la recoge al
+   * terminar su paso (ver `elDestapadoEsPrestado`). Al recogerla la línea vuelve
+   * a medir lo que medía, así que se recalculan el encaje y las filas.
+   */
+  const recogida = estado === "completada" && elDestapadoEsPrestado(escena);
   useEffect(() => {
     setFilas(null);
     setEncaje(1);
-  }, [escena?.latex, proyeccion]);
+  }, [escena?.latex, proyeccion, recogida]);
 
   const latexCompuesto = useMemo(() => {
     const base = escena?.latex ?? "";
@@ -401,9 +409,18 @@ export function PizarraAnimada({
 
   if (!escena) return null;
 
-  // Hasta dónde está destapada la escena y qué marcas se dibujan.
+  // Hasta dónde está destapada la escena y qué marcas se dibujan. Un destapado
+  // PRESTADO —la operación que una línea del hilo enseña mientras se la cuenta—
+  // se recoge al terminar su paso: la operación se queda en el borrador y el
+  // hilo conductor vuelve a su ecuación limpia (ver `elDestapadoEsPrestado`).
   const focoVisible =
-    estado === "completada" ? escena.focos.length - 1 : estado === "pendiente" ? -1 : foco;
+    estado === "completada"
+      ? elDestapadoEsPrestado(escena)
+        ? -1
+        : escena.focos.length - 1
+      : estado === "pendiente"
+        ? -1
+        : foco;
   const aDibujar = escena.focos
     .map((f, i) => ({ f, i }))
     .filter(({ f, i }) =>
@@ -446,6 +463,9 @@ export function PizarraAnimada({
         // Sin recortar: las marcas salen de la fórmula (la cápsula y su visto,
         // un rótulo, el conector) y el aire que necesitan se reserva abajo.
         "pz-animada relative w-full px-1 py-1 text-left",
+        // Recogido el destapado, lo prestado deja de ocupar sitio: si sólo se
+        // apagara, "−x + 8 = −1" se quedaría con el hueco del "− 8" en medio.
+        recogida && "pz-recogida",
         proyeccion && "pz-proyeccion",
         className,
       )}

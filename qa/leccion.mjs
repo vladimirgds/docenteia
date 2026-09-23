@@ -1361,7 +1361,11 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
   // es lo que lo llenaba de ecuaciones futuras (ronda de septiembre, R4-01).
   check(
     "el Ambiente 2 no enseña nada hasta que un paso llega a él",
-    /visibles\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(fuentePizarra2) &&
+    // El filtro va ahora en varias líneas —además del ambiente descarta el
+    // borrador cuando el hilo ha pasado a ocupar las dos columnas—, así que se
+    // comprueba lo que importa: que se dibuje desde lo VISIBLE y no de la lista.
+    /\.filter\(\(e\) => e\.ambiente === 2/.test(fuentePizarra2) &&
+      /visibles\s*\r?\n?\s*\.filter/.test(fuentePizarra2) &&
       /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
@@ -2541,7 +2545,7 @@ console.log("\n · El desarrollo de aritmética es una sola matriz");
   check(
     "la cuenta se decide antes que los pasos sueltos",
     fuentePzG.indexOf("if (enColumna && !cierre && !auxiliar) continue;") > 0 &&
-      fuentePzG.indexOf("if (enColumna && !cierre && !auxiliar) continue;") < fuentePzG.indexOf("repartirEnAmbientes(conEscena"),
+      fuentePzG.indexOf("if (enColumna && !cierre && !auxiliar) continue;") < fuentePzG.indexOf("repartirEnAmbientes("),
   );
 }
 

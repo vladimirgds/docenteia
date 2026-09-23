@@ -227,6 +227,8 @@ export class TTS {
     this._audio = null;
     this._desbloqueado = false;
     this._fallosNeurales = 0;
+    /** Número de la locución en curso: lo de turnos anteriores ya no suena. */
+    this._turno = 0;
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       const abrir = () => this.desbloquear();
       window.addEventListener("pointerdown", abrir, { once: true, capture: true });
@@ -389,6 +391,25 @@ export class TTS {
     // muestran el texto ORIGINAL (esto no los toca: solo afecta a la locución).
     const spoken = normalizeForSpeech(text);
     if (!spoken || signal?.aborted) return Promise.resolve();
+
+    /**
+     * NADIE HABLA ENCIMA DE NADIE.
+     *
+     * El cliente lo oyó en producción: «ocasionalmente se escuchan dos voces al
+     * mismo tiempo: la voz neuronal actual (Google Cloud TTS) montada sobre la
+     * voz sintética básica del navegador… al disparar la síntesis de Google no
+     * se está cancelando activamente la cola local, o bien se disparan dos
+     * eventos de audio asíncronos en paralelo».
+     *
+     * Las dos cosas pasaban. Empezar una locución ahora hace DOS cosas antes de
+     * nada: callar lo que estuviera sonando —la cola del navegador y el
+     * reproductor neuronal— y tomar un número de turno. Todo lo que venga
+     * después por la vía asíncrona —un MP3 que tardó en llegar, el siguiente
+     * trozo de una frase ya superada— comprueba que sigue siendo su turno antes
+     * de sonar; si no lo es, se calla y devuelve.
+     */
+    const turno = ++this._turno;
+    this.callarLoQueSuena();
     // A partir de la PRIMERA locución la voz queda fijada: aunque el navegador siga cargando voces y
     // dispare `onvoiceschanged`, el tutor no cambiará de voz a mitad de la lección.
     if (this.voice) this._fijada = true;
@@ -397,11 +418,14 @@ export class TTS {
     // 0 si los dijo todos, y los que falten se terminan abajo con la voz del
     // navegador (frase entera si la neuronal no estaba, o la cola si se cayó a
     // medias, que es lo que evita repetir lo ya dicho).
-    return this._hablarNeural(spoken, { signal, onStart }).then((dichos) =>
-      dichos === null ? this._hablarLocal(spoken, { signal, onStart }, 0)
-        : dichos >= 0 ? this._hablarLocal(spoken, { signal, onStart: null }, dichos)
-        : undefined,
-    );
+    return this._hablarNeural(spoken, { signal, onStart, turno }).then((dichos) => {
+      if (turno !== this._turno) return undefined;
+      return dichos === null
+        ? this._hablarLocal(spoken, { signal, onStart, turno }, 0)
+        : dichos >= 0
+          ? this._hablarLocal(spoken, { signal, onStart: null, turno }, dichos)
+          : undefined;
+    });
   }
 
   /**
@@ -411,7 +435,9 @@ export class TTS {
    * navegador), `-1` si lo dijo entero, o el índice del primer trozo que NO
    * llegó a sonar, para que la voz del navegador siga justo por ahí.
    */
-  async _hablarNeural(spoken, { signal, onStart }) {
+  async _hablarNeural(spoken, { signal, onStart, turno }) {
+    // Fuera de turno no se suena: la locución que venía detrás ya manda.
+    const fueraDeTurno = () => turno != null && turno !== this._turno;
     // Con la voz apagada por el alumno no suena NADA: ni la del navegador ni
     // ésta. El interruptor de la lección es uno solo.
     if (!this.enabled) return null;
@@ -420,11 +446,13 @@ export class TTS {
     if (signal?.aborted) return -1;
     const trozos = chunkForSpeech(spoken);
     for (let i = 0; i < trozos.length; i++) {
-      if (signal?.aborted) return -1;
+      if (signal?.aborted || fueraDeTurno()) return -1;
       // Un tropiezo de red no cambia de voz a mitad de clase: se reintenta una
       // vez, y sólo si vuelve a fallar se cede el resto a la del navegador.
       let url = await this._audioDe(trozos[i], signal);
       if (!url && this.neural !== false && !signal?.aborted) url = await this._audioDe(trozos[i], signal);
+      // El MP3 pudo tardar: si mientras tanto empezó otra frase, éste ya no suena.
+      if (fueraDeTurno()) return -1;
       if (!url) return this._cederALaLocal(i);
       // Mientras suena éste se va pidiendo el siguiente: sin esto queda un
       // silencio entre frase y frase, del tamaño de la red.
@@ -524,7 +552,8 @@ export class TTS {
    * No se usa mientras la neuronal esté en pie: sólo cuando esta instalación no
    * la tiene configurada, o cuando acaba de fallar y hay una frase a medias.
    */
-  _hablarLocal(spoken, { signal, onStart }, desde = 0) {
+  _hablarLocal(spoken, { signal, onStart, turno }, desde = 0) {
+    if (turno != null && turno !== this._turno) return Promise.resolve();
     // Sin voz real: retardo proporcional (subtítulos temporizados). Aquí no hay
     // evento que esperar, así que el "arranque" es inmediato: el resaltado se
     // enciende a la vez que aparece el subtítulo.
@@ -599,6 +628,21 @@ export class TTS {
         guard = setTimeout(() => { arrancar(); finish(); }, Math.max(5000, chunk.length * 150));
       } catch { finish(); }
     });
+  }
+
+  /**
+   * Calla en seco lo que esté sonando, por las dos vías a la vez.
+   *
+   * Se llama al empezar CUALQUIER locución —no sólo al cancelar la clase—,
+   * porque el solape venía justo de ahí: la cola del navegador seguía viva
+   * cuando arrancaba el audio neuronal.
+   */
+  callarLoQueSuena() {
+    try { this.synth?.cancel(); } catch { /* el navegador ya no la tenía */ }
+    const sonando = this._audio;
+    if (sonando && !sonando.paused) {
+      try { sonando.pause(); } catch { /* ya estaba parado */ }
+    }
   }
 
   cancel() {

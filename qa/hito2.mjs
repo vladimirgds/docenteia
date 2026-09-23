@@ -86,7 +86,7 @@ import {
 } from "../src/lsgPrompt.js";
 import { manejarConsulta } from "../src/queryCore.js";
 import { esNotaRotulada, expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
-import { esCalculoAuxiliar, repartirEnAmbientes } from "../lib/leccion/ambientes.ts";
+import { esCalculoAuxiliar, esGestoDeBorrador, repartirEnAmbientes } from "../lib/leccion/ambientes.ts";
 import { comoFilas, partirFormula, partirLaMasLarga, yaEstaDispuesta } from "../lib/leccion/ajuste.ts";
 import { colocarEtiqueta, MARGEN_ANOTACION, seSolapan } from "../lib/leccion/etiquetas.ts";
 import { rotulosALatex } from "../lib/leccion/rotulos.ts";
@@ -1054,48 +1054,74 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
       rol(ROL.PIZARRA)["data-rol"] === "BOARD_LABEL",
   );
 
-  // SUB-PIZ-02 — LOS DOS AMBIENTES, POR UNA REGLA MONÓTONA.
-  const reparto = (pasos) => repartirEnAmbientes(pasos.map(([papel, gesto]) => ({ papel, gesto }))).join("");
-  // Una conversión a cada lado: el Ambiente 2 no puede quedarse con el MCM y un
-  // hueco mientras el 1 amplifica las dos fracciones (segunda ronda, a3.png).
+  // SUB-PIZ-02 — LOS DOS AMBIENTES, POR SU PAPEL, Y NADA SE BORRA.
+  //
+  // El reparto dejó de ser por POSICIÓN —lo primero a la izquierda, lo demás
+  // bajando por la derecha— y pasó a ser por PAPEL: «Ambiente 1, el hilo
+  // conductor limpio: planteamiento, ecuación simplificada resultante y solución
+  // final. Ambiente 2, EXCLUSIVAMENTE los cálculos de apoyo, desgloses,
+  // operaciones inversas y cancelaciones».
+  //
+  // Y con la regla de PERSISTENCIA, que el cliente corrigió tras probarla:
+  // «cuando concluye una operación auxiliar y su resultado se traslada al
+  // siguiente renglón del Ambiente 1, el Ambiente 2 NO debe limpiarse. Las
+  // operaciones auxiliares deben permanecer visibles para que el estudiante
+  // pueda revisar y comprender la evolución progresiva de todo el desarrollo».
+  const reparto = (pasos) =>
+    repartirEnAmbientes(pasos.map(([papel, gesto, auxiliar]) => ({ papel, gesto, auxiliar: Boolean(auxiliar) }))).join("");
+  const DESPEJE = [
+    ["planteamiento", "distributiva"],
+    ["paso", "despeje"],            // 2x + 8 = 3x - 1   (hilo)
+    ["paso", "despeje", true],      // la resta escrita y tachada (apoyo)
+    ["paso", "despeje"],            // -x + 8 = -1       (hilo)
+    ["paso", "despeje", true],      // la resta escrita y tachada (apoyo)
+    ["paso", "despeje"],            // -x = -9           (hilo)
+    ["paso", "despeje", true],      // -x/-1 = -9/-1     (apoyo)
+    ["cierre", "resultado"],        // x = 9             (hilo, enmarcada)
+  ];
   check(
-    "1/2 + 1/3: planteamiento y la PRIMERA conversión a la izquierda; MCM, la segunda, la suma y la respuesta a la derecha",
-    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]) === "121222",
+    "2(x + 4) = 3x - 1: el hilo conductor a la izquierda y las operaciones de apoyo a la derecha",
+    reparto(DESPEJE) === "11212121",
+    reparto(DESPEJE),
+  );
+  check(
+    "la solución final cierra el HILO: va con él, no entre los cálculos de apoyo",
+    reparto([["planteamiento", null], ["paso", "cancelacion", true], ["cierre", "resultado"]]) === "121",
+  );
+  check(
+    "el MCM y las notas al margen son apoyo, y las conversiones, hilo",
+    reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]) === "121111",
     reparto([["planteamiento", null], ["auxiliar", null], ["paso", "amplificacion"], ["paso", "amplificacion"], ["paso", "suma_fracciones"], ["cierre", "resultado"]]),
   );
   check(
-    "2(x + 3) = 16: el reparto a la izquierda; el despeje y la solución a la derecha",
-    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "despeje"], ["cierre", "resultado"]]) === "1222",
-    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "despeje"], ["cierre", "resultado"]]),
-  );
-  check(
-    "una línea escrita no cambia de lado: abierto el Ambiente 2, lo que viene sigue en él",
-    reparto([["planteamiento", null], ["paso", "amplificacion"], ["paso", "cancelacion"], ["paso", "amplificacion"]]) === "1122",
-  );
-  // LA CADENA DE RESOLUCIÓN NO SE PARTE EN DOS COLUMNAS (cuarta ronda del
-  // cliente): "conservar el historial acumulativo verticalmente en el panel de
-  // desarrollo… cada nuevo paso secuencialmente hacia abajo". El despeje empezaba
-  // en el Ambiente 1 y seguía en el 2, y leído de corrido parecía que la pizarra
-  // se vaciaba y saltaba a otra cosa.
-  check(
-    "2x + 5 = 15: la cadena sigue donde empieza —sobre el enunciado— y baja por el Ambiente 1; la respuesta enmarcada, a la derecha",
-    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]) === "112",
-    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]),
-  );
-  check(
-    "…y al enunciado le acompaña UN paso: el resto baja por el panel de desarrollo, sin dejarlo vacío",
-    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]) === "1122",
-    reparto([["planteamiento", "cancelacion"], ["paso", "factor"], ["paso", "resultado"], ["cierre", "resultado"]]),
-  );
-  check(
-    "una derivada término a término tampoco: planteamiento y desarrollo en el Ambiente 1, el cierre a la derecha",
-    reparto([["planteamiento", "polinomio"], ["paso", "polinomio"], ["cierre", "resultado"]]) === "112",
+    "una derivada término a término va entera por el hilo: su desglose es la nota al margen",
+    reparto([["planteamiento", "polinomio"], ["paso", "polinomio"], ["cierre", "resultado"]]) === "111",
     reparto([["planteamiento", "polinomio"], ["paso", "polinomio"], ["cierre", "resultado"]]),
   );
+  // NADA SE BORRA: no queda en la pizarra ni un filtro que esconda pasos ya
+  // escritos, ni el cuadro flotante con el que antes se descongestionaba.
+  {
+    const tablero = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+    check(
+      "las operaciones de apoyo PERMANECEN: la pizarra no esconde ningún paso ya escrito",
+      !/ultimoBloque/.test(tablero) && !/pz-borrador-flotante/.test(tablero) && !/hiloLleno/.test(tablero) &&
+        /return escritos;/.test(tablero),
+    );
+    check(
+      "y cada columna dice desde fuera qué papel hace, para poder comprobarlo",
+      /data-papel-ambiente="hilo"/.test(tablero) && /data-papel-ambiente="apoyo"/.test(tablero),
+    );
+  }
+  // ES LA ESCENA LA QUE DICE SI UN PASO ES DE APOYO, no una lista por tema: un
+  // tachado es una cancelación y dos marcas sobre los denominadores son una
+  // división hecha a los dos lados.
   check(
-    "si el enunciado se transforma primero, la cadena entera baja por el panel de desarrollo",
-    reparto([["planteamiento", "distributiva"], ["paso", "cancelacion"], ["paso", "factor"], ["cierre", "resultado"]]) === "1222" &&
-      reparto([["planteamiento", null], ["paso", "cancelacion"], ["paso", "factor"]]) === "122",
+    "un tachado y una división en los dos miembros son apoyo; un coeficiente o una amplificación, no",
+    esGestoDeBorrador("despeje", [{ clase: "pz-cancela", tipo: "tachado" }]) &&
+      esGestoDeBorrador("despeje", [{ clase: "pz-divisor", tipo: "caja" }]) &&
+      !esGestoDeBorrador("despeje", [{ clase: "pz-coef-despeje", tipo: "caja" }]) &&
+      !esGestoDeBorrador("despeje", [{ clase: "pz-uniforme", tipo: "caja" }]) &&
+      !esGestoDeBorrador("amplificacion", [{ clase: "pz-amplifica", tipo: "caja" }]),
   );
   check(
     "el MCM, los múltiplos y lo que sale de cada columna son cálculos auxiliares",
@@ -1792,11 +1818,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
-    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 en ambos lados/.test(e.d.texto));
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 en ambos miembros/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "cuando el tutor dice «restamos 6 en ambos lados», la pizarra ESCRIBE la resta y NO tacha nada",
+      "cuando el tutor dice «restamos 6 en ambos miembros», la pizarra ESCRIBE la resta y NO tacha nada",
       enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
@@ -1863,7 +1889,7 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       enCoef.foco?.etiqueta === "× 2" && /multiplicada por 2/.test(enCoef.foco?.narracion ?? ""),
       `${enCoef.foco?.etiqueta} · ${enCoef.foco?.narracion}`,
     );
-    const enDivide = dondeSuena(/Dividimos los dos lados entre 2/);
+    const enDivide = dondeSuena(/dividimos los dos lados entre 2/i);
     check(
       "«dividimos los dos lados entre 2» suena con la FRACCIÓN ya escrita, no con 2x = 10",
       enDivide.texto === "2x/2 = 10/2",
@@ -3925,7 +3951,25 @@ titulo("B2. La pizarra sigue a la voz del tutor");
   );
   check(
     "un paso que la voz aún no ha contado no enseña lo que destapará",
-    /estado === "completada" \? escena\.focos\.length - 1 : estado === "pendiente" \? -1 : foco/.test(panelAnimado),
+    /estado === "pendiente"\s*\?\s*-1/.test(panelAnimado),
+  );
+  // Y UN DESTAPADO PRESTADO SE RECOGE AL TERMINAR SU PASO.
+  //
+  // Una línea del HILO CONDUCTOR enseña la operación que se le va a hacer
+  // —"− 8" en los dos miembros— mientras el tutor la cuenta. Si se quedara
+  // puesta, el Ambiente 1 acabaría lleno de "−x + 8 − 8 = −1 − 8" en vez de las
+  // ecuaciones limpias que pidió el cliente. La operación entera vive en el
+  // borrador; aquí se recoge, y se recoge de verdad —sin dejar el hueco—.
+  check(
+    "una línea del hilo recoge, al acabar su paso, la operación que enseñó",
+    /elDestapadoEsPrestado\(escena\)\s*\?\s*-1/.test(panelAnimado) &&
+      /recogida && "pz-recogida"/.test(panelAnimado),
+  );
+  check(
+    "…y lo recogido no deja hueco: se va del todo, no sólo se apaga",
+    /\.pz-animada\.pz-recogida \[class\*="pz-rev-"\] \{\s*display: none;/.test(
+      readFileSync(new URL("../app/globals.css", import.meta.url), "utf8"),
+    ),
   );
   check(
     "y la cuenta en columna es UNA: la del planteamiento, que se anima; sus trozos no abren tarjeta propia",
@@ -4900,7 +4944,7 @@ if (!vivo) {
   );
   check(
     "y los DOS ambientes se dibujan desde ese filtro, no desde la lista entera",
-    (pizarraSrc.match(/visibles\.filter\(\(e\) => e\.ambiente === \d\)/g) || []).length === 2,
+    (pizarraSrc.match(/\.filter\(\(e\) => e\.ambiente === \d/g) || []).length === 2,
   );
   check(
     "al terminar la lección sí se ve todo: el repaso no se queda a medias",
@@ -4936,7 +4980,7 @@ if (!vivo) {
   check(
     "sin clave configurada responde 503 y NO deja la clase muda: el navegador vuelve a su voz",
     /status: 503/.test(vozSrc) && /if \(r\.status === 503\) this\.neural = false;/.test(ttsSrc) &&
-      /_hablarLocal\(spoken, \{ signal, onStart \}, 0\)/.test(ttsSrc),
+      /_hablarLocal\(spoken, \{ signal, onStart, turno \}, 0\)/.test(ttsSrc),
   );
   check(
     "la clave vive sólo en el servidor: ninguna variable de voz es NEXT_PUBLIC_",
@@ -4976,9 +5020,44 @@ if (!vivo) {
   );
   check(
     "si la voz neuronal se cae a media frase, se termina por donde iba, sin repetir lo dicho",
-    /_hablarLocal\(spoken, \{ signal, onStart: null \}, dichos\)/.test(ttsSrc) &&
+    /_hablarLocal\(spoken, \{ signal, onStart: null, turno \}, dichos\)/.test(ttsSrc) &&
       /speakNext\(desde\);/.test(ttsSrc),
   );
+  // ── NADIE HABLA ENCIMA DE NADIE ────────────────────────────────────────────
+  //
+  // «Ocasionalmente se escuchan dos voces al mismo tiempo: la voz neuronal
+  // (Google Cloud TTS) montada sobre la voz sintética básica del navegador…
+  // al disparar la síntesis de Google no se está cancelando activamente la cola
+  // local (window.speechSynthesis.cancel()), o bien se disparan dos eventos de
+  // audio asíncronos en paralelo.» Las dos cosas pasaban.
+  {
+    const { TTS: Motor } = await import("../public/tts.js");
+    const t = new Motor();
+    let cancelada = 0;
+    let pausada = 0;
+    t.synth = { cancel: () => { cancelada++; }, getVoices: () => [], speak: () => {} };
+    t._audio = { paused: false, pause: () => { pausada++; t._audio.paused = true; } };
+    t.enabled = true;
+    t.neural = false;
+    t.speak("Primera frase.");
+    t._audio.paused = false;
+    t.speak("Segunda frase.");
+    check(
+      "empezar a hablar calla antes la cola del navegador Y el audio neuronal",
+      cancelada === 2 && pausada === 2,
+      `cancel ${cancelada} · pause ${pausada}`,
+    );
+    check(
+      "y lo que llega tarde de una locución anterior ya no suena: cada una lleva su turno",
+      t._turno === 2 && /const turno = \+\+this\._turno;/.test(ttsSrc) &&
+        /if \(turno !== this\._turno\) return undefined;/.test(ttsSrc) &&
+        /const fueraDeTurno = \(\) => turno != null && turno !== this\._turno;/.test(ttsSrc),
+    );
+    check(
+      "el silenciador es uno solo, y lo usan tanto empezar a hablar como cancelar",
+      /callarLoQueSuena\(\)/.test(ttsSrc) && (ttsSrc.match(/callarLoQueSuena\(\)/g) ?? []).length >= 2,
+    );
+  }
   check(
     "callar calla también el audio neuronal",
     /cancel\(\) \{[\s\S]{0,240}this\._audio\.pause\(\)/.test(ttsSrc),
@@ -5292,7 +5371,7 @@ if (!vivo) {
         const e = escenaDeLinea({ latex: "2x/2 = 10/2", operacion: paso?.accion, narracion: paso?.explica }, "d");
         return (
           e.focos.length > 0 &&
-          /^Dividimos los dos lados entre 2\.$/.test(e.focos[0].narracion) &&
+          /dividimos los dos lados entre 2\.$/i.test(e.focos[0].narracion) &&
           !/queda/.test(e.focos[0].narracion)
         );
       })(),
@@ -5355,11 +5434,11 @@ if (!vivo) {
         sinFoco.length === 0,
         sinFoco.map((x) => x.texto).join(" · "),
       );
-      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 3x en los dos lados/i.test(e.d.texto));
+      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 3x en ambos miembros/i.test(e.d.texto));
       const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /A la derecha se cancela 3x con -3x/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
       check(
-        "cuando dice «restamos 3x en los dos lados» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
+        "cuando dice «restamos 3x en ambos miembros» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
         iResta >= 0 && iTacha > iResta &&
           focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
           focoEn(iTacha)?.tipo === "tachado",

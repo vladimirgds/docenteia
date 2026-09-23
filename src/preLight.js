@@ -679,7 +679,7 @@ export function fraseCancelacionIncognita(izquierdo, derecho, v) {
  * porque el panel sigue a la voz comparando lo dicho con el pie de cada foco.
  */
 export function fraseDivisionEnDosLados(divisor) {
-  return `Dividimos los dos lados entre ${divisor}.`;
+  return `Aplicamos la operación inversa: dividimos los dos lados entre ${divisor}.`;
 }
 
 // Devuelve { original, steps:[{explica, escribe}], answer, varName } o null.
@@ -776,7 +776,11 @@ export function solveLinearSteps(text) {
     // tiempos —cuando se escribe la resta y cuando se tacha el par—.
     const terminoX = `${xc(Math.abs(rhsX))}${v}`;
     steps.push({
-      explica: `Primero juntamos los términos con ${v} en el lado izquierdo: ${op} en los dos lados.`,
+      // EL PORQUÉ ANTES DEL QUÉ. «El avatar no debe limitarse a narrar lo que
+      // hace ("Restamos 12 en ambos lados"), sino explicar el propósito
+      // pedagógico antes de operar.» Cada frase abre con para qué se hace, y
+      // conserva el verbo con el que la pizarra la reconoce («restamos»).
+      explica: `Para cancelar la ${v} del miembro derecho y agrupar las incógnitas a la izquierda, ${op} en ambos miembros de la ecuación.`,
       escribe: `${conLaResta(coefL, konstL)} = ${conLaResta(coefR, konstR)}`,
       accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
     });
@@ -793,7 +797,7 @@ export function solveLinearSteps(text) {
     const combined = konst === 0
       ? `${xc(coef)}${v} = ${fmt(c)}`
       : `${xc(coef)}${v} ${konst > 0 ? "+ " + fmt(konst) : "- " + fmt(-konst)} = ${fmt(c)}`;
-    steps.push({ explica: `Juntamos los términos que tienen ${v}: en total son ${xc(coef)}${v}.`, escribe: combined });
+    steps.push({ explica: `Para simplificar el miembro, juntamos los términos que tienen ${v}: en total son ${xc(coef)}${v}.`, escribe: combined });
   }
   // `accion` es el GESTO que este paso hace sobre la línea ANTERIOR —cancelar la constante, dividir
   // entre el coeficiente— y los términos sobre los que lo hace, tal como están escritos allí. Con
@@ -802,7 +806,7 @@ export function solveLinearSteps(text) {
   if (konst !== 0) {
     const op = konst > 0 ? `restamos ${fmt(konst)}` : `sumamos ${fmt(-konst)}`;
     steps.push({
-      explica: `Para despejar, ${op} en ambos lados (operación inversa).`,
+      explica: `Para despejar el término con la ${v}, aplicamos el inverso aditivo: ${op} en ambos miembros.`,
       escribe: `${xc(coef)}${v} = ${fmt(c - konst)}`,
       accion: { tipo: "cancelacion", terminosFoco: [fmt(Math.abs(konst))] },
     });
@@ -831,7 +835,7 @@ export function solveLinearSteps(text) {
       // esa línea enseña —que la x está multiplicada por 2, que es lo que dice
       // su pie—, y «dividimos los dos lados entre 2» se guarda para cuando la
       // fracción, con sus DOS denominadores marcados, ya esté en la pizarra.
-      explica: `Ahora la ${v} está multiplicada por ${fmt(coef)}: para dejarla sola hay que deshacer esa multiplicación.`,
+      explica: `Para dejar la ${v} sola hay que deshacer la multiplicación: la ${v} está multiplicada por ${fmt(coef)}, y lo contrario de multiplicar es dividir.`,
       // COMO SE ESCRIBE EN CLASE: en fracción, no con el signo de dividir. Lo
       // pidió el cliente como regla general —"2x/2 = 10/2"—, y es además la
       // forma en que se ve la simplificación del coeficiente.

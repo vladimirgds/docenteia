@@ -51,8 +51,8 @@
 //          se encoge (el cliente lo midió con 2x + 8 - 3x = 3x - 1 - 3x).
 //   R5-03  El paso que se está explicando se ve ENTERO, sin desplazar a mano:
 //          la pizarra se mueve sola al renglón activo.
-//   R3-04  Los dos ambientes se aprovechan: las dos conversiones de una suma de
-//          fracciones no caen en el mismo lado.
+//   R3-04  Cada columna con su papel también en una suma de fracciones: las dos
+//          conversiones son desarrollo (hilo) y el MCM es apoyo (borrador).
 //
 // Y LA SEGUNDA RONDA DEL CLIENTE, las ayudas en la práctica:
 //
@@ -358,6 +358,10 @@ function instalarMedidor() {
         caja,
         hueco: parseFloat(cs.rowGap),
         elementos: hijos.length,
+        // Qué papel hace esta columna: el hilo conductor o el borrador. Cuando
+        // el hilo llena la primera, la segunda deja de ser borrador y pasa a
+        // continuarlo, y entonces las DOS son hilo.
+        papel: amb.getAttribute("data-papel-ambiente") ?? "",
         textos: hijos.map((h) => textoVisible(h).slice(0, 80)),
         // Lo que empieza más a la derecha del borde izquierdo del ambiente.
         desalineado: Math.max(0, ...hijos.map((h) => Math.abs(R(h).x - izquierda))),
@@ -924,18 +928,27 @@ function comprobarSiempre(m, clase) {
     verificar("R3-03", "mientras la voz suma una columna, la nota de la derecha es la de ESA columna", m.notas.some((t) => new RegExp(`^${columna}`, "i").test(t.trim())), `«${m.sub.slice(0, 40)}» con ${JSON.stringify(m.notas.map((t) => t.slice(0, 18)))} (${clase})`);
   }
 
-  // R3-04: las dos conversiones de una suma de fracciones, una a cada lado.
+  // R3-04: CADA COLUMNA CON SU PAPEL, TAMBIÉN EN UNA SUMA DE FRACCIONES.
+  //
+  // Esta regla nació cuando el reparto era por POSICIÓN y el cliente vio «el
+  // Ambiente 2 con sólo la línea del MCM y un enorme espacio vacío»: se pedía
+  // entonces una conversión a cada lado, para equilibrar. Con los papeles que él
+  // mismo fijó después, equilibrar por la mitad ya no es lo que toca: las dos
+  // conversiones son desarrollo —van al HILO— y lo que llena la columna derecha
+  // es el cálculo de apoyo, el MCM. Lo que se comprueba, por tanto, es que cada
+  // cosa esté en su columna, no que estén repartidas a partes iguales.
   const amplificaciones = m.pasosAmbiente.filter((p) => p.gesto === "amplificacion");
   if (amplificaciones.length >= 2) {
-    verificar("R3-04", "las dos conversiones no caen en el mismo ambiente", new Set(amplificaciones.map((p) => p.ambiente)).size >= 2, `${amplificaciones.map((p) => p.ambiente).join(",")} (${clase})`);
+    verificar(
+      "R3-04",
+      "las dos conversiones son desarrollo: van juntas en el hilo, no repartidas",
+      new Set(amplificaciones.map((p) => p.ambiente)).size === 1 && amplificaciones[0].ambiente === "1",
+      `${amplificaciones.map((p) => p.ambiente).join(",")} (${clase})`,
+    );
   }
-  // Y el Ambiente 2 no se queda con una sola línea mientras el 1 acumula pasos.
-  // (Sólo donde hay ejercicio: en Reglas, el Ambiente 1 lleva la tarjeta —que no
-  // es un paso— y las notas van todas al 2.)
-  const enUno = m.pasosAmbiente.filter((p) => p.ambiente === "1").length;
-  const enDos = m.pasosAmbiente.filter((p) => p.ambiente === "2").length;
-  if (/ejemplo|practica/i.test(m.fase) && enUno + enDos >= 4) {
-    verificar("R3-04", "con el procedimiento avanzado, los dos ambientes llevan contenido", enUno >= 1 && enDos >= 1, `${enUno} / ${enDos} (${clase})`);
+  // Y EL MCM, QUE ES CÁLCULO DE APOYO, EN EL BORRADOR.
+  if (m.mcm) {
+    verificar("R3-04", "el MCM se queda en el borrador, que es donde van los cálculos de apoyo", m.mcm.ambiente === "2", JSON.stringify(m.mcm));
   }
 
   // R4-01: LA PIZARRA NO ADELANTA NADA. Mientras la clase no ha terminado, no
@@ -1250,11 +1263,18 @@ async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reinicia
       muestras++;
       comprobarSiempre(m, clase);
 
-      // Regla de continuidad: dentro de un ejercicio, el Ambiente 1 no pierde nada.
+      // REGLA DE CONTINUIDAD: lo escrito en el HILO CONDUCTOR no se borra.
+      //
+      // Se cuenta el hilo, no la primera columna. Desde que el cliente redefinió
+      // los papeles, cuando el hilo llena el Ambiente 1 «el Ambiente 2 pasa a
+      // convertirse en la continuación del desarrollo principal»: el renglón que
+      // ya no cabía sigue escrito, en la columna de al lado. Contando sólo la
+      // primera columna, ese relevo se leía como un borrado. Lo que no puede
+      // pasar —y esto lo sigue comprobando— es que el desarrollo PIERDA líneas.
       const enunciado = m.encabezado?.enunciado ?? "";
-      const n1 = m.ambientes.find((a) => a.n === "1")?.elementos ?? 0;
+      const n1 = m.ambientes.filter((a) => a.papel !== "borrador").reduce((t, a) => t + a.elementos, 0);
       if (enunciado && enunciado === ejercicio) {
-        verificar("OBS-12", "el Ambiente 1 no se borra al pasar al Ambiente 2", n1 >= ambiente1, `${ambiente1} → ${n1} en «${enunciado}»`);
+        verificar("OBS-12", "el hilo conductor no se borra: lo escrito se queda escrito", n1 >= ambiente1, `${ambiente1} → ${n1} en «${enunciado}»`);
         ambiente1 = Math.max(ambiente1, n1);
       } else {
         ejercicio = enunciado;
@@ -1318,8 +1338,8 @@ const disparadoresDeAritmetica = [
     }],
     ["reglas", (m) => /regla/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
     ["ejemplo-llevo", (m) => etiquetaVisible(m, /^llevo/)],
-    ["ejemplo-cierre", (m) => m.capsulas.some((c) => c.ambiente === "2"), (a) => {
-      verificar("OBS-14", "la respuesta final, enmarcada en el Ambiente 2", a.capsulas.some((c) => c.ambiente === "2"));
+    ["ejemplo-cierre", (m) => m.capsulas.some((c) => c.ambiente === "1"), (a) => {
+      verificar("OBS-14", "la respuesta definitiva cierra el HILO, enmarcada en el Ambiente 1", a.capsulas.some((c) => c.ambiente === "1"));
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta, (a) => {
       verificar("OBS-07", "la práctica va en columna, con la raya", a.practicaColumna?.columna, a.practicaColumna?.texto);
@@ -1381,10 +1401,16 @@ await darClase({
         verificar("OBS-15", "«entre N» a 8 px o más de toda cifra (pantalla y proyección)", e.sep >= 7.5, `${e.sep.toFixed(1)} px`);
       }
     }],
-    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2") && /Resultado final/.test(m.pie), (a) => {
-      verificar("OBS-14", "la respuesta final, enmarcada en el Ambiente 2", a.capsulas.some((c) => c.ambiente === "2"));
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "1") && /Resultado final/.test(m.pie), (a) => {
+      verificar("OBS-14", "la respuesta definitiva cierra el HILO, enmarcada en el Ambiente 1", a.capsulas.some((c) => c.ambiente === "1"));
       verificar("OBS-14", "«Resultado final» con la fracción formal (sin barra)", a.pieConFraccion && !/\//.test(a.pie), a.pie);
-      verificar("OBS-12", "al terminar, los dos ambientes conservan el procedimiento", a.ambientes.every((x) => x.elementos > 0));
+      // EL BORRADOR SE BORRA; EL HILO, NUNCA. Antes se exigía que los dos
+      // ambientes acabaran con contenido. Con los papeles que fijó el cliente
+      // —Ambiente 1 el hilo conductor, Ambiente 2 el borrador que «debe
+      // limpiarse o refrescarse para dar paso al siguiente cálculo auxiliar»—
+      // lo que tiene que quedar entero al final es el HILO: planteamiento,
+      // ecuaciones resultantes y la respuesta definitiva.
+      verificar("OBS-12", "al terminar, el hilo conductor conserva el procedimiento entero", (a.ambientes[0]?.elementos ?? 0) >= 2, `${a.ambientes.map((x) => x.elementos).join(" / ")}`);
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
@@ -1438,8 +1464,8 @@ await darClase({
       verificar("OBS-16", "el conector se dibuja en pantalla y en proyección", a.conectores.length > 0 && b.conectores.length > 0);
     }],
     ["cancela", (m) => etiquetaVisible(m, /cancelan/)],
-    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2") && /Resultado final/.test(m.pie), (a) => {
-      verificar("OBS-14", "la respuesta final, enmarcada en el Ambiente 2", a.capsulas.some((c) => c.ambiente === "2"));
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "1") && /Resultado final/.test(m.pie), (a) => {
+      verificar("OBS-14", "la respuesta definitiva cierra el HILO, enmarcada en el Ambiente 1", a.capsulas.some((c) => c.ambiente === "1"));
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
@@ -1459,7 +1485,7 @@ await darClase({
   disparadores: [
     ["reglas", (m) => /regla/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
     ["termino", (m) => etiquetaVisible(m, /^(coeficiente|exponente)$/)],
-    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2")],
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "1")],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
   ayudas: ["No entendí este paso", "Explicar regla"],
@@ -1473,7 +1499,7 @@ await darClase({
   masDificil: 1,
   disparadores: [
     ["reglas", (m) => /regla/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
-    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2")],
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "1")],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
   ayudas: ["Explicar regla"],

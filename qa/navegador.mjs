@@ -1696,9 +1696,14 @@ async function muestrearHastaLaPractica(pagina, ms) {
       (d ? feedback.latex.includes(`\\frac{${n}}{${d}}`) : feedback.texto.includes(String(n))),
     JSON.stringify(feedback),
   );
-  // La línea de cierre, en el Ambiente 2 con su cápsula esmeralda y el visto.
+  // LA LÍNEA DE CIERRE, CON EL HILO CONDUCTOR, cápsula esmeralda y visto.
+  //
+  // Iba en el Ambiente 2 mientras el reparto era por posición. El cliente
+  // redefinió los papeles: «Ambiente 1 … planteamiento inicial, ecuaciones
+  // simplificadas resultantes y, al final, LA RESPUESTA DEFINITIVA». Así que la
+  // respuesta cierra el hilo, no el borrador.
   const rotuloCierre = await pagina.evaluate(() => {
-    const cierre = document.querySelector('[data-ambiente="2"] [data-papel="cierre"]');
+    const cierre = document.querySelector('[data-papel-ambiente="hilo"] [data-papel="cierre"]');
     const marco = cierre?.querySelector("rect.pz-marco-final");
     return {
       enAmbiente2: Boolean(cierre),
@@ -1707,7 +1712,7 @@ async function muestrearHastaLaPractica(pagina, ms) {
     };
   });
   check(
-    "la línea de cierre va en el Ambiente 2, con su cápsula esmeralda y su visto",
+    "la respuesta definitiva cierra el HILO conductor, con su cápsula esmeralda y su visto",
     rotuloCierre.enAmbiente2 && /16, 185, 129/.test(rotuloCierre.borde ?? "") && rotuloCierre.visto,
     JSON.stringify(rotuloCierre),
   );
