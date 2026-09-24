@@ -282,7 +282,16 @@ export function Pizarra({
     const conEscena = lista.map(({ linea, papel }) => {
       const estatica = papel === "planteamiento" && pideAlAlumno;
       const escena = estatica ? null : escenaDeLinea(pasoDeLinea(linea), `linea-${linea.id}`);
-      const animable = escena != null && escena.focos.length > 0;
+      // UN CÁLCULO DEL TALLER NO ES UN PASO DEL GUION.
+      //
+      // «Las operaciones auxiliares… deben permanecer visibles en su columna
+      // para que el alumno compare en paralelo la ecuación limpia a la
+      // izquierda con el cálculo a la derecha.» Y desaparecían: "−8 + 8 = 0" es
+      // una igualdad, la pizarra le encontraba una escena del guion y, en
+      // cuanto la voz pasaba de ese punto, el filtro de lo ya explicado la
+      // consideraba pendiente y la quitaba. El apoyo se escribe cuando el tutor
+      // lo narra y se queda: no se sincroniza con nada, porque no es un paso.
+      const animable = escena != null && escena.focos.length > 0 && linea.ambiente !== 2;
       let indiceGuion = -1;
       if (animable) {
         const candidato = indicePorIdentidad.get(identidadDeEscena(escena));

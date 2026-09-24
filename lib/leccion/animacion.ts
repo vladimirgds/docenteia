@@ -1717,7 +1717,13 @@ export function escenaDeLinea(paso: string | PasoSemantico, id: string): Escena 
   }
 
   const deducida =
-    escenaDeColumna(texto, id) ??
+    // UNA CUENTA DEL TALLER SE ESCRIBE EN LÍNEA, NO EN COLUMNA.
+    //
+    // "8 − 8 = 0" es una resta, y la pizarra la componía como cuenta vertical
+    // —con su raya y el 0 debajo—: el cliente lo vio en el vídeo y lo describió
+    // como «un 0 flotante». En el taller se anota al margen, como en un
+    // cuaderno; la cuenta en columna es para el ejercicio de aritmética.
+    (delTaller ? null : escenaDeColumna(texto, id)) ??
     escenaDeDespeje(texto, id) ??
     escenaDeDistributiva(texto, id) ??
     escenaDeAmplificacion(texto, id) ??

@@ -4,11 +4,11 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **128.065 comprobaciones en Chrome y 0
+> las de la última pasada completa): **127.536 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.867
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
-> **787** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
+> **790** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
 > (`qa/voz.mjs`), **87** de navegación (`qa/navegador.mjs`), 1.465 del núcleo,
 > 828 de la lección, aceptación 24/24 y un barrido de 200 sesiones y 1.800
@@ -3858,3 +3858,55 @@ que los hijos directos de cada columna fueran envoltorios, así que OBS-12 conta
 «1 paso» para una columna llena; y el intento de alinear las columnas con
 `subgrid` rompía el móvil, donde los dos ambientes se apilan y quedaban uno
 encima del otro.
+
+## 53. Decimoséptima ronda: la escala, y la columna auxiliar que no se veía
+
+El cliente revisó el vídeo del despliegue con el reloj en la mano. Cuatro puntos;
+los dos primeros —el comentario encima de su ecuación y una sola tipografía—
+eran los de la ronda anterior, que él aún no tenía desplegada. Los otros dos son
+nuevos, y los dos eran defectos de verdad.
+
+### 3. «La escala de fuentes está sobredimensionada»
+
+> «Los elementos matemáticos y fracciones son demasiado grandes, lo que provoca
+> que al llegar a x = 5 (minuto 1:04) la pizarra colapse hacia arriba y tape el
+> planteamiento inicial. Reduzcamos la escala base de KaTeX a un tamaño compacto
+> (text-xl / 1.25rem) con márgenes moderados (my-2).»
+
+Hecho, y **sólo en la pizarra de pantalla**: la de proyección mantiene su escala
+de aula, que es la que el propio informe fijó para leer desde el fondo. Las dos
+reglas conviven por especificidad, no por un `!important`.
+
+### 4. La columna auxiliar: tres causas, no una
+
+> «Durante el 80 % del vídeo la columna derecha estuvo completamente vacía
+> mientras la izquierda se saturaba. Cuando por fin apareció contenido auxiliar
+> en 0:50 (un 0 flotante y un texto auxiliar), lo hizo con desfase respecto a la
+> voz y desapareció abruptamente en 0:57.»
+
+Tres cosas distintas, y las tres ciertas:
+
+**Vacía el 80 % del tiempo.** El reparto de un paréntesis —que es el primer paso
+de la mayoría de los ejercicios— no dejaba nada en el taller. Ahora escribe su
+desglose, que es además el que el cliente nombra: «El 2 multiplica a cada
+término: 2 × x = 2x · 2 × 4 = 8 · Por eso queda 2x + 8». El taller se estrena con
+el primer paso.
+
+**Desapareció abruptamente.** «−8 + 8 = 0» es una igualdad, así que la pizarra le
+encontraba una escena del guion; en cuanto la voz pasaba de ese punto, el filtro
+de «sólo lo ya explicado» la daba por pendiente y la quitaba. Un cálculo de apoyo
+**no es un paso del guion**: se escribe cuando el tutor lo narra y se queda.
+Es literalmente lo que pidió: «deben permanecer visibles en su columna para que
+el alumno compare en paralelo la ecuación limpia a la izquierda con el cálculo a
+la derecha».
+
+**«Un 0 flotante».** «8 − 8 = 0» es una resta, y la pizarra la componía como
+**cuenta en columna** —con su raya y el 0 debajo—. De ahí el 0 suelto que él vio.
+Una cuenta del taller se anota en línea, como al margen de un cuaderno; la cuenta
+vertical es para el ejercicio de aritmética, donde sí es el contenido.
+
+### Y los comentarios, en su registro
+
+Dos que quedaban largos se reescribieron con las palabras de sus ejemplos:
+«Aplicamos la propiedad distributiva en el miembro izquierdo» y «Restamos 3x en
+ambos miembros para agrupar incógnitas».

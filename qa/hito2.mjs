@@ -1177,6 +1177,26 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
       JSON.stringify(juntar),
     );
     check(
+      "una cuenta del taller se anota en línea, no como cuenta en columna",
+      escenaDeLinea({ latex: "8 - 8 = 0", ambiente: 2 }, "t").clase !== "columna" &&
+        escenaDeLinea({ latex: "8 - 8 = 0" }, "h").clase === "columna",
+      `taller=${escenaDeLinea({ latex: "8 - 8 = 0", ambiente: 2 }, "t").clase}`,
+    );
+    check(
+      "y no lleva marca de respuesta: la del ejercicio es una y está en el hilo",
+      escenaDeLinea({ latex: "8 - 8 = 0", ambiente: 2 }, "t").focos.every((f) => !f.final),
+    );
+    check(
+      "el reparto de un paréntesis deja su desglose en el taller",
+      (() => {
+        const d = solveLinearSteps("2(x + 4) = 3x - 1").steps[0];
+        return /multiplica a cada término/.test(d.ambiente2?.textoAuxiliar ?? "") &&
+          /2 × x = 2x/.test(d.ambiente2?.calculoKaTeX ?? "") &&
+          /2 × 4 = 8/.test(d.ambiente2?.calculoKaTeX ?? "");
+      })(),
+      JSON.stringify(solveLinearSteps("2(x + 4) = 3x - 1").steps[0].ambiente2),
+    );
+    check(
       "…y la cancelación se justifica al margen con «-8 + 8 = 0»",
       cancelar?.ambiente2?.calculoKaTeX === "-8 + 8 = 0",
       JSON.stringify(cancelar?.ambiente2),

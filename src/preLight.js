@@ -756,11 +756,45 @@ export function solveLinearSteps(text) {
   }
   if (tieneParentesis || escala !== 1) {
     const partes = [];
-    if (tieneParentesis) partes.push("quitamos los paréntesis multiplicando el número de fuera por CADA término de dentro (propiedad distributiva) y juntamos los números sueltos");
+    if (tieneParentesis) partes.push("aplicamos la propiedad distributiva en el miembro izquierdo");
     if (escala !== 1) partes.push(`repartimos ese ${escala} en cada término`);
+    // EL DESGLOSE DE LA DISTRIBUTIVA, AL TALLER.
+    //
+    // «Las operaciones auxiliares (como el desglose de la distributiva o las
+    // cancelaciones) deben renderizarse en la columna derecha.» Y hacía falta
+    // por otra razón que el cliente midió en el vídeo: «durante el 80 % del
+    // vídeo la columna derecha estuvo completamente vacía mientras la izquierda
+    // se saturaba». El reparto es el primer paso de muchos ejercicios, así que
+    // con su desglose el taller se estrena desde el principio.
+    const reparto = String(lhs).replace(/\s+/g, "").match(/(-?\d+)\(([^)]+)\)/);
+    let apoyoReparto;
+    if (tieneParentesis && reparto) {
+      const factor = Number(reparto[1]);
+      const dentro = reparto[2].match(/[+-]?[^+-]+/g) ?? [];
+      const cuentas = dentro
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((t) => {
+          const signo = t.startsWith("-") ? -1 : 1;
+          const cuerpo = t.replace(/^[+-]/, "");
+          const num = Number(cuerpo);
+          const producto = Number.isFinite(num)
+            ? fmt(factor * num * signo)
+            : `${xc(factor * signo)}${cuerpo}`;
+          return `${fmt(factor)} × ${signo < 0 ? "-" : ""}${cuerpo} = ${producto}`;
+        });
+      if (cuentas.length) {
+        apoyoReparto = {
+          textoAuxiliar: `El ${fmt(factor)} multiplica a cada término:`,
+          calculoKaTeX: cuentas.join("\n"),
+          conclusion: `Por eso queda ${ladoStr(coefL, konstL)}`,
+        };
+      }
+    }
     steps.push({
       explica: `${escala !== 1 && !tieneParentesis ? "Ahora" : "Primero"} ${partes.join(", y luego ")}.`,
       escribe: `${ladoStr(coefL, konstL)} = ${ladoStr(coefR, konstR)}`,
+      apoyo: apoyoReparto,
     });
   }
 
@@ -780,7 +814,7 @@ export function solveLinearSteps(text) {
       // hace ("Restamos 12 en ambos lados"), sino explicar el propósito
       // pedagógico antes de operar.» Cada frase abre con para qué se hace, y
       // conserva el verbo con el que la pizarra la reconoce («restamos»).
-      explica: `Para cancelar la ${v} del miembro derecho y agrupar las incógnitas a la izquierda, ${op} en ambos miembros de la ecuación.`,
+      explica: `${op[0].toUpperCase()}${op.slice(1)} en ambos miembros para agrupar incógnitas.`,
       escribe: `${conLaResta(coefL, konstL)} = ${conLaResta(coefR, konstR)}`,
       accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
     });

@@ -271,8 +271,27 @@
 /* Dentro de un ambiente, las fórmulas empiezan a la izquierda, como se escribe
    en una pizarra: centradas cada una en su renglón, se leían desordenadas. */
 .pz-ambiente .katex-display {
-  margin: 0.2em 0;
+  /* MÁRGENES MODERADOS (my-2). El cliente lo midió sobre el vídeo: «los
+     elementos matemáticos y fracciones son demasiado grandes, lo que provoca
+     que al llegar a x = 5 la pizarra colapse hacia arriba y tape el
+     planteamiento inicial». */
+  margin: 0.5rem 0;
   text-align: left;
+}
+
+/* ── LA ESCALA DE LAS FÓRMULAS EN LA PIZARRA DE PANTALLA ────────────────────
+   «Reduzcamos la escala base de KaTeX a un tamaño compacto (text-xl / 1.25rem)
+   con márgenes moderados (my-2) para que todo el ejercicio entre holgado sin
+   salirse de la pantalla.» Es el tamaño del tablero normal; el de PROYECCIÓN
+   —donde el mínimo es de aula— lo fija la regla de más abajo, que gana por ser
+   más específica. */
+.pz-ambiente .katex {
+  font-size: 1.25rem;
+}
+
+/* Y en proyección manda la escala de aula, no ésta. */
+.modo-proyeccion .pz-ambiente .katex {
+  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
 }
 
 /* KaTeX centra la fórmula DENTRO de su bloque: hay que alinearla también ahí. */
