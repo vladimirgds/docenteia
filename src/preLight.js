@@ -755,8 +755,18 @@ export function solveLinearSteps(text) {
     });
   }
   if (tieneParentesis || escala !== 1) {
+    // Y SE DICE DÓNDE SE REPARTE DE VERDAD. Con paréntesis a los dos lados
+    // —"2(3x + 5) = 4(x + 7)"— la frase decía "en el miembro izquierdo" mientras
+    // el renglón siguiente enseñaba los dos miembros ya repartidos.
+    const parentesisDerecho = /\d\s*\(/.test(String(rhs).replace(/\s+/g, ""));
     const partes = [];
-    if (tieneParentesis) partes.push("aplicamos la propiedad distributiva en el miembro izquierdo");
+    if (tieneParentesis) {
+      partes.push(
+        parentesisDerecho
+          ? "aplicamos la propiedad distributiva en los dos miembros"
+          : "aplicamos la propiedad distributiva en el miembro izquierdo",
+      );
+    }
     if (escala !== 1) partes.push(`repartimos ese ${escala} en cada término`);
     // EL DESGLOSE DE LA DISTRIBUTIVA, AL TALLER.
     //
@@ -766,9 +776,9 @@ export function solveLinearSteps(text) {
     // vídeo la columna derecha estuvo completamente vacía mientras la izquierda
     // se saturaba». El reparto es el primer paso de muchos ejercicios, así que
     // con su desglose el taller se estrena desde el principio.
-    const reparto = String(lhs).replace(/\s+/g, "").match(/(-?\d+)\(([^)]+)\)/);
-    let apoyoReparto;
-    if (tieneParentesis && reparto) {
+    const desglose = (lado) => {
+      const reparto = String(lado).replace(/\s+/g, "").match(/(-?\d+)\(([^)]+)\)/);
+      if (!reparto) return null;
       const factor = Number(reparto[1]);
       const dentro = reparto[2].match(/[+-]?[^+-]+/g) ?? [];
       const cuentas = dentro
@@ -778,18 +788,44 @@ export function solveLinearSteps(text) {
           const signo = t.startsWith("-") ? -1 : 1;
           const cuerpo = t.replace(/^[+-]/, "");
           const num = Number(cuerpo);
+          // CON SU COEFICIENTE. "3 × 2x" es 6x, no "32x": pegar el factor delante
+          // del término tal cual sólo vale cuando el término no lleva número ("x"),
+          // y el cliente mandó justo un ejercicio que sí lo lleva, 3(2x − 1) + 4.
+          const conCoef = cuerpo.match(/^(\d*)([a-zA-Z].*)$/);
           const producto = Number.isFinite(num)
             ? fmt(factor * num * signo)
-            : `${xc(factor * signo)}${cuerpo}`;
-          return `${fmt(factor)} × ${signo < 0 ? "-" : ""}${cuerpo} = ${producto}`;
+            : conCoef
+              ? `${xc(factor * signo * (conCoef[1] === "" ? 1 : Number(conCoef[1])))}${conCoef[2]}`
+              : `${xc(factor * signo)}${cuerpo}`;
+          // LA FORMA EXACTA QUE PIDIÓ EL CLIENTE, copiada de su nota:
+          //   El 2 multiplica a cada término:
+          //   (2) · (x) = 2x
+          //   (2) · (3) = 6
+          // Cada factor entre paréntesis y el punto de multiplicar: así se lee
+          // que el número de fuera entra en CADA término, uno por renglón.
+          return `(${fmt(factor)}) · (${signo < 0 ? "-" : ""}${cuerpo}) = ${producto}`;
         });
-      if (cuentas.length) {
-        apoyoReparto = {
-          textoAuxiliar: `El ${fmt(factor)} multiplica a cada término:`,
-          calculoKaTeX: cuentas.join("\n"),
-          conclusion: `Por eso queda ${ladoStr(coefL, konstL)}`,
-        };
-      }
+      if (!cuentas.length) return null;
+      return {
+        rotulo: `El ${fmt(factor)} multiplica a cada término:`,
+        cuentas,
+      };
+    };
+    // Con paréntesis a los dos lados se desglosan LOS DOS: el taller tiene que
+    // justificar la línea entera que aparece a la izquierda, no media.
+    const desgloses = [desglose(lhs), parentesisDerecho ? desglose(rhs) : null].filter(Boolean);
+    let apoyoReparto;
+    if (tieneParentesis && desgloses.length) {
+      apoyoReparto = {
+        textoAuxiliar: desgloses[0].rotulo,
+        // Y SIN "Por eso queda…": la ecuación que queda ya está escrita en el
+        // Ambiente 1, en el renglón de debajo de su comentario. El cliente
+        // escribió la columna derecha entera y la cierra en la última cuenta.
+        calculoKaTeX: desgloses
+          .map((d, i) => (i === 0 ? d.cuentas : [d.rotulo, ...d.cuentas]))
+          .flat()
+          .join("\n"),
+      };
     }
     steps.push({
       explica: `${escala !== 1 && !tieneParentesis ? "Ahora" : "Primero"} ${partes.join(", y luego ")}.`,

@@ -40,8 +40,39 @@
   --fuente-pizarra: "Chalkboard SE", "Chalkboard", "Comic Sans MS", "Comic Neue", cursive;
   --fuente-formula: KaTeX_Main, "Cambria Math", "Times New Roman", serif;
   /* El color con el que se destaca lo que se está operando (el factor y el
-     término que une el conector de la distributiva). */
-  --pz-color-enfasis: hsl(25 95% 40%);
+     término que une el conector de la distributiva). Era ámbar, y sobre la
+     ecuación dejaba el 2 en amarillo y la x en azul a la vez: «azul claro
+     ÚNICAMENTE para términos en foco activo». Es el mismo azul del foco; lo que
+     distingue al término que el tutor está nombrando AHORA es el halo del
+     puntero guía, que para eso se puso. */
+  --pz-color-enfasis: var(--pz-foco);
+  /* ── LA PALETA DE LA PIZARRA, REDUCIDA (petición del cliente) ─────────
+     «Se están mezclando amarillo, azul, blanco, verde, rojo y recuadros de
+     fondo simultáneamente. Conviene unificar: amarillo para el título /
+     enunciado principal; blanco para las ecuaciones formales en KaTeX; azul
+     claro ÚNICAMENTE para términos en foco activo; gris claro (slate-300)
+     para explicaciones textuales.»
+
+     Un solo azul, entonces, para TODO lo que está en foco —el factor que
+     reparte, el término que se agrupa, el coeficiente que se despeja, la
+     ecuación que queda—, y no cinco tonos por familia. Quedan fuera de la
+     lista dos marcas que el propio cliente pidió antes y que no son color
+     de texto sino GESTO, y cada una aparece una vez: el tachado rojo —«la
+     única marca que dice esto se va»— y la cápsula esmeralda de la
+     respuesta final (SUB-NOT-04, con sus valores escritos por él). */
+  --pz-foco: hsl(199 89% 48%);
+  /* El halo del puntero guía, con el rgba exacto de su nota. */
+  --pz-halo: rgb(56 189 248 / 0.6);
+  /* El pulso, en un token: así se apaga de una vez —aquí y en la regla que
+     `PizarraAnimada` inyecta sobre el término— cuando el sistema pide movimiento
+     reducido, sin que el halo deje de señalar. */
+  --pz-pulso: pz-pulso-foco 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pz-pulso: none;
+  }
 }
 
 [data-rol="TUTOR_DIALOG"] {
@@ -161,6 +192,8 @@
    Ambiente 1 (planteamiento y primera transformación) y el Ambiente 2
    (cálculos auxiliares, continuación y respuesta final). Lo de cada ambiente,
    alineado a la izquierda y con aire uniforme entre paso y paso. */
+/* El encabezado no se va de la pantalla: se queda pegado arriba mientras el
+   desarrollo pasa por debajo (`sticky`), y ocupa lo justo. */
 .pz-encabezado-ejercicio {
   position: sticky;
   top: 0;
@@ -169,8 +202,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 1rem;
-  margin-bottom: 1rem;
-  padding: 0.35rem 0 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem 0 0.5rem;
   border-bottom: 2px solid hsl(var(--border));
   background: hsl(var(--card));
 }
@@ -209,11 +242,24 @@
   gap: 1.25rem;
 }
 
+/* EL AIRE ENTRE PASOS, AL MÍNIMO QUE SIGUE SIENDO LEGIBLE.
+   El cliente lo cronometró: «a partir del segundo 0:49 la acumulación de pasos
+   empuja el contenido hacia arriba, provocando que el encabezado del ejercicio
+   desaparezca del área visible», y escribió la medida: «reducir la escala base
+   de KaTeX y el espaciado vertical (py-1 / space-y-3) para que el ejercicio
+   completo, desde el planteamiento hasta x = 5, entre holgado». `space-y-3` son
+   0,75rem: la mitad de lo que había, y por diez renglones son 120 px de
+   pantalla recuperados. */
 .pz-ambiente {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
   min-width: 0;
+}
+
+/* Proyectada, la letra es tres veces más alta y el aire acompaña. */
+.modo-proyeccion .pz-ambiente {
+  gap: 1.25rem;
 }
 
 /* ── EL BLOQUE DE UN PASO: COMENTARIO ARRIBA, DESARROLLO DEBAJO ─────────────
@@ -224,7 +270,7 @@
 .pz-bloque-paso {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
@@ -235,13 +281,29 @@
    Las ECUACIONES no se tocan: «debe ser exclusivamente la generada por KaTeX,
    sin forzar fuentes arbitrarias externas», y por eso aquí no hay una sola regla
    que apunte a `.katex`. */
+/* «Regla estricta: todos los comentarios explicativos de la columna izquierda
+   deben compartir la misma clase tipográfica base (font-sans text-sm o
+   text-base con leading-relaxed text-slate-300).»
+
+   Es literalmente eso: la sans de la interfaz, `text-base` (1rem) —el mayor de
+   los dos que admite, porque el cuerpo anterior era el que él leyó como «letra
+   minúscula» al pie de la columna—, `leading-relaxed` (1.625) y slate-300. La
+   misma clase la llevan las explicaciones del Ambiente 2: la queja era de
+   «hasta cuatro tamaños distintos de texto … en la misma columna», y con dos
+   columnas son las dos. */
 .pz-comentario {
   font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 400;
-  line-height: 1.6;
-  color: hsl(215 20% 65%);
+  line-height: 1.625;
+  /* slate-300 es de pizarra oscura; sobre fondo claro no se leería, y ahí el
+     mismo gris se toma dos escalones más abajo (slate-500). */
+  color: hsl(215 16% 47%);
   margin: 0;
+}
+
+.dark .pz-comentario {
+  color: hsl(213 27% 84%);
 }
 
 /* Proyectada, la misma familia y el mismo color: sólo crece para leerse de
@@ -275,7 +337,8 @@
      elementos matemáticos y fracciones son demasiado grandes, lo que provoca
      que al llegar a x = 5 la pizarra colapse hacia arriba y tape el
      planteamiento inicial». */
-  margin: 0.5rem 0;
+  /* py-1: el margen que pidió con el aire entre pasos. */
+  margin: 0.25rem 0;
   text-align: left;
 }
 
@@ -547,7 +610,7 @@
 
    Las clases las pone KaTeX con \htmlClass desde lib/leccion/destacar.ts. */
 .pz-coeficiente {
-  color: hsl(221 83% 45%);
+  color: var(--pz-foco);
   font-weight: 700;
 }
 
@@ -557,7 +620,7 @@
 }
 
 .dark .pz-coeficiente {
-  color: hsl(213 94% 72%);
+  color: hsl(199 89% 66%);
 }
 
 .dark .pz-exponente {
@@ -569,13 +632,13 @@
    encima: encender un foco cambia una opacidad y no recompila KaTeX. El color
    vive aquí para que siga al tema claro y al oscuro. */
 .pz-trazo {
-  stroke: hsl(221 83% 45%);
+  stroke: var(--pz-foco);
   stroke-width: 3;
   stroke-linecap: round;
 }
 
 .dark .pz-trazo {
-  stroke: hsl(213 94% 72%);
+  stroke: hsl(199 89% 66%);
 }
 
 /* EL MARCADO SE DIBUJA, NO APARECE.
@@ -628,24 +691,39 @@
    fina sobre texto negro. El recuadro y el fondo los dibuja la capa SVG; el
    COLOR del propio número va aquí, sobre el span que KaTeX conserva.
 
-   Cada familia con su color: azul lo que se opera, rojo lo que se va. */
+   ROJO SÓLO CUANDO SE TACHA. Estaba en rojo desde que se escribía la línea: en
+   «2x + 6 = 16» el 6 ya salía rojo un paso antes de que nadie lo cancelara, y
+   eso es parte del «se están mezclando amarillo, azul, blanco, verde, rojo» que
+   el cliente fotografió. Hasta que llega su tachado es un término en foco, y va
+   en el azul del foco; el rojo se lo pone `PizarraAnimada` en el momento en que
+   dibuja el aspa (ver `tachado`), que es cuando de verdad dice «esto se va». */
 .pz-cancela,
 .pz-marcado {
-  color: hsl(0 72% 42%);
+  color: var(--pz-foco);
   font-weight: 600;
 }
 
 .dark .pz-cancela,
 .dark .pz-marcado {
-  color: hsl(0 84% 68%);
+  color: hsl(199 89% 66%);
+}
+
+:root {
+  --pz-cancelado: hsl(0 72% 42%);
+}
+
+.dark {
+  --pz-cancelado: hsl(0 84% 68%);
 }
 
 .pz-factor,
 .pz-reparte,
 .pz-numerador,
 .pz-operado,
-.pz-coef-despeje {
-  color: hsl(221 83% 45%);
+.pz-coef-despeje,
+.pz-resultado,
+.pz-simplificada {
+  color: var(--pz-foco);
   font-weight: 600;
 }
 
@@ -653,8 +731,10 @@
 .dark .pz-reparte,
 .dark .pz-numerador,
 .dark .pz-operado,
-.dark .pz-coef-despeje {
-  color: hsl(213 94% 72%);
+.dark .pz-coef-despeje,
+.dark .pz-resultado,
+.dark .pz-simplificada {
+  color: hsl(199 89% 66%);
 }
 
 /* El denominador, en su propio color y a propósito: la regla que se enseña es
@@ -669,17 +749,18 @@
   color: hsl(38 92% 62%);
 }
 
-/* Y el resultado, cuando ya está, en verde: es la meta, no un paso. */
-.pz-solucion,
-.pz-resultado,
-.pz-simplificada {
+/* EL VERDE ES DE LA RESPUESTA, Y DE NADA MÁS.
+   Lo llevaban también `.pz-resultado` y `.pz-simplificada`, que son resultados
+   INTERMEDIOS —«2x + 6 = 16»—, y el cliente lo fotografió: verde en mitad del
+   desarrollo, con azul, blanco y amarillo alrededor. Un resultado intermedio
+   no es la meta: es el término en foco, y va en el azul del foco (arriba).
+   Aquí queda la SOLUCIÓN, que es la que cierra el ejercicio. */
+.pz-solucion {
   color: hsl(160 84% 30%);
   font-weight: 600;
 }
 
-.dark .pz-solucion,
-.dark .pz-resultado,
-.dark .pz-simplificada {
+.dark .pz-solucion {
   color: hsl(160 84% 55%);
 }
 
@@ -689,11 +770,11 @@
    `bg-blue-100 ring-2 ring-blue-500` de la interfaz, pero dibujado en la capa
    SVG: no toca la fórmula, así que no hay recomposición ni parpadeo. */
 .pz-fondo {
-  fill: hsl(217 91% 60% / 0.22);
+  fill: hsl(199 89% 48% / 0.18);
 }
 
 .dark .pz-fondo {
-  fill: hsl(213 94% 72% / 0.2);
+  fill: hsl(199 89% 66% / 0.18);
 }
 
 .pz-resaltado[data-tipo="tachado"] .pz-fondo {
@@ -789,6 +870,60 @@
   line-height: 1.55;
 }
 
+/* ── EL PUNTERO GUÍA: LA MIRADA VA DONDE VA LA VOZ ──────────────────────────
+   «Cuando el avatar dice "El 2 multiplica a x", o "Restamos 6 a ambos
+   miembros", la mirada del estudiante debe dirigirse de inmediato al término
+   mencionado. Actualmente el alumno debe adivinar qué parte de la pizarra se
+   está explicando.»
+
+   De las dos vías que propuso el cliente se toma la suya, la ligera (opción A):
+   un halo sobre el término, con su pulso, y no un puntero SVG recalculando
+   `getBoundingClientRect()` en cada fotograma. Los valores son los que escribió
+   —`0 0 10px rgba(56, 189, 248, 0.6)`, `border-radius: 4px`, `0.3s
+   ease-in-out`—; el pulso respira entre ese halo y uno algo mayor.
+
+   Quién lo lleva encendido lo decide el guion, no el CSS: la regla de las
+   piezas la inyecta `PizarraAnimada` sobre el foco que el tutor está nombrando
+   (ver `DECLARACION_HALO`), y el bloque de aquí abajo se lo pone al cálculo del
+   taller mientras es el último escrito —«cuando pasa al cálculo auxiliar en la
+   columna derecha, el puntero se traslada suavemente a la derecha»—. */
+@keyframes pz-pulso-foco {
+  0%,
+  100% {
+    box-shadow: 0 0 10px var(--pz-halo);
+  }
+  50% {
+    box-shadow: 0 0 18px var(--pz-halo);
+  }
+}
+
+/* El halo tiene que abrazar la CUENTA, no el ancho entero de la columna: un
+   rectángulo de 600 px encendido alrededor de "(2) · (x) = 2x" no señala el
+   cálculo, señala la columna. El ajuste al contenido lo llevan TODOS los
+   renglones del taller, encendidos o no, para que encender el halo no mueva
+   nada. Sin relleno lateral: el borde izquierdo de cada cuenta tiene que seguir
+   siendo el de la columna («Ambiente 2: todo alineado a la izquierda», OBS-08),
+   y una sombra no ocupa sitio. */
+.pz-ambiente[data-ambiente="2"] .pz-elemento {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.pz-ambiente[data-ambiente="2"] .pz-elemento[data-foco="si"] {
+  box-shadow: 0 0 10px var(--pz-halo);
+  transition: box-shadow 0.3s ease-in-out;
+  animation: var(--pz-pulso);
+}
+
+/* Proyectado, el halo crece con la letra: a 3 m un resplandor de 10 px no se ve. */
+.modo-proyeccion .pz-ambiente[data-ambiente="2"] .pz-elemento[data-foco="si"] {
+  box-shadow: 0 0 24px var(--pz-halo);
+}
+
+/* (Con movimiento reducido el pulso se apaga solo: `--pz-pulso` vale `none`,
+   y el halo se queda quieto sin dejar de señalar.) */
+
 /* ── Revelado progresivo ────────────────────────────────────────────────────
    La cuenta no empieza resuelta: cada cifra del resultado y cada llevada
    aparecen en su paso. Las piezas se marcan con `pz-rev-N` desde el guion y
@@ -824,7 +959,10 @@
    leerse de lejos (fórmulas de 48 px como mínimo, notas de 24 px como mínimo),
    trazos gruesos y el avatar siempre a la vista en un lateral. */
 .modo-proyeccion {
-  --pz-color-enfasis: hsl(45 96% 64%);
+  /* Sobre el fondo casi negro del aula, el azul del foco sube de luminosidad
+     para verse desde el fondo de la clase; sigue siendo el mismo azul. */
+  --pz-foco: hsl(199 89% 66%);
+  --pz-color-enfasis: var(--pz-foco);
   /* El fondo del informe: "tema de alto contraste (bg-slate-950)". */
   background: #020617;
   color: hsl(0 0% 100%);

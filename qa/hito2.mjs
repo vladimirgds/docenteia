@@ -1190,9 +1190,12 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
       "el reparto de un paréntesis deja su desglose en el taller",
       (() => {
         const d = solveLinearSteps("2(x + 4) = 3x - 1").steps[0];
+        // LA FORMA EXACTA QUE ESCRIBIÓ EL CLIENTE: "(2) · (x) = 2x", "(2) · (3) = 6".
         return /multiplica a cada término/.test(d.ambiente2?.textoAuxiliar ?? "") &&
-          /2 × x = 2x/.test(d.ambiente2?.calculoKaTeX ?? "") &&
-          /2 × 4 = 8/.test(d.ambiente2?.calculoKaTeX ?? "");
+          /\(2\) · \(x\) = 2x/.test(d.ambiente2?.calculoKaTeX ?? "") &&
+          /\(2\) · \(4\) = 8/.test(d.ambiente2?.calculoKaTeX ?? "") &&
+          // Y sin el "Por eso queda…": esa ecuación ya está en el Ambiente 1.
+          !d.ambiente2?.conclusion;
       })(),
       JSON.stringify(solveLinearSteps("2(x + 4) = 3x - 1").steps[0].ambiente2),
     );
@@ -1407,9 +1410,13 @@ titulo("A00a. La distributiva se reparte a la vista");
   // por qué. Hay que enseñar que el 2 entra en los dos sumandos.
   const e = escenaDeDistributiva("2(x + 4) = 3x - 1", "e");
   check("2(x + 4) se anima como distributiva", e?.clase === "distributiva");
+  // UN PASO POR SUMANDO. En una ECUACIÓN no hay foco de resultado: la ecuación
+  // repartida ya no vive en esta escena —es el paso siguiente del hilo, detrás de
+  // su comentario, porque el cliente pidió el comentario ENTRE las dos—, y un
+  // foco sin nada que señalar dejaría la escuadra encendida sobre un hueco.
   check(
-    "un paso por sumando, más el resultado",
-    e.focos.length === 3,
+    "un paso por sumando, y ninguno de más",
+    e.focos.length === 2,
     `${e.focos.length} focos`,
   );
   check(
@@ -1423,14 +1430,34 @@ titulo("A00a. La distributiva se reparte a la vista");
       /Y el 2 multiplica a 4: da 8\./.test(e.focos[1].narracion),
     e.focos[0].narracion,
   );
+  // Y LA ECUACIÓN REPARTIDA NO SE ESCRIBE AQUÍ.
+  //
+  // Primero se colgaba al final de la línea —"2(x + 4) = 3x − 1 = 2x + 8", una
+  // cadena falsa (revisión daa127d, punto 5)—; luego pasó a un segundo renglón
+  // de esta misma escena. Y ahí lo paró el cliente: «el comentario debe
+  // colocarse justo debajo de la ecuación original y ANTES de mostrar el
+  // resultado 2x + 6 = 16». Entre dos renglones de una fórmula no cabe un
+  // comentario, así que la escena se queda con la ecuación original y su reparto.
   check(
-    "el resultado no se destapa hasta el final",
-    /pz-rev-2/.test(e.latex) && e.focos[2].clase === "pz-resultado",
+    "la escena se queda con la ecuación original: ni cadena falsa ni segundo renglón",
+    !/pz-rev-2/.test(e.latex) && !/aligned/.test(e.latex) && !/pz-resultado/.test(e.latex),
+    e.latex,
   );
-  // En una ECUACIÓN, lo repartido es la ecuación siguiente en su propio renglón
-  // ("2x + 8 = 3x − 1"), no una cadena falsa "… = 3x − 1 = 2x + 8" (revisión
-  // daa127d, punto 5).
-  check("y es el correcto", e.focos[2].narracion === "Queda 2x + 8 = 3x - 1.", e.focos[2].narracion);
+  check(
+    "y no declara continuación: la ecuación repartida la escribe el paso siguiente",
+    e.continuacion === undefined,
+    String(e.continuacion),
+  );
+
+  // Una EXPRESIÓN suelta no tiene paso siguiente que la escriba, así que ahí sí
+  // se destapa el resultado en su misma línea —"2(x + 4) = 2x + 8" es correcto—.
+  const suelta = escenaDeDistributiva("2(x + 4)", "e");
+  check(
+    "una expresión suelta sí destapa su resultado, en su propia línea",
+    /pz-rev-2/.test(suelta.latex) && suelta.focos.at(-1).clase === "pz-resultado" &&
+      suelta.focos.at(-1).narracion === "Queda 2x + 8.",
+    suelta.focos.at(-1).narracion,
+  );
 
   const conResta = escenaDeDistributiva("3(2x - 5)", "e");
   check(
@@ -2426,9 +2453,11 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
   {
     const e = escenaDeDistributiva("2(x + 4) = 3x - 1", "e");
     check(
-      "en una ecuación, lo repartido va en su PROPIO renglón: 2x + 8 = 3x − 1, alineado por el igual",
-      // Con aire entre los renglones para la escuadra del conector y su "× 2".
-      /\\begin\{aligned\}/.test(e.latex) && /\\\\\[1\.6em\] \\htmlClass\{pz-rev-2 pz-resultado\}\{2x \+ 8\}/.test(e.latex),
+      "en una ecuación, lo repartido va en su PROPIO paso: esta escena sólo lleva la original",
+      // El cliente pidió el comentario ENTRE las dos, y entre dos renglones de una
+      // misma fórmula no cabe. La escuadra del "× 2" y sus marcas se quedan aquí.
+      !/aligned/.test(e.latex) && /pz-reparte-0/.test(e.latex) && /pz-reparte-2/.test(e.latex) &&
+        !/pz-rev-2/.test(e.latex),
       e.latex,
     );
     check(
@@ -2441,22 +2470,30 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     const signo = escenaDeDistributiva("2(x - 3) = 10", "e");
     check(
       "cada producto con SU signo: en 2(x − 3), el 2 multiplica a −3 y da −6",
-      signo.focos[1].narracion === "Y el 2 multiplica a -3: da -6." && signo.focos[2].narracion === "Queda 2x - 6 = 10.",
-      `${signo.focos[1].narracion} / ${signo.focos[2].narracion}`,
+      signo.focos[1].narracion === "Y el 2 multiplica a -3: da -6." &&
+        locucionesDistributiva("2(x - 3) = 10").at(-1) === "Queda 2x - 6 = 10.",
+      `${signo.focos[1].narracion} / ${locucionesDistributiva("2(x - 3) = 10").at(-1)}`,
     );
     // Las frases del motor y las del panel no pueden separarse: la voz tiene
     // que decir exactamente lo que se enmarca.
+    //
+    // En una ECUACIÓN el "Queda…" del final ya no es un foco de esta escena: se
+    // dice sobre la ecuación repartida, que ahora es el paso siguiente. Lo que
+    // tiene que coincidir, término a término, es todo lo demás.
     let iguales = 0;
     const catalogo = ["2(x + 3) = 16", "2(x + 4) = 3x - 1", "3(x - 2) = 9", "-3(2x - 5) = 9", "2(3x + 5) = 4(x + 7)", "5(x + 1)"];
     for (const t of catalogo) {
-      if (JSON.stringify(locucionesDistributiva(t)) === JSON.stringify(escenaDeDistributiva(t, "e").focos.map((f) => f.narracion))) iguales++;
+      const dichas = locucionesDistributiva(t);
+      const marcadas = escenaDeDistributiva(t, "e").focos.map((f) => f.narracion);
+      const esperadas = /=/.test(t) ? dichas.slice(0, -1) : dichas;
+      if (JSON.stringify(esperadas) === JSON.stringify(marcadas)) iguales++;
     }
     check("las frases del reparto del motor son LAS MISMAS que las del panel", iguales === catalogo.length, `${iguales}/${catalogo.length}`);
     {
       // Y en el ejemplo, los tres focos del reparto se ven mientras se dicen.
       const ev = simular(leccion(linealResueltaLSG({ nivel: "dificil" })));
       const vistos = new Set(ev.filter((x) => x.d.tipo === "hablar" && x.escenas[x.escena]?.clase === "distributiva" && x.foco >= 0).map((x) => x.foco));
-      check("en el ejemplo de ecuaciones, la animación reparte LOS DOS términos y llega al resultado", vistos.size === 3, [...vistos].join(","));
+      check("en el ejemplo de ecuaciones, la animación reparte LOS DOS términos", vistos.size === 2, [...vistos].join(","));
     }
     const pizarraTsx = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
     check(
@@ -3307,12 +3344,15 @@ titulo("A00a3. Lo marcado se ve como una etiqueta, no como una raya");
 {
   const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   check(
-    "el término cancelado se colorea, no sólo se tacha",
-    /\.pz-cancela,\s*\.pz-marcado \{[^}]*color:/.test(estilos),
+    "el término cancelado se colorea, no sólo se tacha —y en rojo sólo al tacharlo—",
+    /\.pz-cancela,\s*\.pz-marcado \{[^}]*color: var\(--pz-foco\)/.test(estilos) &&
+      /--pz-cancelado: hsl\(0 /.test(estilos) &&
+      /f\.tipo === "tachado"/.test(readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8")),
   );
   check(
-    "lo que se opera va en el color del tema",
-    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-numerador,\s*\.pz-operado,\s*\.pz-coef-despeje \{[^}]*color:/.test(estilos),
+    "lo que se opera va en el color del tema —uno solo, el del foco activo—",
+    /\.pz-factor,\s*\.pz-reparte,\s*\.pz-numerador,\s*\.pz-operado,\s*\.pz-coef-despeje,\s*\.pz-resultado,\s*\.pz-simplificada \{[^}]*color: var\(--pz-foco\)/.test(estilos) &&
+      /--pz-foco: hsl\(/.test(estilos),
   );
   check(
     "y el denominador en el suyo, porque abajo NO se opera",
@@ -3320,7 +3360,7 @@ titulo("A00a3. Lo marcado se ve como una etiqueta, no como una raya");
   );
   check(
     "el fondo del recuadro se ve de verdad",
-    /\.pz-fondo \{[^}]*fill: hsl\(217 91% 60% \/ 0\.22\)/.test(estilos),
+    /\.pz-fondo \{[^}]*fill: hsl\(199 89% 48% \/ 0\.18\)/.test(estilos),
   );
   check(
     "y el recuadro entra con una transición, no de golpe",
@@ -5683,6 +5723,126 @@ if (!vivo) {
     );
   }
 }
+
+titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el puntero dentro");
+
+{
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
+  const pizarra = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+  const motor = readFileSync(new URL("../src/lsgPrompt.js", import.meta.url), "utf8");
+
+  // 1. «Texto introductorio innecesario … debe eliminarse» y «operaciones
+  //    auxiliares filtradas en la columna principal»: las dos eran el mismo pie.
+  check(
+    "la frase del tutor sale de la columna en la pizarra de clase…",
+    /conPie = proyeccion,/.test(panel),
+  );
+  check(
+    "…y se queda proyectada, que es donde el informe la exige a 24 px",
+    /\.modo-proyeccion \.pz-pie \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos) &&
+      /conPie && estado === "activa"/.test(panel),
+  );
+
+  // 2. «Todos los comentarios explicativos … font-sans text-sm o text-base con
+  //    leading-relaxed text-slate-300.»
+  check(
+    "los comentarios, a cuerpo de lectura, interlineado holgado y gris de pizarra",
+    /\.pz-comentario \{[^}]*font-size: 1rem;[^}]*line-height: 1\.625;/.test(estilos) &&
+      /\.dark \.pz-comentario \{[^}]*color: hsl\(213 27% 84%\)/.test(estilos),
+  );
+  check(
+    "y la prosa del taller usa la MISMA clase: no se compone como rótulo de tiza",
+    /\{ texto: apoyo\.textoAuxiliar, papel: "explicacion" \}/.test(motor) &&
+      /\{ texto: apoyo\.conclusion, papel: "explicacion" \}/.test(motor),
+  );
+
+  // 3. «Reducir la escala base de KaTeX y el espaciado vertical (py-1 /
+  //    space-y-3) … sin desplazar el encabezado fuera del viewport.»
+  check(
+    "el aire entre pasos baja a space-y-3 y el margen de cada fórmula a py-1",
+    /\.pz-ambiente \{[^}]*gap: 0\.75rem;/.test(estilos) &&
+      /\.pz-ambiente \.katex-display \{[^}]*margin: 0\.25rem 0;/.test(estilos),
+  );
+  check(
+    "…y el encabezado del ejercicio se queda pegado arriba mientras pasa el desarrollo",
+    /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
+  );
+  check(
+    "la escala compacta de KaTeX sigue siendo la de pantalla, y la de aula la de proyección",
+    /\.pz-ambiente \.katex \{\s*font-size: 1\.25rem;\s*\}/.test(estilos) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: clamp\(2\.25rem,/.test(estilos),
+  );
+
+  // 4. «Estructura exacta requerida para el Paso 1.»
+  {
+    const paso = solveLinearSteps("2(x + 3) = 16").steps[0];
+    check(
+      "Paso 1, columna izquierda: el comentario formal, y debajo 2x + 6 = 16",
+      paso.ambiente1?.explicacion === "Primero aplicamos la propiedad distributiva en el miembro izquierdo." &&
+        paso.ambiente1?.ecuacionKaTeX === "2x + 6 = 16",
+      JSON.stringify(paso.ambiente1),
+    );
+    check(
+      "Paso 1, columna derecha: el desglose con el punto de multiplicar, y nada más",
+      paso.ambiente2?.textoAuxiliar === "El 2 multiplica a cada término:" &&
+        paso.ambiente2?.calculoKaTeX === ["(2) · (x) = 2x", "(2) · (3) = 6"].join(String.fromCharCode(10)) &&
+        paso.ambiente2?.conclusion === undefined,
+      JSON.stringify(paso.ambiente2),
+    );
+  }
+
+  // 4b. Y las cuentas del taller, bien hechas y completas.
+  {
+    const conCoef = solveLinearSteps("3(2x - 1) + 4 = 5x + 9").steps[0];
+    check(
+      "el factor entra en un término CON coeficiente: 3 × 2x es 6x, no \"32x\"",
+      /\(3\) · \(2x\) = 6x/.test(conCoef.ambiente2?.calculoKaTeX ?? ""),
+      conCoef.ambiente2?.calculoKaTeX,
+    );
+    const dosLados = solveLinearSteps("2(3x + 5) = 4(x + 7)").steps[0];
+    check(
+      "con paréntesis a los dos lados se reparte en los dos, y así se dice",
+      /en los dos miembros/.test(dosLados.ambiente1?.explicacion ?? "") &&
+        /\(2\) · \(3x\) = 6x/.test(dosLados.ambiente2?.calculoKaTeX ?? "") &&
+        /\(4\) · \(7\) = 28/.test(dosLados.ambiente2?.calculoKaTeX ?? ""),
+      `${dosLados.ambiente1?.explicacion} :: ${dosLados.ambiente2?.calculoKaTeX}`,
+    );
+    check(
+      "y con uno solo se sigue diciendo \"en el miembro izquierdo\"",
+      /en el miembro izquierdo/.test(solveLinearSteps("2(x + 3) = 16").steps[0].ambiente1?.explicacion ?? ""),
+    );
+  }
+
+  // 5. El puntero guía («efecto láser o foco»), con los valores de su nota.
+  check(
+    "el término que la voz nombra lleva su halo, con el rgba y el radio que escribió",
+    /--pz-halo: rgb\(56 189 248 \/ 0\.6\)/.test(estilos) &&
+      /border-radius:4px;box-shadow:0 0 10px var\(--pz-halo\)/.test(panel) &&
+      /transition:box-shadow \.3s ease-in-out/.test(panel),
+  );
+  check(
+    "…con el pulso sutil que pedía, y quieto si el sistema pide movimiento reducido",
+    /@keyframes pz-pulso-foco \{/.test(estilos) &&
+      /--pz-pulso: pz-pulso-foco 1\.6s ease-in-out infinite;/.test(estilos) &&
+      /prefers-reduced-motion: reduce\)\s*\{\s*:root \{\s*--pz-pulso: none;/.test(estilos),
+  );
+  check(
+    "…y se traslada al taller de la derecha cuando la voz se va allí, sin alumbrar dos sitios",
+    /\.pz-ambiente\[data-ambiente="2"\] \.pz-elemento\[data-foco="si"\] \{/.test(estilos) &&
+      /const ultimoDelTaller = visibles\.at\(-1\)\?\.ambiente === 2/.test(pizarra) &&
+      /estado === "activa" && ultimoDelTaller == null/.test(pizarra) &&
+      /\[data-foco="si"\] #\$\{idPizarra\}/.test(panel),
+  );
+
+  // 6. «Reducción de la paleta de colores»: el verde cierra, no acompaña.
+  check(
+    "el verde queda para la respuesta: un resultado intermedio va en el azul del foco",
+    /\.pz-solucion \{\s*color: hsl\(160 84% 30%\)/.test(estilos) &&
+      !/\.pz-solucion,\s*\.pz-resultado/.test(estilos),
+  );
+}
+
 
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` ${ok} comprobaciones superadas · ${fallos.length} fallidas`);

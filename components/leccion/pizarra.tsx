@@ -549,6 +549,19 @@ export function Pizarra({
   // sin una segunda cápsula con su visto.
   const ultimoCierre = visibles.reduce((k, e, i) => (e.papel === "cierre" ? i : k), -1);
 
+  /**
+   * DÓNDE ESTÁ EL PUNTERO CUANDO LA VOZ SE VA AL TALLER.
+   *
+   * «Cuando pasa al cálculo auxiliar en la columna derecha, el puntero se
+   * traslada suavemente a la derecha.» Un cálculo del taller no es un paso del
+   * guion —no tiene escena, ni estado activo— así que no hay un "paso activo"
+   * al que preguntarle: lo que sí se sabe es cuál es el ÚLTIMO renglón escrito,
+   * y el taller se escribe justo cuando el tutor lo está contando. Mientras sea
+   * el último, el halo es suyo; en cuanto el hilo escribe la ecuación que
+   * sigue, el puntero vuelve a la izquierda solo.
+   */
+  const ultimoDelTaller = visibles.at(-1)?.ambiente === 2 ? visibles.at(-1)?.linea.id : null;
+
   const renderElemento = (e: ElementoPizarra) => {
     const regla = esFaseDeEjemplo(actual?.id ?? "") && reglas.length ? identificarRegla(e.linea.texto, reglas) : null;
     const estado = estadoDe(e.indiceGuion);
@@ -568,7 +581,7 @@ export function Pizarra({
      */
     if (e.linea.papelDelPaso === "explicacion") {
       return (
-        <div key={e.linea.id} className="pz-elemento" data-papel="comentario" data-estado="estatica">
+        <div key={e.linea.id} className="pz-elemento" data-papel="comentario" data-estado="estatica" data-foco="no">
           <p {...rol(ROL.PIZARRA)} className="pz-comentario">
             {e.linea.texto}
           </p>
@@ -582,6 +595,10 @@ export function Pizarra({
         className="pz-elemento"
         data-papel={e.papel}
         data-estado={e.escena ? estado : "estatica"}
+        // EL PUNTERO GUÍA. Un paso del hilo lo enciende cuando es el activo —y
+        // dentro de él, el halo cae sobre el término que el tutor nombra—; un
+        // cálculo del taller, mientras sea el último escrito.
+        data-foco={(e.escena ? estado === "activa" && ultimoDelTaller == null : e.linea.id === ultimoDelTaller) ? "si" : "no"}
       >
         {regla && (
           <span {...rol(ROL.PIZARRA)} className="pz-insignia-regla mb-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">

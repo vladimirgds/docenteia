@@ -123,6 +123,21 @@ function tieneTexto(el: Element): boolean {
   return /[^\s\u200b-\u200d\ufeff]/.test(el.textContent ?? "");
 }
 
+/**
+ * EL HALO DEL TÉRMINO ACTIVO, tal como lo escribió el cliente:
+ *
+ *   .termino-activo { box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+ *                     border-radius: 4px; transition: all 0.3s ease-in-out; }
+ *
+ * Con el pulso que él mismo pedía («una animación de pulso sutil») en
+ * `@keyframes pz-pulso-foco`, y el color en un token para que siga al tema y
+ * para que la proyección lo pueda engordar. Se inyecta como regla porque las
+ * piezas las numera KaTeX: ver `halo`, más abajo.
+ */
+const DECLARACION_HALO =
+  "border-radius:4px;box-shadow:0 0 10px var(--pz-halo);" +
+  "transition:box-shadow .3s ease-in-out;animation:var(--pz-pulso)";
+
 let lienzoDeMedida: HTMLCanvasElement | null = null;
 /** Lo que ocupa un texto con una letra dada, sin pintarlo. */
 function anchoDeTexto(texto: string, fuente: string, altoLetra: number): number {
@@ -139,7 +154,20 @@ export function PizarraAnimada({
   foco,
   estado = "activa",
   proyeccion = false,
-  conPie = true,
+  // LA FRASE DEL TUTOR NO VIVE DENTRO DE LA COLUMNA (petición del cliente,
+  // ronda de octubre). La escribía bajo cada paso y el cliente la cronometró en
+  // su vídeo: en el segundo 0 flotaba «Vamos a repartir el 2 en 2(x + 3) = 16»
+  // —«debe eliminarse; la explicación debe iniciar directamente con el
+  // comentario formal»— y en el 0:06 aparecía dentro del Ambiente 1 «El 2
+  // multiplica a x: da 2x», que «es una operación auxiliar y pertenece
+  // exclusivamente al Ambiente 2». Eran la misma cosa: este pie.
+  //
+  // En la pizarra de clase se quita: lo que el tutor dice ya se lee bajo el
+  // avatar (`.pz-subtitulo`), y la columna queda con lo que el cliente dibujó
+  // —comentario y ecuación, nada más—. EN PROYECCIÓN SE QUEDA: allí no hay
+  // bloque de subtítulo al lado, la pizarra es la pantalla entera, y el informe
+  // exige la frase del tutor a 24 px como mínimo (SUB-PRJ-03).
+  conPie = proyeccion,
   marcoFinal = true,
   className,
 }: {
@@ -148,7 +176,7 @@ export function PizarraAnimada({
   foco: number;
   estado?: EstadoEscena;
   proyeccion?: boolean;
-  /** La frase del tutor bajo el paso, cuando es el paso activo. */
+  /** La frase del tutor bajo el paso. Sólo en proyección (ver arriba). */
   conPie?: boolean;
   /**
    * Si su respuesta final va en cápsula con visto. `false` cuando detrás viene
@@ -435,6 +463,49 @@ export function PizarraAnimada({
     .map((p) => `#${idPizarra} .${p}{color:var(--pz-color-enfasis)}`)
     .join("");
 
+  /**
+   * Y EL ROJO, EN EL MOMENTO EN QUE SE TACHA.
+   *
+   * El término que se va a cancelar lleva su clase desde que se escribe la línea,
+   * así que salió rojo un paso antes de que nadie lo tachara —"2x + 6 = 16" con
+   * el 6 en rojo—. Hasta ahí es un término en foco, y va en azul; el rojo entra
+   * con el aspa, que es la marca que dice "esto se va".
+   */
+  const tachado = aDibujar
+    .filter(({ f }) => f.tipo === "tachado")
+    .flatMap(({ f }) => f.piezas ?? [f.clase])
+    .filter(Boolean)
+    .map((p) => `#${idPizarra} .${p}{color:var(--pz-cancelado)}`)
+    .join("");
+
+  /**
+   * EL PUNTERO GUÍA: EL TÉRMINO QUE SE ESTÁ NOMBRANDO, CON SU HALO.
+   *
+   * Lo pidió el cliente con el problema delante: «cuando el avatar dice "El 2
+   * multiplica a x", o "Restamos 6 a ambos miembros", la mirada del estudiante
+   * debe dirigirse de inmediato al término mencionado. Actualmente el alumno
+   * debe adivinar qué parte de la pizarra se está explicando.» Y eligió la vía
+   * ligera: «envolver los términos clave de KaTeX en clases dinámicas y
+   * aplicarles una animación de pulso sutil» —su opción A—, en vez de un
+   * puntero SVG midiendo coordenadas en cada fotograma.
+   *
+   * Se aplica como REGLA CSS sobre las piezas que ya marca el guion, igual que
+   * el revelado: no se toca el DOM de KaTeX, así que la fórmula no se recompone
+   * ni se desplaza al encenderse el halo. Sólo en el paso activo y sólo sobre el
+   * foco que el tutor está nombrando en ese momento: un halo en dos sitios a la
+   * vez no señala nada.
+   */
+  const halo =
+    estado === "activa" && foco >= 0
+      ? (escena.focos[foco]?.piezas ?? [escena.focos[foco]?.clase])
+          .filter(Boolean)
+          // Bajo `[data-foco="si"]`: el puntero es UNO. Cuando la voz se va al
+          // taller de la derecha, el renglón de allí toma el foco y este paso lo
+          // suelta, en vez de quedarse los dos encendidos a la vez.
+          .map((p) => `[data-foco="si"] #${idPizarra} .${p}{${DECLARACION_HALO}}`)
+          .join("")
+      : "";
+
   /** Dónde va el rótulo de una caja: el primer lado que no pisa ninguna cifra. */
   const rotulo = (
     texto: string,
@@ -497,7 +568,7 @@ export function PizarraAnimada({
         {/* LO QUE SE VA DESTAPANDO, declarado como REGLA CSS y no tocando el
             DOM a mano: una regla la vuelve a aplicar el navegador siempre, y
             sigue sin recomponer la fórmula. */}
-        <style>{reglasDeRevelado(idPizarra, focoVisible) + enfasis}</style>
+        <style>{reglasDeRevelado(idPizarra, focoVisible) + enfasis + tachado + halo}</style>
 
         {html ? (
           <span className="pz-formula" {...rol(ROL.FORMULA)} dangerouslySetInnerHTML={{ __html: html }} />

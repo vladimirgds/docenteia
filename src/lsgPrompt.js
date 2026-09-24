@@ -72,9 +72,25 @@ const explicaEnPizarra = (texto) => ({
  */
 function tallerAuxiliar(apoyo) {
   if (!apoyo) return [];
-  return [apoyo.textoAuxiliar, apoyo.calculoKaTeX, apoyo.conclusion]
-    .filter((t) => String(t ?? "").trim())
-    .map((texto) => ({ tipo: "pizarra", accion: "escribir", contenido: String(texto).trim(), ambiente: 2 }));
+  // Y LA PROSA DEL TALLER SE PINTA COMO PROSA, con la misma tipografía que los
+  // comentarios del hilo. «Se observan hasta cuatro tamaños distintos de texto
+  // y variaciones de interlineado en la misma columna»: el texto que presenta
+  // el cálculo —"El 2 multiplica a cada término:"— iba por la maquinaria de las
+  // NOTAS de pizarra, que parte por el primer dos puntos y compone el trozo de
+  // delante como rótulo de tiza. No es un rótulo: es una explicación.
+  return [
+    { texto: apoyo.textoAuxiliar, papel: "explicacion" },
+    { texto: apoyo.calculoKaTeX, papel: null },
+    { texto: apoyo.conclusion, papel: "explicacion" },
+  ]
+    .filter((p) => String(p.texto ?? "").trim())
+    .map((p) => ({
+      tipo: "pizarra",
+      accion: "escribir",
+      contenido: String(p.texto).trim(),
+      ambiente: 2,
+      ...(p.papel ? { papel: p.papel } : {}),
+    }));
 }
 // Una fracción llevada a otro denominador: "1/2 = 3/6", amplificada por 3. Sólo se etiqueta si de
 // verdad se multiplica: "1/6 = 1/6" —la que ya tenía el denominador común— no tiene gesto que enseñar.
@@ -936,7 +952,17 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
       // Sin saber el paso, todos llevan su andamiaje; sabiéndolo, sólo ése.
       if (enDuda < 0 || enDuda === k) dir.push(abre(andamiajeLineal(s.explica)), { ...PAUSA_LECTURA });
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
-      if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      // EL REPARTO, TÉRMINO A TÉRMINO —Y EL "QUEDA…" CUANDO YA ESTÁ ESCRITO.
+      //
+      // Las frases de los términos acompañan a la escuadra del "× 2" sobre la
+      // ecuación original, que es donde vive. La última —"Queda 2x + 6 = 16"— ya
+      // no destapa un segundo renglón de esa misma escena: esa ecuación es ahora
+      // el paso siguiente del hilo, con su comentario encima, así que se dice
+      // DESPUÉS de escribirla. Una línea, un tiempo.
+      const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
+      if (k === 0 && reparto) {
+        for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      }
       if (s.accion?.tipo === "cancelacion") {
         dir.push(...tiempoDeCancelacion(k === 0 ? lin.original : lin.steps[k - 1]?.escribe, PAUSA_LECTURA));
       }
@@ -945,6 +971,7 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
         dir.push(...cierreDelEjercicio(s.escribe, lin.answer, `¡Y listo! Resultado final: ${lin.varName} = ${lin.answer}.`));
       } else {
         dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
+        if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
       }
     });
     dir.push(...(practica ? pasaLaPalabra() : [abre(`Así llegamos a la solución de ${lin.original}.`)]));
@@ -2016,7 +2043,17 @@ export function linealResueltaLSG(opts = {}) {
     // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
     // antes de escribir la siguiente.
     dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
-    if (k === 0 && reparto) for (const frase of reparto) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+    // EL REPARTO, TÉRMINO A TÉRMINO —Y EL "QUEDA…" CUANDO YA ESTÁ ESCRITO.
+    //
+    // Las frases de los términos acompañan a la escuadra del "× 2" sobre la
+    // ecuación original, que es donde vive. La última —"Queda 2x + 6 = 16"— ya
+    // no destapa un segundo renglón de esa misma escena: esa ecuación es ahora
+    // el paso siguiente del hilo, con su comentario encima, así que se dice
+    // DESPUÉS de escribirla. Una línea, un tiempo.
+    const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
+    if (k === 0 && reparto) {
+      for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+    }
     // El despeje se cuenta en dos tiempos: primero se escribe la resta en los dos
     // lados (la frase de arriba) y, tras su pausa, se dice que se cancela — y es
     // esa segunda frase la que dispara el tachado rojo sobre la línea a la vista.
@@ -2032,6 +2069,7 @@ export function linealResueltaLSG(opts = {}) {
       dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
     } else {
       dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+      if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
       // Y el objetivo del paso SIGUIENTE, escrito encima de la ecuación que va
       // a producir: primero para qué, luego la ecuación.
       if (sol.steps[k + 1]?.explica) dir.push(explicaEnPizarra(sol.steps[k + 1].explica));

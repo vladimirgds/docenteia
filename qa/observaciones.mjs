@@ -56,6 +56,17 @@
 //          tipografía en toda la pizarra, y las ecuaciones sólo KaTeX.
 //   R3-04  Cada columna con su papel también en una suma de fracciones: las dos
 //          conversiones son desarrollo (hilo) y el MCM es apoyo (borrador).
+//   R6-01  Ninguna frase del tutor flotando dentro de la columna: en la pizarra
+//          de clase se lee bajo el avatar (el cliente la cronometró en el
+//          segundo 0 sobre el Ambiente 1: «debe eliminarse»).
+//   R6-02  El desglose auxiliar vive SÓLO en el Ambiente 2: «"El 2 multiplica a
+//          x: da 2x" … pertenece exclusivamente al Ambiente 2».
+//   R6-03  El encabezado «Ejercicio:» no se sale nunca del área visible, por
+//          largo que sea el desarrollo (lo midió entre 0:49 y 0:58).
+//   R6-04  El puntero guía señala un solo sitio, y es el que la voz nombra.
+//   R6-05  El verde es de la respuesta: ningún resultado intermedio en verde.
+//   R6-06  El comentario del reparto, ENTRE la ecuación original y la repartida:
+//          «justo debajo de la ecuación original y antes de mostrar 2x + 6 = 16».
 //
 // Y LA SEGUNDA RONDA DEL CLIENTE, las ayudas en la práctica:
 //
@@ -205,6 +216,20 @@ function instalarMedidor() {
       .replace(/\s+/g, " ")
       .trim();
   };
+  /**
+   * Lo que un renglón de la pizarra ENSEÑA, sin la voz del tutor.
+   *
+   * Proyectando, la frase del tutor se pinta dentro del propio paso (`.pz-pie`:
+   * allí no hay avatar al lado y el informe la exige a 24 px). Es voz, no
+   * pizarra: quien pregunte qué hay ESCRITO en una columna tiene que leerla sin
+   * ella, o la narración del reparto contaría como texto del Ambiente 1.
+   */
+  const textoDePizarra = (el) => {
+    if (!el) return "";
+    const c = el.cloneNode(true);
+    c.querySelectorAll(".pz-pie").forEach((n) => n.remove());
+    return textoVisible(c);
+  };
   const fuenteTex = (el) => {
     if (!el) return "";
     const c = el.cloneNode(true);
@@ -241,17 +266,50 @@ function instalarMedidor() {
 
   window.__obs = () => {
     const proy = Boolean(document.querySelector(".modo-proyeccion"));
+    // La última frase del tutor que no era el aviso de pausa, con su fracción.
+    {
+      const el = document.querySelector(".pz-subtitulo");
+      const t = textoVisible(el);
+      if (t && !t.startsWith("⏸")) {
+        window.__ultimaFrase = t;
+        window.__ultimaFraseConFraccion = Boolean(el.querySelector(".katex .mfrac"));
+      }
+    }
     const pizarra = document.querySelector(".pz-pizarra");
     const fase = pizarra?.getAttribute("data-fase") ?? "";
     const out = {
       proy,
       fase,
       sub: document.querySelector(".pz-subtitulo")?.textContent ?? "",
-      pie: textoVisible(document.querySelector(".pz-pie")),
-      pieConFraccion: Boolean(document.querySelector(".pz-pie .katex .mfrac")),
+      // LA FRASE DEL TUTOR, DONDE SE LEA.
+      //
+      // En proyección va bajo el paso (`.pz-pie`, 24 px como mínimo: SUB-PRJ-03);
+      // en la pizarra de clase se lee bajo el avatar (`.pz-subtitulo`) y ya no
+      // dentro de la columna —el cliente la cronometró flotando sobre el
+      // Ambiente 1 y pidió quitarla de ahí—. Lo que comprueban las reglas de
+      // abajo es QUÉ está diciendo el tutor, no en qué caja lo pinta cada modo.
+      //
+      // Y SE MIDE CON LA CLASE PARADA: el reproductor escribe "⏸ En pausa — pulsa
+      // Reanudar" en ese mismo hueco, así que una medición hecha en pausa leería
+      // el aviso en vez de la frase. Se guarda la última que SÍ era del tutor.
+      pie: textoVisible(document.querySelector(".pz-pie")) || window.__ultimaFrase || "",
+      pieConFraccion: Boolean(document.querySelector(".pz-pie .katex .mfrac")) || Boolean(window.__ultimaFraseConFraccion),
       pregunta: Boolean([...document.querySelectorAll("input")].find((i) => /respuesta/i.test(i.placeholder ?? ""))),
       ancho: window.innerWidth,
-      tablero: textoVisible(document.querySelector(".pz-tablero-cuerpo")),
+      // LO QUE LA PIZARRA ENSEÑA, SIN LA VOZ DEL TUTOR.
+      //
+      // OBS-09 compara pantalla y proyección palabra por palabra, y lo que compara
+      // es la PIZARRA. La frase del tutor no es pizarra: proyectando se lee bajo
+      // el paso (allí no hay avatar al lado, y el informe la exige a 24 px) y en
+      // pantalla bajo el avatar, fuera del tablero. Compararla aquí diría que las
+      // dos vistas enseñan cosas distintas cuando enseñan lo mismo.
+      tablero: (() => {
+        const cuerpo = document.querySelector(".pz-tablero-cuerpo");
+        if (!cuerpo) return "";
+        const c = cuerpo.cloneNode(true);
+        c.querySelectorAll(".pz-pie").forEach((n) => n.remove());
+        return textoVisible(c);
+      })(),
       estados: [...document.querySelectorAll(".pz-elemento")].map((e) => `${e.closest("[data-ambiente]")?.getAttribute("data-ambiente")}:${e.getAttribute("data-papel")}:${e.getAttribute("data-estado")}`).join("|"),
       // Cada paso, por la LÍNEA DEL GUION de la que viene: no puede haber dos
       // iguales en la pizarra. Se mira la línea y no lo pintado porque los dos
@@ -298,11 +356,21 @@ function instalarMedidor() {
       terminada: Boolean(document.querySelector("[data-terminada='si']")),
       // R4-02: si hay tachado en la pizarra, con qué frase se está diciendo.
       tachados: [...document.querySelectorAll('.pz-elemento[data-estado="activa"] .pz-resaltado[data-tipo="tachado"]')].filter(visible).length,
-      pieActivo: textoVisible(document.querySelector(".pz-elemento[data-estado='activa'] .pz-pie")),
+      pieActivo:
+        textoVisible(document.querySelector(".pz-elemento[data-estado='activa'] .pz-pie")) ||
+        window.__ultimaFrase ||
+        "",
       // R4-03: ninguna barra gris nativa dentro de la pizarra.
       barrasScroll: [],
       // R5-01/R5-03: renglones partidos y cuánto se sale el paso activo.
       partidas: [],
+      // R6-01 … R6-05: la ronda del vídeo cronometrado.
+      pieEnColumna: 0,
+      desgloseEnHilo: [],
+      encabezadoFuera: null,
+      halos: [],
+      verdesIntermedios: [],
+      repartoFueraDeSitio: null,
       // R5-04 / R5-05: el orden dentro de cada bloque y la tipografía del comentario.
       ordenInvertido: [],
       comentarioSuelto: 0,
@@ -572,6 +640,92 @@ function instalarMedidor() {
       // Y un bloque con comentario tiene que traer su desarrollo detrás.
       if (iComentario === 0 && hijos.length < 2) out.comentarioSuelto += 1;
     }
+    // ── LA RONDA DEL VÍDEO CRONOMETRADO ────────────────────────────────────
+    //
+    // R6-01: la frase del tutor no flota dentro de la columna. «En el segundo
+    // 0:00-0:01 aparece la frase flotante "Vamos a repartir el 2 en 2(x + 3) =
+    // 16". Debe eliminarse; la explicación debe iniciar directamente con el
+    // comentario formal.» En proyección SÍ va —allí no hay avatar al lado y el
+    // informe la exige a 24 px (SUB-PRJ-03)—, y por eso se cuenta aparte.
+    out.pieEnColumna = [...document.querySelectorAll(".pz-ambientes .pz-pie")].filter(visible).length;
+
+    // R6-02: EL DESGLOSE AUXILIAR, SÓLO EN EL AMBIENTE 2. «En 0:06 aparece dentro
+    // del Ambiente 1 el texto "El 2 multiplica a x: da 2x". Esta frase es una
+    // operación auxiliar y pertenece exclusivamente al Ambiente 2.» Se busca su
+    // forma —"multiplica a …"— y la de las cuentas del taller, "(2) · (x) = 2x".
+    {
+      const hilo = document.querySelector('.pz-ambiente[data-ambiente="1"]');
+      for (const e of hilo ? [...hilo.querySelectorAll(".pz-elemento")] : []) {
+        if (!visible(e) || e.getAttribute("data-papel") === "nota") continue;
+        const t = textoDePizarra(e).replace(/\s+/g, " ");
+        if (/multiplica a (cada t|[a-z0-9])/i.test(t) || /\(\s*-?\d+\s*\)\s*[·*]/.test(t)) {
+          out.desgloseEnHilo.push(t.slice(0, 60));
+        }
+      }
+    }
+
+    // R6-03: EL ENCABEZADO NO SE VA DE LA PANTALLA. «A partir del segundo
+    // 0:49-0:58, la acumulación de pasos empuja el contenido hacia arriba,
+    // provocando que el encabezado del ejercicio desaparezca del área visible.»
+    {
+      const cab = document.querySelector(".pz-encabezado-ejercicio");
+      const cuerpo = document.querySelector(".pz-tablero-cuerpo");
+      if (cab && cuerpo && visible(cab)) {
+        const a = cab.getBoundingClientRect();
+        const c = cuerpo.getBoundingClientRect();
+        out.encabezadoFuera = Math.max(0, c.top - a.top, a.bottom - c.bottom);
+      }
+    }
+
+    // R6-04: EL PUNTERO GUÍA SEÑALA UN SOLO SITIO. «Cuando el audio explica el
+    // miembro izquierdo, el foco alumbra el miembro izquierdo. Cuando pasa al
+    // cálculo auxiliar en la columna derecha, el puntero se traslada suavemente
+    // a la derecha.» Dos halos a la vez no señalan nada.
+    out.halos = [...document.querySelectorAll('.pz-ambientes [data-foco="si"]')]
+      .filter(visible)
+      .map((e) => `${e.closest("[data-ambiente]")?.getAttribute("data-ambiente") ?? "?"}:${textoVisible(e).replace(/\s+/g, " ").slice(0, 28)}`);
+
+    // R6-06: EL COMENTARIO DEL REPARTO, ENTRE LAS DOS ECUACIONES.
+    //
+    // El cliente dibujó la columna del Paso 1 entera: «Ejercicio: 2(x + 3) = 16 /
+    // 2(x + 3) = 16 / Primero aplicamos la propiedad distributiva en el miembro
+    // izquierdo. / 2x + 6 = 16». La ecuación repartida iba pegada a la original
+    // —eran dos renglones de una misma fórmula— y el comentario quedaba debajo
+    // de las dos, «empujado abajo como un pie de página».
+    //
+    // Se mira el ORDEN de los renglones y no su texto: un paso del hilo enseña
+    // por momentos la operación que se le hace encima —"2x + 6 - 6 = 16 - 6"
+    // sobre "2x + 6 = 16"— y volvería esquivo buscar la ecuación literal. Lo que
+    // el cliente pidió es la POSICIÓN: la original antes, el desarrollo después.
+    {
+      const cab = document.querySelector(".pz-encabezado-ejercicio")?.getAttribute("data-enunciado") ?? "";
+      const enunciado = cab.replace(/\s/g, "");
+      const fila = [...document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .pz-elemento')]
+        .filter(visible)
+        .map((e) => ({ papel: e.getAttribute("data-papel"), t: textoDePizarra(e).replace(/\s/g, "") }));
+      const i = fila.findIndex((x) => x.papel === "comentario" && /distributiva/i.test(x.t));
+      // Sólo cuando el comentario ya está escrito Y detrás viene su desarrollo:
+      // antes de eso no hay orden que juzgar.
+      const sigue = fila.slice(i + 1).find((x) => x.papel !== "comentario");
+      if (i >= 0 && enunciado && sigue) {
+        const antes = fila.slice(0, i).some((x) => x.t.includes(enunciado));
+        out.repartoFueraDeSitio = antes
+          ? ""
+          : `el comentario (${i}) no tiene la ecuación original delante: ${JSON.stringify(fila.map((x) => `${x.papel}:${x.t.slice(0, 20)}`))}`;
+      }
+    }
+
+    // R6-05: EL VERDE ES DE LA RESPUESTA. «Se están mezclando amarillo, azul,
+    // blanco, verde, rojo… conviene unificar»: lo que se colaba en mitad del
+    // desarrollo era el verde de un resultado INTERMEDIO.
+    for (const e of document.querySelectorAll(".pz-ambientes .pz-resultado, .pz-ambientes .pz-simplificada")) {
+      if (!visible(e)) continue;
+      const rgb = (getComputedStyle(e).color.match(/\d+/g) ?? []).map(Number);
+      const [r, g, b] = rgb;
+      // Verde: el canal verde manda con claridad sobre los otros dos.
+      if (g > r + 40 && g > b + 40) out.verdesIntermedios.push(`${textoVisible(e).slice(0, 20)} ${getComputedStyle(e).color}`);
+    }
+
     // R5-05: LA TIPOGRAFÍA DE LOS COMENTARIOS, UNA SOLA EN TODA LA PIZARRA.
     {
       const estilos = [...document.querySelectorAll(".pz-comentario")].filter(visible).map((n) => {
@@ -910,7 +1064,22 @@ function comprobarSiempre(m, clase) {
     verificar("OBS-06", "«Ejercicio:» en letra de pizarra (Chalkboard SE)", m.encabezado.rol === "BOARD_LABEL" && /^"?Chalkboard SE/.test(m.encabezado.fuente), m.encabezado.fuente);
   }
   for (const a of m.ambientes) {
-    verificar(a.n === "2" ? "OBS-08" : "OBS-10", `Ambiente ${a.n}: 24 px (gap-6) entre notas`, a.hueco >= 23.5, `${a.hueco} px`);
+    // EL AIRE ENTRE PASOS LO CAMBIÓ EL CLIENTE, Y A LA BAJA.
+    //
+    // El informe puso gap-6 (24 px) y así estuvo. Luego cronometró el vídeo:
+    // «a partir del segundo 0:49 la acumulación de pasos empuja el contenido
+    // hacia arriba, provocando que el encabezado desaparezca del área visible …
+    // es indispensable reducir la escala base de KaTeX y el espaciado vertical
+    // (py-1 / space-y-3)». `space-y-3` son 12 px, y es lo que se exige ahora:
+    // EXACTAMENTE eso, ni más —volvería el colapso— ni menos —los renglones se
+    // tocarían—. Proyectada, donde la letra es tres veces más alta, el aire
+    // acompaña (1,25 rem).
+    verificar(
+      a.n === "2" ? "OBS-08" : "OBS-10",
+      m.proy ? `Ambiente ${a.n}: aire de aula entre pasos` : `Ambiente ${a.n}: 12 px (space-y-3) entre pasos`,
+      m.proy ? a.hueco >= 16 : Math.abs(a.hueco - 12) <= 0.5,
+      `${a.hueco} px`,
+    );
     verificar(a.n === "2" ? "OBS-08" : "OBS-10", `Ambiente ${a.n}: todo alineado a la izquierda`, a.desalineado <= 2 && a.formulaDesplazada <= 8 && a.alineacion.every((t) => t === "left" || t === "start"), `desvío ${a.desalineado.toFixed(1)} / ${a.formulaDesplazada.toFixed(1)} px ${a.alineacion.join(",")}`);
   }
   {
@@ -1065,6 +1234,68 @@ function comprobarSiempre(m, clase) {
     "y ningún comentario se parte en rótulo de tiza + cuerpo, como si fuera una nota",
     (m.comentarioConRotulo ?? 0) === 0,
     `${m.comentarioConRotulo ?? 0} comentarios rotulados (${clase})`,
+  );
+
+  // ── LA RONDA DEL VÍDEO CRONOMETRADO ──────────────────────────────────────
+
+  // R6-01: LA FRASE DEL TUTOR NO FLOTA DENTRO DE LA COLUMNA.
+  //
+  // «En el segundo 0:00-0:01 aparece la frase flotante "Vamos a repartir el 2 en
+  // 2(x + 3) = 16". Debe eliminarse; la explicación debe iniciar directamente
+  // con el comentario formal.» Y en 0:06, dentro del Ambiente 1, "El 2 multiplica
+  // a x: da 2x". Eran el mismo pie. En la pizarra de clase se lee bajo el
+  // avatar; PROYECTADA se queda donde estaba, que allí es el único subtítulo.
+  verificar(
+    "R6-01",
+    m.proy
+      ? "proyectada, la frase del tutor sigue bajo el paso"
+      : "en la pizarra de clase no flota ninguna frase del tutor dentro de la columna",
+    m.proy ? true : (m.pieEnColumna ?? 0) === 0,
+    `${m.pieEnColumna ?? 0} pies dentro de los ambientes (${clase})`,
+  );
+
+  // R6-02: EL DESGLOSE AUXILIAR, SÓLO EN EL AMBIENTE 2.
+  verificar(
+    "R6-02",
+    "el desglose de la distributiva vive sólo en el Ambiente 2, nunca en el hilo",
+    (m.desgloseEnHilo ?? []).length === 0,
+    `${(m.desgloseEnHilo ?? []).slice(0, 2).join(" · ")} (${clase}${m.proy ? ", proyección" : ""})`,
+  );
+
+  // R6-03: EL ENCABEZADO NO SE VA DE LA PANTALLA.
+  if (m.encabezadoFuera != null) {
+    verificar(
+      "R6-03",
+      "el encabezado «Ejercicio:» sigue a la vista por largo que sea el desarrollo",
+      m.encabezadoFuera <= 2,
+      `se sale ${(m.encabezadoFuera ?? 0).toFixed(1)} px (${clase}${m.proy ? ", proyección" : ""})`,
+    );
+  }
+
+  // R6-04: EL PUNTERO GUÍA SEÑALA UN SOLO SITIO.
+  verificar(
+    "R6-04",
+    "el puntero guía alumbra un solo sitio de la pizarra",
+    (m.halos ?? []).length <= 1,
+    `${(m.halos ?? []).length}: ${(m.halos ?? []).join(" · ").slice(0, 120)} (${clase})`,
+  );
+
+  // R6-06: EL COMENTARIO DEL REPARTO, ENTRE LAS DOS ECUACIONES.
+  if (m.repartoFueraDeSitio != null) {
+    verificar(
+      "R6-06",
+      "el comentario del reparto va entre la ecuación original y la repartida",
+      m.repartoFueraDeSitio === "",
+      `${m.repartoFueraDeSitio} (${clase}${m.proy ? ", proyección" : ""})`,
+    );
+  }
+
+  // R6-05: EL VERDE ES DE LA RESPUESTA, Y DE NADA MÁS.
+  verificar(
+    "R6-05",
+    "ningún resultado intermedio en verde: el verde cierra el ejercicio",
+    (m.verdesIntermedios ?? []).length === 0,
+    `${(m.verdesIntermedios ?? []).slice(0, 2).join(" · ")} (${clase})`,
   );
 
   // R4-03: ninguna barra gris nativa, ni en pantalla ni proyectando.
@@ -1577,7 +1808,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

@@ -3910,3 +3910,167 @@ vertical es para el ejercicio de aritmética, donde sí es el contenido.
 Dos que quedaban largos se reescribieron con las palabras de sus ejemplos:
 «Aplicamos la propiedad distributiva en el miembro izquierdo» y «Restamos 3x en
 ambos miembros para agrupar incógnitas».
+
+## 54. Decimoctava ronda: el texto fuera de la columna, y un puntero que guía la mirada
+
+El cliente volvió con el vídeo cronometrado otra vez, y esta vez con la columna
+del Paso 1 escrita entera: lo que dice, lo que debe decir y por qué. Además, una
+nota aparte pidiendo algo que no existía: un puntero que señale el término que la
+voz está nombrando.
+
+### 1. «Inversión y desubicación de textos»
+
+Tres observaciones que, mirando el código, resultaron ser **una sola cosa**: el
+pie de cada paso.
+
+> «En el segundo 0:00-0:01 aparece la frase flotante "Vamos a repartir el 2 en
+> 2(x + 3) = 16". Debe eliminarse; la explicación debe iniciar directamente con
+> el comentario formal.»
+>
+> «En 0:06 aparece dentro del Ambiente 1 el texto "El 2 multiplica a x: da 2x".
+> Esta frase es una operación auxiliar y pertenece exclusivamente al Ambiente 2.»
+>
+> «En 0:15-0:20 el comentario explicativo queda empujado abajo como un pie de
+> página, en letra minúscula.»
+
+Las tres frases salían del mismo sitio: la pizarra animada escribía **bajo cada
+paso** lo que el tutor estaba diciendo de él. Por eso la entrada de la escena
+flotaba en el segundo 0, por eso la narración foco a foco del reparto caía dentro
+del Ambiente 1, y por eso el comentario —que va debajo de ese pie— se leía como
+un pie de página.
+
+Ese bloque se va de la pizarra de clase. Lo que el tutor dice ya se lee bajo el
+avatar, y la columna se queda con lo que él dibujó: comentario y ecuación.
+**Proyectada sí se queda**, porque allí no hay avatar al lado —la pizarra es la
+pantalla entera— y el informe exige la frase del tutor a 24 px como mínimo
+(SUB-PRJ-03). Lo comprueba **R6-01**, con las dos caras: en pantalla, ningún pie
+dentro de los ambientes; proyectando, el pie donde estaba.
+
+Y **R6-02** cierra la puerta por la que se coló: ninguna línea del Ambiente 1
+puede decir «multiplica a …» ni traer una cuenta del taller.
+
+### 2. Tipografía e interlineado
+
+> «Todos los comentarios explicativos de la columna izquierda deben compartir la
+> misma clase tipográfica base (font-sans text-sm o text-base con leading-relaxed
+> text-slate-300).»
+
+De los dos cuerpos que admite se toma el mayor, `text-base` (1 rem), porque el
+anterior era justo el que él leyó como «letra minúscula»; `leading-relaxed`
+(1,625) y slate-300. Y la misma clase la llevan ahora **las explicaciones del
+Ambiente 2**: la queja era de «hasta cuatro tamaños distintos de texto en la
+misma columna», y con dos columnas son las dos. El texto que presenta el cálculo
+—«El 2 multiplica a cada término:»— iba por la maquinaria de las NOTAS de
+pizarra, que parte por el primer dos puntos y compone el trozo de delante como
+rótulo de tiza. No es un rótulo: es una explicación.
+
+> «Reducción de la paleta: amarillo para el título; blanco para las ecuaciones
+> formales; azul claro únicamente para términos en foco activo; gris claro
+> (slate-300) para explicaciones textuales.»
+
+Un solo azul para todo lo que está en foco, y no cinco tonos por familia. El
+verde que él vio en mitad del desarrollo era el de `.pz-resultado`, que es un
+resultado **intermedio**: «2x + 6 = 16» no es la meta, es el término en foco, y
+va en el azul del foco. El verde queda para la respuesta, que es la que cierra.
+Lo comprueba **R6-05**.
+
+Quedan fuera de la lista dos marcas que el propio cliente pidió antes y que no
+son color de texto sino **gesto**, cada una con una sola aparición por ejercicio:
+el tachado rojo —«la única marca que dice esto se va»— y la cápsula esmeralda de
+la respuesta final, cuyos valores escribió él mismo (SUB-NOT-04).
+
+Y las dos se ciñen ahora a su momento. El término que se va a cancelar llevaba su
+clase desde que se escribía la línea, así que en «2x + 6 = 16» el 6 ya salía
+**rojo un paso antes** de que nadie lo cancelara. Hasta que llega su tachado es un
+término en foco y va en azul; el rojo entra con el aspa. Lo mismo con el ámbar:
+el conector del reparto dejaba el 2 en amarillo y la x en azul dentro de la misma
+ecuación —«azul claro ÚNICAMENTE para términos en foco activo»—; es un solo azul,
+y lo que distingue al término que el tutor nombra AHORA es el halo del puntero
+guía, que para eso se puso.
+
+### 3. El colapso vertical
+
+> «A partir del segundo 0:49-0:58 la acumulación de pasos empuja el contenido
+> hacia arriba, provocando que el encabezado del ejercicio desaparezca del área
+> visible. Es indispensable reducir la escala base de KaTeX y el espaciado
+> vertical (py-1 / space-y-3).»
+
+El aire entre pasos era de 1,5 rem: por diez renglones, 240 px de pantalla
+gastados en nada. Baja a `space-y-3` (0,75 rem) y el margen de cada fórmula a
+`py-1`, como él escribió; la escala de KaTeX se queda en el 1,25 rem de la ronda
+anterior, que es la que él mismo fijó. El encabezado, además, va pegado arriba
+mientras el desarrollo pasa por debajo. **R6-03** mide exactamente eso: cuántos
+píxeles se sale el encabezado del área visible, en cada clase y en cada momento
+de la lección.
+
+### 4. La estructura exacta del Paso 1
+
+La escribió él, y es la que produce el motor:
+
+```
+Ambiente 1                       Ambiente 2
+Ejercicio: 2(x + 3) = 16         El 2 multiplica a cada término:
+2(x + 3) = 16                    (2) · (x) = 2x
+Primero aplicamos la propiedad   (2) · (3) = 6
+distributiva en el miembro
+izquierdo.
+2x + 6 = 16
+```
+
+Las cuentas pasan a su notación —`(2) · (x) = 2x`— y desaparece el «Por eso queda
+2x + 6» con el que cerraban: esa ecuación ya está escrita en el Ambiente 1, en el
+renglón de debajo de su comentario. La llave `× 2` bajo el paréntesis se queda,
+como él pidió.
+
+**Y el comentario entre las dos ecuaciones exigió separarlas.** Iban pegadas
+porque eran dos renglones de la MISMA fórmula: la escena del reparto componía un
+`aligned` con la original arriba y la repartida debajo, alineadas por el igual, y
+entre dos renglones de una fórmula no cabe un comentario. Así que la ecuación
+repartida deja de ser el segundo renglón de esa escena y pasa a ser **el paso
+siguiente del hilo** —que es lo que el motor ya escribe, y que hasta ahora la
+pizarra descartaba por repetido—.
+
+No se pierde nada de la animación: el factor, cada sumando y la escuadra del
+`× 2` que los une viven TODOS en el primer renglón. Lo que se mueve de sitio es
+el resultado. Y como ya no se destapa ahí, el «Queda 2x + 6 = 16» se dice
+**después** de escribir la línea, no antes: una línea, un tiempo. Lo comprueba
+**R6-06**, que mide el orden de los tres renglones en la columna.
+
+**Dos defectos que salieron de camino, con su ejercicio delante.** El segundo que
+el cliente mandó es `3(2x − 1) + 4 = 5x + 9`, y el taller escribía
+`(3) · (2x) = 32x`: el producto pegaba el factor delante del término, que sólo
+vale cuando el término no lleva número. Y en `2(3x + 5) = 4(x + 7)` la frase
+decía «en el miembro izquierdo» mientras el renglón siguiente enseñaba los dos
+miembros repartidos; ahora dice «en los dos miembros» y el taller desglosa los
+dos.
+
+### 5. El puntero guía
+
+> «Cuando el avatar dice "El 2 multiplica a x", o "Restamos 6 a ambos miembros",
+> la mirada del estudiante debe dirigirse de inmediato al término mencionado.
+> Actualmente el alumno debe adivinar qué parte de la pizarra se está
+> explicando.»
+
+De las dos vías que propuso se toma la suya, la ligera (su opción A): un halo
+sobre el término, con los valores que escribió —`0 0 10px rgba(56, 189, 248,
+0.6)`, `border-radius: 4px`, `0.3s ease-in-out`— y el pulso sutil que pedía. No
+un puntero SVG recalculando `getBoundingClientRect()` en cada fotograma: la capa
+de marcas ya mide la fórmula, y un segundo medidor compitiendo con ella es lo que
+provoca los saltos.
+
+Se aplica como **regla CSS** sobre las piezas que el guion ya marca, igual que el
+revelado: no se toca el DOM de KaTeX, así que la fórmula no se recompone ni se
+mueve al encenderse el halo. Y quién lo lleva encendido lo decide el guion, no el
+CSS: el foco que el tutor está nombrando.
+
+«Cuando pasa al cálculo auxiliar en la columna derecha, el puntero se traslada
+suavemente a la derecha.» Un cálculo del taller no es un paso del guion —no tiene
+escena ni estado activo—, así que no hay a quién preguntarle; lo que sí se sabe
+es cuál es el **último renglón escrito**, y el taller se escribe justo cuando el
+tutor lo está contando. Mientras sea el último, el halo es suyo; en cuanto el
+hilo escribe la ecuación que sigue, el puntero vuelve solo a la izquierda. **Y
+señala un solo sitio**: dos halos a la vez no señalan nada, y eso lo comprueba
+**R6-04**.
+
+Con movimiento reducido el pulso se apaga y el halo se queda quieto: lo que sobra
+es la animación, no la señal.

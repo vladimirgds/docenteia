@@ -122,7 +122,10 @@ function instalarMirador() {
       rotulo: (document.querySelector("svg[data-estado]")?.parentElement?.textContent ?? "").trim().slice(0, 40),
       // Por dónde va la pizarra: qué línea está activa y qué dice su pie.
       lineaActiva: (activo?.textContent ?? "").replace(/\s+/g, "").slice(0, 60),
-      pie: (pie?.textContent ?? "").trim(),
+      // La frase del tutor: bajo el avatar en la pizarra de clase, bajo el paso
+      // al proyectar. Se mira donde esté, que es lo que hace que «Avanzar» se
+      // note aunque no cambie ninguna marca.
+      pie: (pie?.textContent || document.querySelector(".pz-subtitulo")?.textContent || "").trim(),
       marcas: document.querySelectorAll(".pz-resaltado").length,
       lineas: document.querySelectorAll(".pz-elemento").length,
       pregunta: Boolean(document.querySelector(".pz-pregunta")),

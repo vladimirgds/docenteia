@@ -278,7 +278,10 @@ while (Date.now() - inicio < 45_000) {
       hayPanel: Boolean(panel),
       contador: contador?.textContent?.trim() ?? null,
       escena: panel?.querySelector(".pz-formula")?.textContent?.slice(0, 24) ?? null,
-      pie: panel?.querySelector(".pz-pie")?.textContent?.trim() ?? null,
+      pie:
+        (panel?.querySelector(".pz-pie")?.textContent ||
+          document.querySelector(".pz-subtitulo")?.textContent ||
+          "").trim() || null,
       // El rótulo "Desarrollo" de la pizarra clásica: el spoiler que no debe estar.
       hayDesarrollo: [...document.querySelectorAll("p")].some(
         (p) => p.textContent?.trim() === "Desarrollo",
@@ -1351,34 +1354,113 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
     // animación de abajo todavía está repartiendo. Se vigila mientras dura el
     // ejemplo: en ninguna muestra puede leerse en la tarjeta el resultado del
     // reparto ("2x + 6") que el enunciado no dice.
+    // Y HASTA QUE LA ECUACIÓN REPARTIDA LLEGA AL HILO.
+    //
+    // La repartida se destapaba DENTRO de la misma escena, así que con doce
+    // segundos de muestreo bastaba. Ahora es el paso siguiente —el cliente pidió
+    // el comentario entre las dos— y llega después de las dos frases del reparto,
+    // de sus pausas y del desglose del taller. Se espera a que llegue, con un
+    // presupuesto holgado, y se corta en cuanto está: lo que no puede pasar es
+    // que el muestreo se cierre antes de tiempo y dé por bueno lo que no vio.
+    // El enunciado de la tarjeta, en crudo: KaTeX lo guarda con su macro de
+    // tamaño delante y con los paréntesis en sus propias macros. Sin quitarlos,
+    // ninguna de las dos lecturas de abajo reconocía un reparto: ni la que exige
+    // que la repartida llegue al hilo, ni la que vigila que la tarjeta no la
+    // adelante, que se daba por buena sin haber mirado nada.
+    const enunciadoDeLaTarjeta = (t) =>
+      String(t ?? "").replace(/\\displaystyle|\\left|\\right|\s/g, "");
+    const laRepartida = (tarjeta) => {
+      const r = enunciadoDeLaTarjeta(tarjeta).match(/^(-?\d+)\(x([+-])(\d+)\)=(.+)$/);
+      if (!r) return null;
+      const [, f, sg, c, der] = r;
+      return `${f}x${sg}${Number(f) * Number(c)}=${der}`;
+    };
+    // ¿LA ECUACIÓN REPARTIDA ESTÁ EN EL HILO, DETRÁS DE SU COMENTARIO?
+    //
+    // Se busca su MIEMBRO IZQUIERDO y no la ecuación entera: el renglón de
+    // "2x + 6 = 16" lleva escrita —aunque invisible, a opacidad 0— la operación
+    // que le toca después, "2x + 6 - 6 = 16 - 6", así que en el texto nunca hay
+    // un "2x + 6 = 16" limpio. Y se mira DÓNDE está: detrás del comentario del
+    // reparto, que es la estructura que el cliente dibujó.
+    const repartidaEnElHilo = (n) => {
+      const esperada = laRepartida(n?.tarjeta ?? "");
+      if (!esperada) return false;
+      const izquierdo = esperada.split("=")[0];
+      const fila = n.hilo ?? [];
+      const i = fila.findIndex((x) => x.papel === "comentario" && /distributiva/i.test(x.t));
+      if (i < 0) return false;
+      const sigue = fila.slice(i + 1).find((x) => x.papel !== "comentario");
+      return Boolean(sigue && sigue.t.startsWith(izquierdo));
+    };
     const muestras = [];
     const t0 = Date.now();
-    while (Date.now() - t0 < 12000) {
+    while (Date.now() - t0 < 45000) {
       muestras.push(
         await pagina.evaluate(() => {
           // El enunciado, en el encabezado "Ejercicio:" de la pizarra.
           const tarjeta = document.querySelector(".pz-encabezado-formula annotation")?.textContent ?? "";
           const panel = document.querySelector(".pz-animada");
-          const fila = panel?.querySelector(".pz-rev-2.pz-resultado");
+          // LA ECUACIÓN REPARTIDA YA NO ES UN SEGUNDO RENGLÓN DE LA MISMA ESCENA.
+          //
+          // El cliente pidió el comentario ENTRE la original y la repartida, así
+          // que la repartida es ahora un PASO del hilo, con su bloque propio. Se
+          // busca donde está: un renglón del Ambiente 1 que diga "2x + 6 = 16"
+          // cuando el encabezado dice "2(x + 3) = 16".
+          // Se lee sin la copia en MathML —que guarda el LaTeX con sus macros de
+          // marcado, "2x + \htmlClass{...}{6} = 16"— y con los signos
+          // normalizados: KaTeX compone la x como itálica matemática (U+1D465) y
+          // el menos como signo tipográfico, así que lo escrito no se parece al
+          // "2x + 6 = 16" que se busca hasta que se pasa por NFKD.
+          const enTexto = (el) => {
+            const c = el.cloneNode(true);
+            c.querySelectorAll(".katex-mathml, style").forEach((n) => n.remove());
+            return (c.textContent ?? "")
+              .normalize("NFKD")
+              .replace(/[\u2212\u2013\u2014]/g, "-")
+              // Los espacios de anchura cero con que KaTeX maqueta sus renglones
+              // NO son espacios para `\s`, y se colaban en medio de la ecuación:
+              // "2x + 6<ZWSP>= 16" no contenía "2x+6=16" por mucho que se mirara.
+              .replace(/[\u200b-\u200d\ufeff]/g, "")
+              .replace(/\s+/g, "");
+          };
+          const hilo = [...document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .pz-elemento')].map((e) => ({
+            papel: e.getAttribute("data-papel") ?? "",
+            t: enTexto(e),
+          }));
           return {
             tarjeta,
             gesto: panel?.getAttribute("data-gesto") ?? null,
-            repartido: fila ? Number(getComputedStyle(fila).opacity) > 0.5 : false,
+            hilo,
             etiqueta: panel?.querySelector(".pz-etiqueta[data-etiqueta]")?.textContent ?? null,
-            pie: panel?.querySelector(".pz-pie")?.textContent ?? "",
+            // La frase del tutor se lee bajo el avatar: ya no dentro de la
+            // columna (el cliente pidió sacarla del Ambiente 1). En proyección
+            // sigue bajo el paso, y por eso se miran las dos.
+            pie:
+              panel?.querySelector(".pz-pie")?.textContent ||
+              document.querySelector(".pz-subtitulo")?.textContent ||
+              "",
           };
         }),
       );
       await pagina.waitForTimeout(200);
+      // Ya está: con la repartida escrita y las dos frases dichas, no hay más que ver.
+      if (
+        repartidaEnElHilo(muestras.at(-1)) &&
+        muestras.some((m) => /multiplica a x/.test(m.pie)) &&
+        muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie))
+      ) {
+        break;
+      }
     }
     const conDistributiva = muestras.filter((m) => /\d\s*\\left\(|\d\s*\(/.test(m.tarjeta));
     const spoiler = conDistributiva.filter((m) => {
       // Lo que saldría de repartir: "2x + 6" para "2(x + 3) = 16".
-      const r = m.tarjeta.replace(/\\left|\\right|\s/g, "").match(/^(-?\d+)\(x([+-])(\d+)\)=/);
+      const crudo = enunciadoDeLaTarjeta(m.tarjeta);
+      const r = crudo.match(/^(-?\d+)\(x([+-])(\d+)\)=/);
       if (!r) return false;
       const [, f, s, c] = r;
       const expandido = `${f}x${s}${Number(f) * Number(c)}`;
-      return m.tarjeta.replace(/\\left|\\right|\s/g, "").includes(`=${expandido}`) || m.tarjeta.replace(/\s/g, "").includes(expandido);
+      return crudo.includes(`=${expandido}`) || crudo.includes(expandido);
     });
     console.log(`  · tarjeta durante el reparto: ${conDistributiva[0]?.tarjeta?.replace(/\s+/g, " ").slice(0, 60) ?? "(sin paréntesis)"}`);
     check(
@@ -1386,10 +1468,30 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
       spoiler.length === 0,
       `${spoiler.length} muestras con el spoiler`,
     );
+    // La ecuación repartida tiene que LLEGAR a la pizarra, en el hilo: sin ella el
+    // reparto se quedaría contado y no escrito.
+    const repartidas = muestras.filter(repartidaEnElHilo);
+    // Con su diagnóstico: cuatro cosas distintas pueden fallar aquí, y sin
+    // saber cuál hay que adivinar.
+    const diagnostico = {
+      conParentesis: conDistributiva.length,
+      repartidasVistas: repartidas.length,
+      busco: laRepartida(conDistributiva[0]?.tarjeta ?? ""),
+      gesto: muestras.some((m) => m.gesto === "distributiva"),
+      frase1: muestras.some((m) => /multiplica a x/.test(m.pie)),
+      frase2: muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie)),
+      hilo: (muestras.map((m) => m.hilo ?? []).sort((x, y) => y.length - x.length)[0] ?? [])
+        .slice(0, 8)
+        .map((x) => `${x.papel}:${x.t.slice(0, 30)}`),
+      pies: [...new Set(muestras.map((m) => String(m.pie).slice(0, 40)))].slice(0, 6),
+    };
+    console.log(`  · reparto: ${JSON.stringify(diagnostico)}`);
     check(
-      "y la animación de abajo reparte los dos términos hasta destapar la ecuación repartida",
-      muestras.some((m) => m.gesto === "distributiva" && m.repartido) &&
+      "y la animación de abajo reparte los dos términos, y la ecuación repartida llega al hilo",
+      (conDistributiva.length === 0 || repartidas.length > 0) &&
+        muestras.some((m) => m.gesto === "distributiva") &&
         muestras.some((m) => /multiplica a x/.test(m.pie)) && muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie)),
+      JSON.stringify(diagnostico),
     );
 
     // Y la PRÁCTICA: su enunciado se le pide al alumno, así que la pizarra no

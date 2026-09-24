@@ -1385,24 +1385,34 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
 
   const cabeza = `${marcado(0, String(factor))}\\left(${dentro}\\right)`;
   const final = `pz-rev-${interior.length}`;
-  // EN UNA ECUACIÓN, LO REPARTIDO VA EN SU PROPIA LÍNEA.
+  // EN UNA ECUACIÓN, LO REPARTIDO VA EN SU PROPIO RENGLÓN —Y EN SU PROPIO PASO—.
   //
-  // Antes el resultado se colgaba al final de la línea entera: "2(x + 4) = 3x − 1
-  // = 2x + 8". Es notación falsa —encadena "3x − 1 = 2x + 8", que no es lo que
-  // se ha hecho— y fue lo que el cliente vio en la tarjeta de arriba. Repartir
-  // cambia el LADO IZQUIERDO: la línea siguiente es la misma ecuación con el
-  // paréntesis ya quitado, "2x + 8 = 3x − 1", alineada por el igual. Sin igual
-  // (una expresión suelta, "2(x + 4)"), "= 2x + 8" sí es lo correcto.
-  // Entre los dos renglones, aire para la escuadra del conector y su rótulo
-  // "× 2", que pasan por DEBAJO del primero sin pisar el segundo.
+  // Primero el resultado se colgaba al final de la línea entera: "2(x + 4) = 3x − 1
+  // = 2x + 8". Es notación falsa —encadena "3x − 1 = 2x + 8", que no es lo que se
+  // ha hecho— y fue lo que el cliente vio en la tarjeta de arriba. Después pasó a
+  // un segundo renglón de la MISMA escena, alineado por el igual.
+  //
+  // Y ahí lo paró él, con la columna del Paso 1 dibujada entera: «el comentario
+  // debe colocarse arriba, justo debajo de la ecuación original y ANTES de
+  // mostrar el resultado 2x + 6 = 16». Entre dos renglones de una misma fórmula
+  // no cabe un comentario, así que la ecuación repartida deja de ser el segundo
+  // renglón de esta escena y pasa a ser el paso siguiente del hilo, que es lo que
+  // el motor ya escribe. Esta escena se queda con la ecuación original y su
+  // reparto: el factor, cada sumando y la escuadra del "× 2" que los une, que
+  // viven TODOS en el primer renglón (`pz-reparte-0` es el factor y
+  // `pz-reparte-i` los términos de dentro del paréntesis). No se pierde nada de
+  // la animación: lo que se mueve de sitio es el resultado.
+  //
+  // Sin igual —una expresión suelta, "2(x + 4)"— no hay paso siguiente que lo
+  // escriba, y ahí "= 2x + 8" sigue siendo lo correcto, en su misma línea.
   const latex = m[3]
-    ? `\\begin{aligned} ${cabeza} &= ${planoALatex(m[3])} \\\\[1.6em] ` +
-      `${marcar(`${final} pz-resultado`, expandido)} &${marcar(`${final} pz-resultado`, `{}= ${planoALatex(m[3])}`)} \\end{aligned}`
+    ? `${cabeza} = ${planoALatex(m[3])}`
     : `${cabeza} ${marcar(final, `= ${marcar("pz-resultado", expandido)}`)}`;
 
-  // Con ecuación, el SEGUNDO renglón de esta escena es ya la línea siguiente del
-  // hilo conductor: se declara para que la pizarra no la escriba otra vez.
-  const continuacion = m[3] ? `${expandido} = ${m[3]}` : undefined;
+  // YA NO HAY CONTINUACIÓN QUE DECLARAR. La declaraba para que la pizarra no
+  // escribiera dos veces la ecuación repartida; ahora esta escena no la escribe,
+  // así que la escribe el paso siguiente del hilo —con su comentario encima— y
+  // el filtro de repetidos la deja pasar.
 
   const focos: Foco[] = interior.map((t, i) => ({
     clase: "pz-reparte",
@@ -1420,12 +1430,19 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     etiqueta: `× ${factor}`,
   }));
 
-  const derecho = String(texto ?? "").split("=").slice(1).join("=").trim();
-  focos.push({
-    clase: "pz-resultado",
-    tipo: "resultado",
-    narracion: `Queda ${expandido.replace(/\s+/g, " ").trim().replace(/^-\s+/, "-")}${m[3] && derecho ? ` = ${derecho}` : ""}.`,
-  });
+  // EL FOCO DEL RESULTADO SÓLO SI EL RESULTADO ESTÁ EN ESTA ESCENA.
+  //
+  // En una expresión suelta, "2(x + 4) = 2x + 8" se compone entera y ese foco
+  // destapa el "2x + 8" del final. En una ECUACIÓN el resultado ya no vive aquí
+  // —es el paso siguiente del hilo, detrás de su comentario—, y un foco sin nada
+  // que señalar deja la escuadra encendida sobre un hueco.
+  if (!m[3]) {
+    focos.push({
+      clase: "pz-resultado",
+      tipo: "resultado",
+      narracion: `Queda ${expandido.replace(/\s+/g, " ").trim().replace(/^-\s+/, "-")}.`,
+    });
+  }
 
   return {
     id,
@@ -1437,7 +1454,6 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     // nadie hubiera dicho nada de repartir.
     narracion: `Vamos a repartir el ${factor} en ${String(texto ?? "").trim()}.`,
     clase: "distributiva",
-    continuacion,
     focos,
   };
 }
