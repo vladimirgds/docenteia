@@ -216,6 +216,41 @@
   min-width: 0;
 }
 
+/* ── EL BLOQUE DE UN PASO: COMENTARIO ARRIBA, DESARROLLO DEBAJO ─────────────
+   «La regla pedagógica debe ser estricta e invariable para todos los temas: 1º
+   primero va el comentario, 2º luego va el desarrollo.» El orden ya era ése; lo
+   que faltaba era la caja que los une, porque sin ella un comentario se lee
+   como si fuera del renglón de arriba. */
+.pz-bloque-paso {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* ── LA TIPOGRAFÍA DE LOS COMENTARIOS, UNA SOLA ─────────────────────────────
+   «Misma familia sans-serif (la base de la interfaz), mismo tamaño legible y un
+   color consistente.» Nada de la letra de tiza ni del ámbar de los rótulos: eso
+   es para las notas rotuladas de la pizarra, y un comentario no lo es.
+   Las ECUACIONES no se tocan: «debe ser exclusivamente la generada por KaTeX,
+   sin forzar fuentes arbitrarias externas», y por eso aquí no hay una sola regla
+   que apunte a `.katex`. */
+.pz-comentario {
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: hsl(215 20% 65%);
+  margin: 0;
+}
+
+/* Proyectada, la misma familia y el mismo color: sólo crece para leerse de
+   lejos, por encima de los 24 px que pide el informe para cualquier rótulo. */
+.modo-proyeccion .pz-comentario {
+  font-size: clamp(1.5rem, 1.7vw, 1.9rem);
+  color: hsl(210 25% 80%);
+}
+
 .pz-ambiente + .pz-ambiente {
   border-left: 2px dashed hsl(var(--border));
   padding-left: 1.25rem;

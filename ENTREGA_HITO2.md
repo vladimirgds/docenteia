@@ -4,7 +4,7 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **108.773 comprobaciones en Chrome y 0
+> las de la última pasada completa): **128.065 comprobaciones en Chrome y 0
 > fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
 > (`qa/observaciones.mjs`), **31.867
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
@@ -3806,11 +3806,55 @@ respuesta del ejercicio es una y está en el hilo, así que a lo que va al talle
 se le quita esa marca —y se le quita en `escenaDeLinea`, para que el guion
 simulado y la pizarra vean exactamente lo mismo—.
 
-### Lo que NO está hecho
+### El bloque de cada paso: comentario arriba, desarrollo debajo
 
-Los bloques del taller **no se alinean horizontalmente** con el paso del hilo que
-justifican: cada columna se llena por su cuenta, así que en un ejercicio largo la
-columna derecha puede quedar fuera de la vista mientras la izquierda sigue
-bajando. El esquema del cliente los dibuja a la misma altura. Hacerlo pide
-maquetar los dos ambientes como una rejilla de filas —una fila por paso— en vez
-de dos listas independientes.
+Con la entrega anterior ya desplegada, el cliente encontró dos cosas más, y
+mandó el esquema dibujado que además cierra una duda que yo había dejado
+abierta: **el Ambiente 2 no se alinea con el Ambiente 1**, es una pila propia
+(«cálculo auxiliar del desarrollo 1, 2, 3»). Se retira, por tanto, el intento de
+alinearlos fila a fila.
+
+**1. El orden: primero el comentario, después el desarrollo.**
+
+> «En varios pasos estás colocando primero la fórmula/ecuación y después el
+> comentario explicativo. La regla pedagógica debe ser estricta e invariable
+> para todos los temas.»
+
+El orden en que se escriben ya era ése. Lo que faltaba era **agruparlos**: sin
+una caja que los una, un comentario se lee como si fuera del renglón de arriba,
+que es exactamente lo que él vio. Cada comentario abre ahora un bloque y se
+lleva consigo las líneas de desarrollo que vengan detrás, en la estructura que
+él mismo escribió:
+
+```jsx
+<div className="pz-bloque-paso">      {/* comentario primero, desarrollo después */}
+  <p className="pz-comentario">{paso.comentario}</p>
+  <div>{/* la ecuación, compuesta por KaTeX */}</div>
+</div>
+```
+
+**2. Una sola tipografía para los comentarios.**
+
+> «Misma familia sans-serif (la sans-serif base de la interfaz), mismo tamaño
+> legible y un color consistente… La tipografía de las ecuaciones matemáticas
+> debe ser exclusivamente la generada por KaTeX.»
+
+Éste era un defecto de verdad, y venía de pasar los comentarios por la
+maquinaria de las **notas** de pizarra: ésa parte el texto por el primer dos
+puntos y compone el trozo de delante como rótulo —ámbar, letra de tiza— y el
+resto en blanco. Un comentario no es una nota rotulada: es prosa, y se pinta
+como prosa. Ni una sola regla nueva apunta a `.katex`.
+
+Es el único texto de la pizarra que no lleva letra de tiza, así que **SUB-TIP-01
+recoge la excepción con su frase al lado**: los rótulos («Ejercicio:», el MCM,
+las notas) siguen en Chalkboard SE.
+
+Dos comprobaciones nuevas en las ocho clases: **R5-04** —en cada bloque el
+comentario va antes que la ecuación— y **R5-05** —todos los comentarios
+comparten familia, tamaño, peso y color, y ninguno se parte en rótulo + cuerpo—.
+
+**Y dos defectos míos que salieron de camino:** agrupar los pasos en bloques hizo
+que los hijos directos de cada columna fueran envoltorios, así que OBS-12 contaba
+«1 paso» para una columna llena; y el intento de alinear las columnas con
+`subgrid` rompía el móvil, donde los dos ambientes se apilan y quedaban uno
+encima del otro.

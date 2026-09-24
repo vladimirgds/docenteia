@@ -51,6 +51,9 @@
 //          se encoge (el cliente lo midió con 2x + 8 - 3x = 3x - 1 - 3x).
 //   R5-03  El paso que se está explicando se ve ENTERO, sin desplazar a mano:
 //          la pizarra se mueve sola al renglón activo.
+//   R5-04  En cada bloque del hilo, el COMENTARIO va antes que la ecuación.
+//   R5-05  Los comentarios comparten familia, tamaño, peso y color: una sola
+//          tipografía en toda la pizarra, y las ecuaciones sólo KaTeX.
 //   R3-04  Cada columna con su papel también en una suma de fracciones: las dos
 //          conversiones son desarrollo (hilo) y el MCM es apoyo (borrador).
 //
@@ -300,6 +303,11 @@ function instalarMedidor() {
       barrasScroll: [],
       // R5-01/R5-03: renglones partidos y cuánto se sale el paso activo.
       partidas: [],
+      // R5-04 / R5-05: el orden dentro de cada bloque y la tipografía del comentario.
+      ordenInvertido: [],
+      comentarioSuelto: 0,
+      estilosDeComentario: [],
+      comentarioConRotulo: 0,
       activoRecortado: 0,
       activoTexto: "",
       activoAlto: 0,
@@ -352,7 +360,10 @@ function instalarMedidor() {
       const cs = getComputedStyle(amb);
       const caja = R(amb);
       const izquierda = caja.x + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth);
-      const hijos = [...amb.children].filter(visible);
+      // LOS PASOS DE LA COLUMNA, no sus envoltorios: desde que cada paso del hilo
+      // se agrupa con su comentario en un bloque, los hijos directos del
+      // ambiente son bloques y contarlos daba "1 paso" para una columna llena.
+      const hijos = [...amb.querySelectorAll(".pz-elemento")].filter(visible);
       out.ambientes.push({
         n: amb.getAttribute("data-ambiente"),
         caja,
@@ -510,13 +521,24 @@ function instalarMedidor() {
         const rol = conRol.getAttribute("data-rol");
         const fuente = getComputedStyle(el).fontFamily;
         const enFormula = el.closest(".katex") && !el.closest(".pz-palabra");
+        // EL COMENTARIO DEL PASO VA EN LA SANS DE LA INTERFAZ, Y LO PIDIÓ ASÍ.
+        //
+        // «La tipografía de los comentarios explicativos debe ser uniforme en
+        // toda la plataforma: misma familia sans-serif (la sans-serif base de la
+        // interfaz), mismo tamaño legible y un color consistente.» Es el único
+        // texto de la pizarra que no lleva letra de tiza: no es un rótulo —lo
+        // eran "Ejercicio:", el MCM, las notas—, es prosa explicativa. Que sea
+        // UNA sola en toda la pizarra lo comprueba R5-05.
+        const esComentario = Boolean(el.closest(".pz-comentario"));
         const esperada = enFormula
           ? /KaTeX/
-          : rol === "TUTOR_DIALOG"
-            ? /^"?(Inter|Segoe UI)/
-            : rol === "BOARD_LABEL" || el.closest(".pz-palabra")
-              ? /^"?Chalkboard SE/
-              : /KaTeX/;
+          : esComentario
+            ? /sans-serif|Inter|Segoe UI|system-ui/i
+            : rol === "TUTOR_DIALOG"
+              ? /^"?(Inter|Segoe UI)/
+              : rol === "BOARD_LABEL" || el.closest(".pz-palabra")
+                ? /^"?Chalkboard SE/
+                : /KaTeX/;
         if (!esperada.test(fuente)) out.fuenteMala.push(`${rol}: «${texto.slice(0, 30)}» en ${fuente.split(",")[0]}`);
       }
     }
@@ -539,6 +561,27 @@ function instalarMedidor() {
     }
     // R5-03: el paso que se está explicando, entero dentro del cuerpo que se
     // desplaza. Es lo que el autodesplazamiento tiene que garantizar.
+    // R5-04: EN CADA BLOQUE, PRIMERO EL COMENTARIO Y DESPUÉS EL DESARROLLO.
+    //
+    // «La regla pedagógica debe ser estricta e invariable para todos los temas:
+    // 1º primero va el comentario, 2º luego va el desarrollo.»
+    for (const bloque of document.querySelectorAll(".pz-bloque-paso")) {
+      const hijos = [...bloque.querySelectorAll(":scope > .pz-elemento")];
+      const iComentario = hijos.findIndex((n) => n.getAttribute("data-papel") === "comentario");
+      if (iComentario > 0) out.ordenInvertido.push((bloque.textContent ?? "").replace(/\s+/g, " ").slice(0, 50));
+      // Y un bloque con comentario tiene que traer su desarrollo detrás.
+      if (iComentario === 0 && hijos.length < 2) out.comentarioSuelto += 1;
+    }
+    // R5-05: LA TIPOGRAFÍA DE LOS COMENTARIOS, UNA SOLA EN TODA LA PIZARRA.
+    {
+      const estilos = [...document.querySelectorAll(".pz-comentario")].filter(visible).map((n) => {
+        const cs = getComputedStyle(n);
+        return `${cs.fontFamily}|${cs.fontSize}|${cs.fontWeight}|${cs.color}`;
+      });
+      out.estilosDeComentario = [...new Set(estilos)];
+      // Y ninguna letra de tiza ni ámbar de rótulo dentro de un comentario.
+      out.comentarioConRotulo = document.querySelectorAll(".pz-comentario .pz-nota-rotulo, .pz-comentario .pz-rotulo").length;
+    }
     const cuerpoPizarra = document.querySelector(".pz-tablero-cuerpo");
     const pasoActivo = document.querySelector('.pz-elemento[data-estado="activa"]');
     if (cuerpoPizarra && pasoActivo && visible(pasoActivo)) {
@@ -996,6 +1039,32 @@ function comprobarSiempre(m, clase) {
     "el paso que se está explicando se ve entero, sin tener que desplazar a mano",
     (m.activoRecortado ?? 0) <= 2,
     `«${m.activoTexto ?? ""}» se sale ${m.activoRecortado ?? 0} px (paso ${m.activoAlto ?? 0} px, pizarra ${m.cuerpoAlto ?? 0} px; ${clase}${m.proy ? ", proyección" : ""})`,
+  );
+
+  // R5-04: PRIMERO EL COMENTARIO, DESPUÉS EL DESARROLLO. SIEMPRE.
+  verificar(
+    "R5-04",
+    "en cada bloque del hilo, el comentario va ANTES que la ecuación",
+    (m.ordenInvertido ?? []).length === 0,
+    `${(m.ordenInvertido ?? []).slice(0, 2).join(" · ")} (${clase}${m.proy ? ", proyección" : ""})`,
+  );
+
+  // R5-05: UNA SOLA TIPOGRAFÍA PARA LOS COMENTARIOS.
+  //
+  // «Se observa que el tipo de fuente de los mensajes y comentarios varía entre
+  // pasos… debe ser uniforme en toda la plataforma: misma familia sans-serif,
+  // mismo tamaño legible y un color consistente.»
+  verificar(
+    "R5-05",
+    "todos los comentarios comparten familia, tamaño, peso y color",
+    (m.estilosDeComentario ?? []).length <= 1,
+    `${(m.estilosDeComentario ?? []).length} estilos distintos: ${(m.estilosDeComentario ?? []).join(" || ").slice(0, 160)} (${clase})`,
+  );
+  verificar(
+    "R5-05",
+    "y ningún comentario se parte en rótulo de tiza + cuerpo, como si fuera una nota",
+    (m.comentarioConRotulo ?? 0) === 0,
+    `${m.comentarioConRotulo ?? 0} comentarios rotulados (${clase})`,
   );
 
   // R4-03: ninguna barra gris nativa, ni en pantalla ni proyectando.
@@ -1508,7 +1577,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

@@ -399,7 +399,10 @@ export function Pizarra({
     // 23 px por debajo del borde con la pizarra sin desplazar.
     acercar();
     const cuadro = requestAnimationFrame(acercar);
-    const reposo = window.setTimeout(acercar, 350);
+    // Dos reposos, no uno: entre el primero y el segundo caben el destapado de
+    // la línea y el encogido que lo sigue, y con un solo intento el renglón se
+    // quedaba de vez en cuando unos píxeles por debajo del borde.
+    const reposos = [window.setTimeout(acercar, 350), window.setTimeout(acercar, 800)];
     // Y MIENTRAS ESE PASO SIGA CRECIENDO, SE VUELVE A ACERCAR.
     //
     // El renglón del cierre —"x = 5" con su cápsula, su visto y su frase— no
@@ -415,14 +418,19 @@ export function Pizarra({
     // sólo al propio paso, una amplificación de fracciones se quedaba 42 px por
     // debajo del borde. Se vigila por tanto el bloque entero de los ambientes.
     const contenido = cuerpo?.querySelector<HTMLElement>(".pz-ambientes") ?? null;
+    // Y el BLOQUE del paso activo: el comentario y su desarrollo van juntos, y
+    // el bloque puede crecer —el comentario se compone y ocupa otro renglón—
+    // sin que crezca el propio paso.
+    const celda = activo?.closest<HTMLElement>(".pz-bloque-paso") ?? null;
     const observador = typeof ResizeObserver !== "undefined" ? new ResizeObserver(acercar) : null;
     if (observador) {
       if (activo) observador.observe(activo);
+      if (celda) observador.observe(celda);
       if (contenido) observador.observe(contenido);
     }
     return () => {
       cancelAnimationFrame(cuadro);
-      window.clearTimeout(reposo);
+      for (const t of reposos) window.clearTimeout(t);
       observador?.disconnect();
     };
   }, [animacion?.escena, animacion?.terminada]);
@@ -491,6 +499,42 @@ export function Pizarra({
     [elementos, animacion?.escena, animacion?.terminada],
   );
 
+  /**
+   * CADA PASO DEL HILO, EN UN BLOQUE: PRIMERO EL COMENTARIO, DESPUÉS EL DESARROLLO.
+   *
+   * «En varios pasos estás colocando primero la fórmula/ecuación y después el
+   * comentario explicativo. La regla pedagógica debe ser estricta e invariable
+   * para todos los temas: 1º primero va el comentario —explica la intención o el
+   * porqué de la acción antes de ejecutarla—; 2º luego va el desarrollo —la
+   * ecuación resultante formal ya operada—.»
+   *
+   * El orden en que se escriben ya era ése; lo que faltaba era AGRUPARLOS. Sin
+   * una caja que los una, un comentario se lee como si fuera del renglón de
+   * arriba, que es justo lo que vio el cliente. Cada comentario abre un bloque y
+   * se lleva consigo las líneas de desarrollo que vengan detrás, hasta el
+   * comentario siguiente.
+   *
+   * El Ambiente 2 no se agrupa: su esquema lo dibuja como una pila propia
+   * —«cálculo auxiliar del desarrollo 1, 2, 3»— al margen del alto que tenga
+   * cada bloque de la izquierda.
+   */
+  const bloques = useMemo(() => {
+    const salida: { comentario: ElementoPizarra | null; desarrollo: ElementoPizarra[] }[] = [];
+    for (const e of visibles) {
+      if (e.ambiente === 2) continue;
+      if (e.linea.papelDelPaso === "explicacion") {
+        salida.push({ comentario: e, desarrollo: [] });
+        continue;
+      }
+      const ultimo = salida[salida.length - 1];
+      // Lo que llega ANTES del primer comentario —el enunciado— abre su propio
+      // bloque, sin comentario que lo encabece.
+      if (ultimo) ultimo.desarrollo.push(e);
+      else salida.push({ comentario: null, desarrollo: [e] });
+    }
+    return salida;
+  }, [visibles]);
+
   // LA RESPUESTA SE ENMARCA UNA VEZ: en el cierre. Un paso anterior que ya
   // llegaba a ella —la cuenta en columna con su resultado— la deja subrayada,
   // sin una segunda cápsula con su visto.
@@ -499,6 +543,30 @@ export function Pizarra({
   const renderElemento = (e: ElementoPizarra) => {
     const regla = esFaseDeEjemplo(actual?.id ?? "") && reglas.length ? identificarRegla(e.linea.texto, reglas) : null;
     const estado = estadoDe(e.indiceGuion);
+
+    /**
+     * EL COMENTARIO DEL PASO, CON UNA SOLA TIPOGRAFÍA.
+     *
+     * «Se observa que el tipo de fuente de los mensajes y comentarios varía
+     * entre pasos… La tipografía de los comentarios explicativos debe ser
+     * uniforme en toda la plataforma: misma familia sans-serif, mismo tamaño
+     * legible y un color consistente.»
+     *
+     * Tenía razón, y venía de pasarlos por la maquinaria de las NOTAS de
+     * pizarra: ésa parte el texto por el primer dos puntos y compone el trozo de
+     * delante como rótulo —ámbar, letra de tiza— y el resto en blanco. Un
+     * comentario no es una nota rotulada: es prosa, y se pinta como prosa.
+     */
+    if (e.linea.papelDelPaso === "explicacion") {
+      return (
+        <div key={e.linea.id} className="pz-elemento" data-papel="comentario" data-estado="estatica">
+          <p {...rol(ROL.PIZARRA)} className="pz-comentario">
+            {e.linea.texto}
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div
         key={e.linea.id}
@@ -604,7 +672,15 @@ export function Pizarra({
                     aria-label="Ambiente 1"
                   >
                     {planteaEjercicio
-                      ? visibles.filter((e) => e.ambiente === 1).map(renderElemento)
+                      ? bloques.map((b, i) => (
+                          // BLOQUE DEL PASO: siempre el comentario primero y el
+                          // desarrollo después, dentro de la misma caja, para que
+                          // no quepa duda de a qué ecuación acompaña cada texto.
+                          <div key={`bloque-${i}`} className="pz-bloque-paso">
+                            {b.comentario ? renderElemento(b.comentario) : null}
+                            {b.desarrollo.map(renderElemento)}
+                          </div>
+                        ))
                       : (
                         <>
                           {diagrama && (

@@ -1371,18 +1371,17 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
   // es lo que lo llenaba de ecuaciones futuras (ronda de septiembre, R4-01).
   check(
     "el Ambiente 2 no enseña nada hasta que un paso llega a él",
-    // El filtro va ahora en varias líneas —además del ambiente descarta el
-    // borrador cuando el hilo ha pasado a ocupar las dos columnas—, así que se
-    // comprueba lo que importa: que se dibuje desde lo VISIBLE y no de la lista.
-    /\.filter\(\(e\) => e\.ambiente === 2/.test(fuentePizarra2) &&
-      /visibles\s*\r?\n?\s*\.filter/.test(fuentePizarra2) &&
+    // El hilo se dibuja por BLOQUES —comentario y desarrollo juntos— y el apoyo
+    // como pila propia; los dos salen de `visibles`: lo ya explicado y nada más.
+    /const bloques = useMemo\(/.test(fuentePizarra2) &&
+      /visibles\.filter\(\(e\) => e\.ambiente === 2\)/.test(fuentePizarra2) &&
       /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
   check(
     "el enunciado se compone por encima de los dos ambientes",
     fuentePizarra2.indexOf("<EncabezadoEjercicio texto=") > 0 &&
-      fuentePizarra2.indexOf("<EncabezadoEjercicio texto=") < fuentePizarra2.indexOf('<div className="pz-ambientes">'),
+      fuentePizarra2.indexOf("<EncabezadoEjercicio texto=") < fuentePizarra2.indexOf('"pz-ambientes"'),
   );
   // En una fase con ejercicio las líneas son PASOS del ejercicio, no notas sueltas.
   check(

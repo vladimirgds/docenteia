@@ -5017,7 +5017,13 @@ if (!vivo) {
   );
   check(
     "y los DOS ambientes se dibujan desde ese filtro, no desde la lista entera",
-    (pizarraSrc.match(/\.filter\(\(e\) => e\.ambiente === \d/g) || []).length === 2,
+    // El hilo se dibuja por BLOQUES —comentario y desarrollo juntos, en ese
+    // orden— y el apoyo como pila propia; los dos salen de `visibles`, que es lo
+    // ya explicado y nada más.
+    /const bloques = useMemo\(/.test(pizarraSrc) &&
+      /for \(const e of visibles\)/.test(pizarraSrc) &&
+      /bloques\.map\(\(b, i\) => \(/.test(pizarraSrc) &&
+      /visibles\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(pizarraSrc),
   );
   check(
     "al terminar la lección sí se ve todo: el repaso no se queda a medias",
