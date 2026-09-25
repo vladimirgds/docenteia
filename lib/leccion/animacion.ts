@@ -1448,11 +1448,16 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     id,
     texto,
     latex,
-    // La entrada nombra la línea entera: así la frase con la que el tutor
-    // presenta el ejercicio ("Vamos a resolver 2(x + 3) = 16…") cae en la
-    // entrada y no en el primer foco, que enmarcaba el 2 y la x antes de que
-    // nadie hubiera dicho nada de repartir.
-    narracion: `Vamos a repartir el ${factor} en ${String(texto ?? "").trim()}.`,
+    // SIN «Vamos a repartir el 2…» EN LA PIZARRA NI EN LA ENTRADA.
+    //
+    // El cliente lo cronometró otra vez (Alex.pdf + vídeo): en 0:00-0:05 esa
+    // frase flotaba bajo la ecuación y duplicaba el comentario formal
+    // («Primero aplicamos la propiedad distributiva…»). Debe eliminarse; la
+    // explicación inicia directamente con el comentario pedagógico, que el
+    // motor ya escribe con `explicaEnPizarra` y narra con `hablar`. La entrada
+    // queda vacía: los focos siguen contando el reparto en voz (y su desglose
+    // vive en el Ambiente 2), sin dejar un pie residual en la columna.
+    narracion: "",
     clase: "distributiva",
     focos,
   };

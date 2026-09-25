@@ -1448,6 +1448,11 @@ titulo("A00a. La distributiva se reparte a la vista");
     e.continuacion === undefined,
     String(e.continuacion),
   );
+  check(
+    "la entrada NO dice «Vamos a repartir…»: inicia con el comentario formal (Alex.pdf)",
+    e.narracion === "",
+    e.narracion,
+  );
 
   // Una EXPRESIÓN suelta no tiene paso siguiente que la escriba, así que ahí sí
   // se destapa el resultado en su misma línea —"2(x + 4) = 2x + 8" es correcto—.
@@ -4638,7 +4643,8 @@ titulo("D. Máquina de estados del avatar");
     "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
     /const compacta = actual != null && !planteaEjercicio;/.test(pizarraTsx) &&
       pizarraTsx.includes('"h-[21rem] sm:h-[25rem]"') &&
-      pizarraTsx.includes('"h-[26rem] sm:h-[32rem]"'),
+      (pizarraTsx.includes('"h-[26rem] sm:h-[32rem]"') ||
+        pizarraTsx.includes('max-h-[85vh] h-[26rem] sm:h-[32rem]')),
   );
   check(
     // La "tarjeta residual" que el cliente fotografió —la regla sin fórmula,
@@ -4712,20 +4718,16 @@ titulo("D. Máquina de estados del avatar");
   check("existe el tema de proyección", estilos.includes(".modo-proyeccion"));
   // ESCALADA, PERO NO MÁS GRANDE DE LO QUE CABE.
   //
-  // El informe pedía fórmulas ≥ 48 px y así estaba (`clamp(3rem, …, 4rem)`).
-  // Con ese tamaño un despeje de ocho renglones no entra en una pantalla, y el
-  // cliente lo midió: «la fuente matemática está demasiado grande… la ecuación
-  // se parte en dos renglones y la pizarra se llena muy rápido, activando la
-  // barra de desplazamiento». El suelo baja a 2,25rem —36 px—, que sigue muy por
-  // encima de los 24 px con los que el mismo informe mide lo que se lee desde el
-  // fondo del aula. Las notas no se tocan.
+  // Alex.pdf: KaTeX a text-xl (1.25rem) también en proyección, para que el
+  // ejercicio entero entre sin empujar el encabezado. El suelo de aula de
+  // 2,25rem saturaba la pantalla en el vídeo del cliente.
   check(
-    "con la tipografía escalada: el suelo de una fórmula proyectada, entre 36 y 48 px",
+    "con la tipografía escalada: KaTeX proyectado compacto (text-xl), sin saturar la pantalla",
     (() => {
       const m = estilos.match(/\.modo-proyeccion \.katex \{\s*font-size: clamp\(([\d.]+)rem,\s*([\d.]+)vw,\s*([\d.]+)rem\)/);
       if (!m) return false;
       const [, suelo, , techo] = m.map(Number);
-      return suelo >= 2.25 && suelo <= 3 && techo >= suelo;
+      return suelo >= 1.25 && suelo <= 1.75 && techo >= suelo && techo <= 2;
     })() &&
       /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);/.test(estilos),
   );
@@ -5077,13 +5079,13 @@ if (!vivo) {
   );
   check(
     "y los DOS ambientes se dibujan desde ese filtro, no desde la lista entera",
-    // El hilo se dibuja por BLOQUES —comentario y desarrollo juntos, en ese
-    // orden— y el apoyo como pila propia; los dos salen de `visibles`, que es lo
-    // ya explicado y nada más.
-    /const bloques = useMemo\(/.test(pizarraSrc) &&
+    // Esquema JSX del cliente (Alex.pdf): ambas columnas iteran el mismo
+    // `pasos[]` —comentario → ecuación a la izquierda; auxiliar emparejado a
+    // la derecha— para sincronía de altura. Los dos salen de `visibles`.
+    /const pasos = useMemo\(/.test(pizarraSrc) &&
       /for \(const e of visibles\)/.test(pizarraSrc) &&
-      /bloques\.map\(\(b, i\) => \(/.test(pizarraSrc) &&
-      /visibles\.filter\(\(e\) => e\.ambiente === 2\)\.map\(renderElemento\)/.test(pizarraSrc),
+      /pasos\.map\(\(p\) => \(/.test(pizarraSrc) &&
+      /p\.auxiliares\.map\(renderElemento\)/.test(pizarraSrc),
   );
   check(
     "al terminar la lección sí se ve todo: el repaso no se queda a medias",
@@ -5739,16 +5741,17 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     /conPie = proyeccion,/.test(panel),
   );
   check(
-    "…y se queda proyectada, que es donde el informe la exige a 24 px",
-    /\.modo-proyeccion \.pz-pie \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos) &&
-      /conPie && estado === "activa"/.test(panel),
+    "…y el comentario formal cubre la frase del tutor en proyección (Alex.pdf)",
+    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos) &&
+      /pieEnColumna/.test(panel) &&
+      /escena\.clase !== "distributiva"/.test(panel),
   );
 
-  // 2. «Todos los comentarios explicativos … font-sans text-sm o text-base con
-  //    leading-relaxed text-slate-300.»
+  // 2. «Todos los comentarios explicativos … font-sans text-sm … leading-snug
+  //    text-slate-300.» (esquema JSX exacto del cliente)
   check(
-    "los comentarios, a cuerpo de lectura, interlineado holgado y gris de pizarra",
-    /\.pz-comentario \{[^}]*font-size: 1rem;[^}]*line-height: 1\.625;/.test(estilos) &&
+    "los comentarios, text-sm leading-snug y gris de pizarra (esquema JSX del cliente)",
+    /\.pz-comentario \{[^}]*font-size: 0\.875rem;[^}]*line-height: 1\.375;/.test(estilos) &&
       /\.dark \.pz-comentario \{[^}]*color: hsl\(213 27% 84%\)/.test(estilos),
   );
   check(
@@ -5757,11 +5760,11 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
       /\{ texto: apoyo\.conclusion, papel: "explicacion" \}/.test(motor),
   );
 
-  // 3. «Reducir la escala base de KaTeX y el espaciado vertical (py-1 /
-  //    space-y-3) … sin desplazar el encabezado fuera del viewport.»
+  // 3. Alex.pdf: «reducir … gap-2 / my-1» y KaTeX a text-xl; el ejercicio
+  //    entero debe entrar sin desplazar el encabezado.
   check(
-    "el aire entre pasos baja a space-y-3 y el margen de cada fórmula a py-1",
-    /\.pz-ambiente \{[^}]*gap: 0\.75rem;/.test(estilos) &&
+    "el aire entre pasos baja a gap-2 y el margen de cada fórmula a py-1",
+    /\.pz-ambiente \{[^}]*gap: 0\.5rem;/.test(estilos) &&
       /\.pz-ambiente \.katex-display \{[^}]*margin: 0\.25rem 0;/.test(estilos),
   );
   check(
@@ -5769,9 +5772,9 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
   );
   check(
-    "la escala compacta de KaTeX sigue siendo la de pantalla, y la de aula la de proyección",
+    "KaTeX a text-xl en pantalla y compacto en proyección (Alex.pdf: que entre entero)",
     /\.pz-ambiente \.katex \{\s*font-size: 1\.25rem;\s*\}/.test(estilos) &&
-      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: clamp\(2\.25rem,/.test(estilos),
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: clamp\(1\.25rem,/.test(estilos),
   );
 
   // 4. «Estructura exacta requerida para el Paso 1.»

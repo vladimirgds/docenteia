@@ -201,21 +201,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 1rem;
-  margin-bottom: 0.75rem;
-  padding: 0.25rem 0 0.5rem;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.5rem; /* mb-1 / my-1 — Alex.pdf */
+  padding: 0.15rem 0 0.35rem;
   border-bottom: 2px solid hsl(var(--border));
   background: hsl(var(--card));
 }
 
 .pz-encabezado-rotulo {
-  font-size: 1.35rem;
+  /* text-xl / amber-400 del esquema JSX del cliente */
+  font-size: 1.25rem;
   font-weight: 700;
-  color: hsl(25 95% 38%);
+  color: hsl(38 92% 50%);
 }
 
 .pz-encabezado-formula .katex {
-  font-size: 1.6em;
+  /* Misma escala base text-xl que el resto de la pizarra */
+  font-size: 1.25rem;
 }
 
 /* EL ANCHO ÚTIL, REPARTIDO SEGÚN LO QUE LLEVA CADA COLUMNA.
@@ -226,40 +228,39 @@
  * satura hacia abajo. Conviene balancear mejor el ancho útil entre ambas
  * columnas».
  *
- * Y es que las dos no llevan lo mismo, ni por diseño: en el Ambiente 1 va el
- * planteamiento y UN paso —líneas cortas, "2x + 8 = 3x - 1"—, y por el Ambiente
- * 2 baja la cadena entera, con los renglones más largos que tiene un despeje
- * ("2x + 8 - 3x = 3x - 1 - 3x"). Darles el mismo ancho deja la izquierda medio
- * vacía y obliga a la derecha a encoger o a partir.
- *
- * 42/58. La proporción es la del contenido, no un capricho: el reparto vertical
- * —planteamiento y un paso a la izquierda, la cadena a la derecha— lo decide
- * `lib/leccion/ambientes.ts`, y los dos paneles siguen siendo continuos y
- * visibles a la vez, que es lo que pedía el informe. */
+ * 42/58. La proporción es la del contenido. Con el esquema de pasos
+ * sincronizados (Alex.pdf), cada fila aporta un hijo a cada columna vía
+ * `display: contents`, así que comentario+ecuación y su auxiliar comparten
+ * altura de fila —«cotejar en paralelo sin que el contenido se amontone». */
 .pz-ambientes {
   display: grid;
   grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
-  gap: 1.25rem;
+  column-gap: 1.5rem; /* gap-6 del esquema JSX del cliente */
+  row-gap: 0.5rem; /* gap-2: Alex.pdf — reducir espaciado vertical */
+  align-items: start;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+/* Cada paso aporta sus dos celdas al grid padre (sincronía de altura). */
+.pz-paso-fila {
+  display: contents;
 }
 
 /* EL AIRE ENTRE PASOS, AL MÍNIMO QUE SIGUE SIENDO LEGIBLE.
-   El cliente lo cronometró: «a partir del segundo 0:49 la acumulación de pasos
-   empuja el contenido hacia arriba, provocando que el encabezado del ejercicio
-   desaparezca del área visible», y escribió la medida: «reducir la escala base
-   de KaTeX y el espaciado vertical (py-1 / space-y-3) para que el ejercicio
-   completo, desde el planteamiento hasta x = 5, entre holgado». `space-y-3` son
-   0,75rem: la mitad de lo que había, y por diez renglones son 120 px de
-   pantalla recuperados. */
+   Alex.pdf: «reducir padding/márgenes (gap-2 / my-1) y KaTeX a text-xl
+   (1.25rem) para que el ejercicio entero, hasta x = 5, entre sin scroll». */
 .pz-ambiente {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem; /* gap-2 */
   min-width: 0;
 }
 
-/* Proyectada, la letra es tres veces más alta y el aire acompaña. */
+/* Proyectada, la letra es más alta y el aire acompaña —pero sin saturar:
+   el vídeo del cliente (modo proyección) empujaba el encabezado fuera. */
 .modo-proyeccion .pz-ambiente {
-  gap: 1.25rem;
+  gap: 0.5rem;
 }
 
 /* ── EL BLOQUE DE UN PASO: COMENTARIO ARRIBA, DESARROLLO DEBAJO ─────────────
@@ -270,7 +271,7 @@
 .pz-bloque-paso {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.25rem; /* space-y-1 del esquema */
   min-width: 0;
 }
 
@@ -293,40 +294,47 @@
    columnas son las dos. */
 .pz-comentario {
   font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  font-size: 1rem;
+  /* font-sans text-sm leading-snug text-slate-300 — esquema JSX del cliente */
+  font-size: 0.875rem;
   font-weight: 400;
-  line-height: 1.625;
-  /* slate-300 es de pizarra oscura; sobre fondo claro no se leería, y ahí el
-     mismo gris se toma dos escalones más abajo (slate-500). */
+  line-height: 1.375;
   color: hsl(215 16% 47%);
   margin: 0;
 }
 
 .dark .pz-comentario {
+  color: hsl(213 27% 84%); /* slate-300 */
+}
+
+/* Proyectada: misma familia; crece lo justo para leerse (≥ 24 px SUB-PRJ-03). */
+.modo-proyeccion .pz-comentario {
+  font-size: clamp(1.5rem, 1.7vw, 1.75rem);
   color: hsl(213 27% 84%);
 }
 
-/* Proyectada, la misma familia y el mismo color: sólo crece para leerse de
-   lejos, por encima de los 24 px que pide el informe para cualquier rótulo. */
-.modo-proyeccion .pz-comentario {
-  font-size: clamp(1.5rem, 1.7vw, 1.9rem);
-  color: hsl(210 25% 80%);
-}
-
-.pz-ambiente + .pz-ambiente {
-  border-left: 2px dashed hsl(var(--border));
-  padding-left: 1.25rem;
+.pz-paso-taller,
+.pz-ambientes > .pz-ambiente + .pz-ambiente {
+  border-left: 1px solid hsl(215 20% 35% / 0.5); /* border-slate-700/50 */
+  padding-left: 1.5rem; /* pl-6 del esquema */
 }
 
 @media (max-width: 640px) {
   .pz-ambientes {
     grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+    overflow: visible;
   }
-  .pz-ambiente + .pz-ambiente {
+  .pz-paso-fila {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .pz-paso-taller,
+  .pz-ambientes > .pz-ambiente + .pz-ambiente {
     border-left: 0;
     border-top: 2px dashed hsl(var(--border));
     padding-left: 0;
-    padding-top: 1rem;
+    padding-top: 0.5rem;
   }
 }
 
@@ -352,9 +360,9 @@
   font-size: 1.25rem;
 }
 
-/* Y en proyección manda la escala de aula, no ésta. */
+/* Y en proyección manda la escala compacta (Alex.pdf text-xl), no la de aula. */
 .modo-proyeccion .pz-ambiente .katex {
-  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
 }
 
 /* KaTeX centra la fórmula DENTRO de su bloque: hay que alinearla también ahí. */
@@ -1032,26 +1040,18 @@
   border-left-color: hsl(210 40% 60% / 0.35);
 }
 
-/* Nunca por debajo del espaciado del informe (gap-6, 24 px), y nunca por encima
-   de lo que hace falta: el tope baja de 2,25rem a 1,75rem. Con siete u ocho
-   renglones —que es lo que tiene "2(x + 4) = 3x - 1"— eso son casi cien píxeles
-   de alto recuperados, y el cliente pidió «ajustar el espaciado vertical». */
+/* Nunca por debajo del espaciado legible, y nunca por encima de lo que hace
+   falta: Alex.pdf midió el colapso en proyección y fijó gap-2 / text-xl. */
 .modo-proyeccion .pz-ambiente {
-  gap: clamp(1.5rem, 2.2vh, 1.75rem);
+  gap: 0.5rem;
 }
 
-/* LAS FÓRMULAS, A TAMAÑO DE AULA — PERO NO MÁS GRANDES DE LO QUE CABE.
-   El informe pedía 48 px como mínimo y así estaba: de 48 a 64 px. Con ese
-   tamaño, un despeje de ocho renglones no entra en una pantalla y el cliente lo
-   midió: «la fuente matemática está demasiado grande… la ecuación se parte en
-   dos renglones y la pizarra se llena muy rápido, activando la barra de
-   desplazamiento». Así que la escala base baja un escalón —de 36 a 52 px— y lo
-   que se gana es alto: ocho renglones donde antes cabían seis.
-   Sigue muy por encima de los 24 px que el informe fija para que se lea desde el
-   fondo del aula, y ningún renglón se parte ya: el que no cabe de ancho se
-   encoge solo (ver ENCAJE_MINIMO en pizarra-animada.tsx). */
+/* LAS FÓRMULAS EN PROYECCIÓN: compactas para que el ejercicio entero entre
+   (Alex.pdf §1: de 2(x+3)=16 hasta x=5 sin empujar el encabezado). Sigue por
+   encima de los 24 px de rótulo del informe; el mínimo de aula de 48 px
+   saturaba la pantalla en el vídeo del cliente. */
 .modo-proyeccion .katex {
-  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
   font-weight: 600;
   color: hsl(0 0% 100%);
 }
@@ -1066,28 +1066,28 @@
 @media (max-width: 900px) {
   .modo-proyeccion .katex,
   .modo-proyeccion .pz-encabezado-formula .katex {
-    font-size: clamp(1.5rem, 7vw, 3rem);
+    font-size: clamp(1.25rem, 5vw, 1.75rem);
   }
   .modo-proyeccion .pz-encabezado-rotulo {
-    font-size: clamp(1.1rem, 4.5vw, 1.75rem);
+    font-size: 1.25rem;
   }
 }
 
-/* "Ejercicio:" y el enunciado, más grandes: el cliente pidió "incrementar más
-   el tamaño de la letra" de este encabezado. */
+/* "Ejercicio:" y el enunciado: text-xl / amber (Alex.pdf). El tamaño de aula
+   anterior saturaba la proyección en el vídeo del cliente. */
 .modo-proyeccion .pz-encabezado-rotulo {
-  font-size: clamp(1.75rem, 2.4vw, 2.5rem);
-  color: hsl(45 96% 62%);
+  font-size: 1.25rem;
+  color: hsl(38 92% 50%);
 }
 
 .modo-proyeccion .pz-encabezado-formula .katex {
-  font-size: clamp(2.25rem, 2.7vw, 3.25rem);
+  font-size: 1.25rem;
 }
 
-/* Y los dos ambientes se dan la mano con menos aire entre ellos: lo que se gana
-   es ancho para las fórmulas, que es lo que escasea proyectado. */
+/* Y los dos ambientes: gap-6 horizontal del esquema, gap-2 vertical. */
 .modo-proyeccion .pz-ambientes {
-  gap: 0.75rem;
+  column-gap: 1.5rem;
+  row-gap: 0.5rem;
 }
 
 /* LO ALTO TAMBIÉN CUENTA: proyectado, un ambiente puede llevar cuatro pasos

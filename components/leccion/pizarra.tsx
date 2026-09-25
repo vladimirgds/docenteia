@@ -523,23 +523,38 @@ export function Pizarra({
    * se lleva consigo las líneas de desarrollo que vengan detrás, hasta el
    * comentario siguiente.
    *
-   * El Ambiente 2 no se agrupa: su esquema lo dibuja como una pila propia
-   * —«cálculo auxiliar del desarrollo 1, 2, 3»— al margen del alto que tenga
-   * cada bloque de la izquierda.
+   * Y CON EL AUXILIAR DEL MISMO ÍNDICE A LA DERECHA (esquema JSX del cliente):
+   * ambas columnas iteran el mismo `pasos[]` para mantener sincronía de altura
+   * y la misma línea de base —«cotejar en paralelo cada transformación con su
+   * cálculo auxiliar sin que el contenido se amontone».
    */
-  const bloques = useMemo(() => {
-    const salida: { comentario: ElementoPizarra | null; desarrollo: ElementoPizarra[] }[] = [];
+  const pasos = useMemo((): PasoSincronizado[] => {
+    const salida: PasoSincronizado[] = [];
+    let actual: PasoSincronizado | null = null;
     for (const e of visibles) {
-      if (e.ambiente === 2) continue;
-      if (e.linea.papelDelPaso === "explicacion") {
-        salida.push({ comentario: e, desarrollo: [] });
+      if (e.ambiente === 2) {
+        // Persistencia (Alex.pdf §4): el taller NO se limpia; se acumula en el
+        // paso abierto para que el alumno revise la evolución progresiva.
+        if (!actual) {
+          actual = { id: `aux-${e.linea.id}`, comentario: null, ecuaciones: [], auxiliares: [] };
+          salida.push(actual);
+        }
+        actual.auxiliares.push(e);
         continue;
       }
-      const ultimo = salida[salida.length - 1];
-      // Lo que llega ANTES del primer comentario —el enunciado— abre su propio
-      // bloque, sin comentario que lo encabece.
-      if (ultimo) ultimo.desarrollo.push(e);
-      else salida.push({ comentario: null, desarrollo: [e] });
+      if (e.linea.papelDelPaso === "explicacion") {
+        // 1º el comentario —abre paso—; 2º la ecuación que venga detrás.
+        actual = { id: `com-${e.linea.id}`, comentario: e, ecuaciones: [], auxiliares: [] };
+        salida.push(actual);
+        continue;
+      }
+      if (!actual) {
+        // Planteamiento: enunciado sin comentario aún.
+        actual = { id: `eq-${e.linea.id}`, comentario: null, ecuaciones: [e], auxiliares: [] };
+        salida.push(actual);
+      } else {
+        actual.ecuaciones.push(e);
+      }
     }
     return salida;
   }, [visibles]);
@@ -647,14 +662,14 @@ export function Pizarra({
       {/* La tira de fases es interfaz: no se proyecta. */}
       {!proyeccion && <Fases fases={fases} />}
 
-      {/* ALTURA FIJA en pantalla, no mínima: con una altura que crecía con el
-          contenido, los botones de abajo saltaban en cada paso. El
-          desbordamiento se resuelve dentro, con scroll propio. En proyección la
-          pizarra ocupa la pantalla. */}
+      {/* ALTURA ACOTADA (Alex.pdf): max-h-[85vh] overflow-hidden para que el
+          ejercicio entero entre sin empujar el encabezado. El desbordamiento
+          residual, si lo hubiera, se resuelve dentro. En proyección la pizarra
+          ocupa la pantalla. */}
       <div
         className={cn(
           "pz-tablero-caja relative overflow-hidden rounded-lg border bg-card shadow-inner",
-          compacta ? "h-[21rem] sm:h-[25rem]" : "h-[26rem] sm:h-[32rem]",
+          compacta ? "h-[21rem] sm:h-[25rem]" : "max-h-[85vh] h-[26rem] sm:h-[32rem]",
         )}
         aria-live="polite"
         aria-label="Pizarra"
@@ -690,61 +705,77 @@ export function Pizarra({
                   <EncabezadoEjercicio texto={ejercicio?.texto ?? null} />
                 )}
 
-                <div className="pz-ambientes">
-                  <section
-                    className="pz-ambiente"
-                    data-ambiente="1"
-                    data-papel-ambiente="hilo"
-                    aria-label="Ambiente 1"
-                  >
-                    {planteaEjercicio
-                      ? bloques.map((b, i) => (
-                          // BLOQUE DEL PASO: siempre el comentario primero y el
-                          // desarrollo después, dentro de la misma caja, para que
-                          // no quepa duda de a qué ecuación acompaña cada texto.
-                          <div key={`bloque-${i}`} className="pz-bloque-paso">
-                            {b.comentario ? renderElemento(b.comentario) : null}
-                            {b.desarrollo.map(renderElemento)}
+                <div className="pz-ambientes" data-esquema="pasos-sincronizados">
+                  {planteaEjercicio ? (
+                    // Esquema JSX del cliente (Alex.pdf): ambas columnas
+                    // iteran el mismo `pasos[]` —comentario → ecuación a la
+                    // izquierda; auxiliar emparejado a la derecha— para
+                    // sincronía de altura y la misma línea de base.
+                    pasos.map((p) => (
+                      <div key={p.id} className="pz-paso-fila contents">
+                        <div
+                          className="pz-ambiente pz-paso-hilo"
+                          data-ambiente="1"
+                          data-papel-ambiente="hilo"
+                          data-paso={p.id}
+                        >
+                          <div className="pz-bloque-paso flex flex-col space-y-1">
+                            {p.comentario ? renderElemento(p.comentario) : null}
+                            {p.ecuaciones.map(renderElemento)}
                           </div>
-                        ))
-                      : (
-                        <>
-                          {diagrama && (
-                            <div className="pz-diagrama-y-fraccion space-y-4">
-                              <DiagramaConcepto
-                                tema={diagrama}
-                                numerador={fraccionEnCurso?.numerador}
-                                denominador={fraccionEnCurso?.denominador}
-                                vistoNumerador={vistoNumerador}
-                                vistoDenominador={vistoDenominador}
-                              />
-                              {/* LA DEFINICIÓN FORMAL, vertical y sin barra
-                                  inclinada, a la misma letra y tamaño que las
-                                  notas de al lado (el cliente: "considerar el
-                                  mismo tamaño y tipo de letra"). */}
-                              {diagrama === "FRACCIONES" && vistoNumerador && vistoDenominador && (
-                                <FraccionFormal
-                                  numerador={fraccionEnCurso?.numerador ?? 1}
-                                  denominador={fraccionEnCurso?.denominador ?? 4}
-                                />
-                              )}
+                        </div>
+                        <div
+                          className="pz-ambiente pz-paso-taller"
+                          data-ambiente="2"
+                          data-papel-ambiente="apoyo"
+                          data-paso={p.id}
+                        >
+                          {p.auxiliares.length > 0 ? (
+                            <div className="flex flex-col space-y-0.5">
+                              {p.auxiliares.map(renderElemento)}
                             </div>
-                          )}
-                          {tarjeta && <TarjetaRegla key={tarjeta.clave} regla={tarjeta} proyeccion={proyeccion} />}
-                          {notasAmbiente1.map(nota)}
-                        </>
-                      )}
-                  </section>
-                  <section
-                    className="pz-ambiente"
-                    data-ambiente="2"
-                    data-papel-ambiente="apoyo"
-                    aria-label="Ambiente 2"
-                  >
-                    {planteaEjercicio
-                      ? visibles.filter((e) => e.ambiente === 2).map(renderElemento)
-                      : notasAmbiente2.map(nota)}
-                  </section>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <section
+                        className="pz-ambiente"
+                        data-ambiente="1"
+                        data-papel-ambiente="hilo"
+                        aria-label="Ambiente 1"
+                      >
+                        {diagrama && (
+                          <div className="pz-diagrama-y-fraccion space-y-4">
+                            <DiagramaConcepto
+                              tema={diagrama}
+                              numerador={fraccionEnCurso?.numerador}
+                              denominador={fraccionEnCurso?.denominador}
+                              vistoNumerador={vistoNumerador}
+                              vistoDenominador={vistoDenominador}
+                            />
+                            {diagrama === "FRACCIONES" && vistoNumerador && vistoDenominador && (
+                              <FraccionFormal
+                                numerador={fraccionEnCurso?.numerador ?? 1}
+                                denominador={fraccionEnCurso?.denominador ?? 4}
+                              />
+                            )}
+                          </div>
+                        )}
+                        {tarjeta && <TarjetaRegla key={tarjeta.clave} regla={tarjeta} proyeccion={proyeccion} />}
+                        {notasAmbiente1.map(nota)}
+                      </section>
+                      <section
+                        className="pz-ambiente"
+                        data-ambiente="2"
+                        data-papel-ambiente="apoyo"
+                        aria-label="Ambiente 2"
+                      >
+                        {notasAmbiente2.map(nota)}
+                      </section>
+                    </>
+                  )}
                 </div>
 
 
@@ -787,6 +818,19 @@ interface ElementoPizarra {
   gesto: string | null;
   columna?: ModoColumna;
   ambiente: 1 | 2;
+}
+
+/**
+ * Un paso sincronizado entre los dos ambientes (esquema JSX del cliente).
+ *
+ * Izquierda: comentario previo → ecuación(es). Derecha: auxiliar emparejado.
+ * Misma fila de grid → misma altura de base.
+ */
+interface PasoSincronizado {
+  id: string;
+  comentario: ElementoPizarra | null;
+  ecuaciones: ElementoPizarra[];
+  auxiliares: ElementoPizarra[];
 }
 
 /**

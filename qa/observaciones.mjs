@@ -645,21 +645,25 @@ function instalarMedidor() {
     // R6-01: la frase del tutor no flota dentro de la columna. «En el segundo
     // 0:00-0:01 aparece la frase flotante "Vamos a repartir el 2 en 2(x + 3) =
     // 16". Debe eliminarse; la explicación debe iniciar directamente con el
-    // comentario formal.» En proyección SÍ va —allí no hay avatar al lado y el
-    // informe la exige a 24 px (SUB-PRJ-03)—, y por eso se cuenta aparte.
+    // comentario formal.» Alex.pdf: también en proyección.
     out.pieEnColumna = [...document.querySelectorAll(".pz-ambientes .pz-pie")].filter(visible).length;
+    out.pieProhibido = [...document.querySelectorAll(".pz-ambientes .pz-pie")]
+      .filter(visible)
+      .filter((p) => /vamos a repartir|multiplica a /i.test(textoVisible(p))).length;
 
     // R6-02: EL DESGLOSE AUXILIAR, SÓLO EN EL AMBIENTE 2. «En 0:06 aparece dentro
     // del Ambiente 1 el texto "El 2 multiplica a x: da 2x". Esta frase es una
     // operación auxiliar y pertenece exclusivamente al Ambiente 2.» Se busca su
     // forma —"multiplica a …"— y la de las cuentas del taller, "(2) · (x) = 2x".
     {
-      const hilo = document.querySelector('.pz-ambiente[data-ambiente="1"]');
-      for (const e of hilo ? [...hilo.querySelectorAll(".pz-elemento")] : []) {
-        if (!visible(e) || e.getAttribute("data-papel") === "nota") continue;
-        const t = textoDePizarra(e).replace(/\s+/g, " ");
-        if (/multiplica a (cada t|[a-z0-9])/i.test(t) || /\(\s*-?\d+\s*\)\s*[·*]/.test(t)) {
-          out.desgloseEnHilo.push(t.slice(0, 60));
+      const hilos = document.querySelectorAll('.pz-ambiente[data-ambiente="1"]');
+      for (const hilo of hilos) {
+        for (const e of [...hilo.querySelectorAll(".pz-elemento")]) {
+          if (!visible(e) || e.getAttribute("data-papel") === "nota") continue;
+          const t = textoDePizarra(e).replace(/\s+/g, " ");
+          if (/multiplica a (cada t|[a-z0-9])/i.test(t) || /\(\s*-?\d+\s*\)\s*[·*]/.test(t)) {
+            out.desgloseEnHilo.push(t.slice(0, 60));
+          }
         }
       }
     }
@@ -1243,15 +1247,17 @@ function comprobarSiempre(m, clase) {
   // «En el segundo 0:00-0:01 aparece la frase flotante "Vamos a repartir el 2 en
   // 2(x + 3) = 16". Debe eliminarse; la explicación debe iniciar directamente
   // con el comentario formal.» Y en 0:06, dentro del Ambiente 1, "El 2 multiplica
-  // a x: da 2x". Eran el mismo pie. En la pizarra de clase se lee bajo el
-  // avatar; PROYECTADA se queda donde estaba, que allí es el único subtítulo.
+  // a x: da 2x". Eran el mismo pie. Alex.pdf lo reitera: fuera también en
+  // proyección —el comentario formal (`.pz-comentario`) cubre SUB-PRJ-03—.
   verificar(
     "R6-01",
     m.proy
-      ? "proyectada, la frase del tutor sigue bajo el paso"
+      ? "en proyección no flota «Vamos a repartir…» ni «multiplica a…» dentro de la columna"
       : "en la pizarra de clase no flota ninguna frase del tutor dentro de la columna",
-    m.proy ? true : (m.pieEnColumna ?? 0) === 0,
-    `${m.pieEnColumna ?? 0} pies dentro de los ambientes (${clase})`,
+    m.proy
+      ? (m.pieProhibido ?? 0) === 0
+      : (m.pieEnColumna ?? 0) === 0 && (m.pieProhibido ?? 0) === 0,
+    `${m.pieEnColumna ?? 0} pies · ${m.pieProhibido ?? 0} frases prohibidas (${clase}${m.proy ? ", proyección" : ""})`,
   );
 
   // R6-02: EL DESGLOSE AUXILIAR, SÓLO EN EL AMBIENTE 2.

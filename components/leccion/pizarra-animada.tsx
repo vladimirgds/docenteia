@@ -154,19 +154,15 @@ export function PizarraAnimada({
   foco,
   estado = "activa",
   proyeccion = false,
-  // LA FRASE DEL TUTOR NO VIVE DENTRO DE LA COLUMNA (petición del cliente,
-  // ronda de octubre). La escribía bajo cada paso y el cliente la cronometró en
-  // su vídeo: en el segundo 0 flotaba «Vamos a repartir el 2 en 2(x + 3) = 16»
-  // —«debe eliminarse; la explicación debe iniciar directamente con el
-  // comentario formal»— y en el 0:06 aparecía dentro del Ambiente 1 «El 2
-  // multiplica a x: da 2x», que «es una operación auxiliar y pertenece
-  // exclusivamente al Ambiente 2». Eran la misma cosa: este pie.
+  // LA FRASE DEL TUTOR NO VIVE DENTRO DE LA COLUMNA (Alex.pdf + vídeo).
   //
-  // En la pizarra de clase se quita: lo que el tutor dice ya se lee bajo el
-  // avatar (`.pz-subtitulo`), y la columna queda con lo que el cliente dibujó
-  // —comentario y ecuación, nada más—. EN PROYECCIÓN SE QUEDA: allí no hay
-  // bloque de subtítulo al lado, la pizarra es la pantalla entera, y el informe
-  // exige la frase del tutor a 24 px como mínimo (SUB-PRJ-03).
+  // Bajo cada paso flotaban «Vamos a repartir el 2…» (0:00) y «El 2 multiplica
+  // a x: da 2x» (0:06): la primera duplica el comentario formal; la segunda es
+  // operación auxiliar y pertenece EXCLUSIVAMENTE al Ambiente 2. En la pizarra
+  // de clase se quita del todo —lo que el tutor dice se lee bajo el avatar—.
+  // En proyección se queda SOLO cuando no es una escena de distributiva: el
+  // comentario formal (`.pz-comentario`, ≥ 24 px) cubre SUB-PRJ-03, y el
+  // desglose del reparto ya está escrito a la derecha.
   conPie = proyeccion,
   marcoFinal = true,
   className,
@@ -527,6 +523,15 @@ export function PizarraAnimada({
   };
 
   const narracionActiva = foco >= 0 ? (escena.focos[foco]?.narracion ?? "") : escena.narracion;
+  // El pie de una distributiva ES el desglose auxiliar («El 2 multiplica a…»,
+  // «Vamos a repartir…»). Fuera de la columna, siempre: vive en el Ambiente 2.
+  // El comentario formal (`.pz-comentario`) cubre la frase del tutor en proyección.
+  const pieEnColumna =
+    conPie &&
+    estado === "activa" &&
+    Boolean(narracionActiva?.trim()) &&
+    escena.clase !== "distributiva" &&
+    !/vamos a repartir|multiplica a /i.test(narracionActiva);
 
   return (
     <div
@@ -640,8 +645,9 @@ export function PizarraAnimada({
       </div>
 
       {/* Lo que el tutor está contando de ESTE paso, para quien no puede oírlo.
-          Es voz del tutor: TUTOR_DIALOG, con sus fórmulas compuestas por KaTeX. */}
-      {conPie && estado === "activa" && (
+          Es voz del tutor: TUTOR_DIALOG, con sus fórmulas compuestas por KaTeX.
+          Nunca el desglose de la distributiva: eso es Ambiente 2 (Alex.pdf). */}
+      {pieEnColumna && (
         <TextoTutor
           como="p"
           className="pz-pie mt-3 min-h-[1.5rem] text-sm text-muted-foreground"
