@@ -551,9 +551,10 @@ function juzgarPie(foco, escena, donde, indice) {
     );
   }
 
-  // "Restamos 6 en los dos lados" / "Sumamos 6 en los dos lados": el verbo tiene
-  // que decir lo que se hace, y el signo del término manda.
-  const enLosDosLados = frase.match(/^(Restamos|Sumamos|Quitamos|Añadimos) (\d+) en los dos lados/i);
+  // "Restamos 6:" / "Sumamos 6:" (Alex.pdf §3) — y la forma larga previa.
+  // El verbo tiene que decir lo que se hace, y el signo del término manda.
+  const enLosDosLados =
+    frase.match(/^(Restamos|Sumamos|Quitamos|Añadimos) (\d+)(?: en los dos lados|:)/i);
   if (enLosDosLados && escena.clase === "despeje") {
     anotar("la operación que se dice en el despeje");
     const terminos = terminosDe(izqLinea) ?? [];

@@ -238,8 +238,10 @@
   column-gap: 1.5rem; /* gap-6 del esquema JSX del cliente */
   row-gap: 0.5rem; /* gap-2: Alex.pdf — reducir espaciado vertical */
   align-items: start;
-  max-height: 85vh;
-  overflow: hidden;
+  /* Persistencia (Alex.pdf §4): nada se recorta ni desaparece; si no cabe,
+     se desplaza dentro del tablero sin empujar el encabezado sticky. */
+  max-height: none;
+  overflow: visible;
 }
 
 /* Cada paso aporta sus dos celdas al grid padre (sincronía de altura). */

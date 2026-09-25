@@ -556,8 +556,8 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
       panel.includes("escena.focos.flatMap((f) => [...(f.piezas ?? [f.clase])"),
   );
   check(
-    "con el rótulo escrito una sola vez (y sólo en el paso activo)",
-    panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
+    "con el rótulo escrito una sola vez (y sólo en el paso activo, nunca en la entrada)",
+    panel.includes('conEtiqueta={j === 0 && estado === "activa" && i === foco && foco >= 0}'),
   );
 }
 
@@ -658,14 +658,14 @@ titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecu
   // 3. LO QUE SE DICE ES LO QUE SE HACE, en el despeje y en el polinomio.
   const conMenos = escenaDeDespeje("2x - 6 = 16", "e");
   check(
-    "con «2x − 6 = 16» el tutor SUMA 6 en los dos lados (no «quitamos»)",
-    /^Sumamos 6 en los dos lados/.test(conMenos.focos[0]?.narracion ?? ""),
+    "con «2x − 6 = 16» el tutor SUMA 6 (no «quitamos»)",
+    /^Sumamos 6:/.test(conMenos.focos[0]?.narracion ?? ""),
     conMenos.focos[0]?.narracion,
   );
   const conMas = escenaDeDespeje("2x + 6 = 16", "e");
   check(
     "y con «2x + 6 = 16» resta 6",
-    /^Restamos 6 en los dos lados/.test(conMas.focos[0]?.narracion ?? ""),
+    /^Restamos 6:/.test(conMas.focos[0]?.narracion ?? ""),
     conMas.focos[0]?.narracion,
   );
   const poli = escenaDePolinomio("2x⁵ - 3x⁴ + x²", "e");
@@ -723,8 +723,8 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       JSON.stringify(e.focos[0]),
     );
     check(
-      "…y lo dice sin cancelar todavía: «restamos 6 en los dos lados»",
-      /^Restamos 6 en los dos lados/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
+      "…y lo dice sin cancelar todavía: «Restamos 6:»",
+      /^Restamos 6:/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
       e.focos[0]?.narracion,
     );
     // El SEGUNDO tiempo es otro renglón: la igualdad con la resta ya escrita, y
@@ -1166,7 +1166,7 @@ titulo("A00i. Informe del cliente: los cinco subprocesos universales");
     // El ejemplo que mandó el cliente, con sus palabras.
     const ejemplo = solveLinearSteps("6x + 5x - 8 = 25");
     const juntar = ejemplo.steps[0];
-    const cancelar = ejemplo.steps.find((x) => /eliminar el/.test(x.explica));
+    const cancelar = ejemplo.steps.find((x) => /cancela el -?8/.test(x.ambiente2?.textoAuxiliar ?? ""));
     check(
       "6x + 5x − 8 = 25: al hilo va «11x − 8 = 25» y al taller «6x + 5x = 11x»",
       juntar.ambiente1.ecuacionKaTeX === "11x - 8 = 25" &&
@@ -1449,8 +1449,8 @@ titulo("A00a. La distributiva se reparte a la vista");
     String(e.continuacion),
   );
   check(
-    "la entrada NO dice «Vamos a repartir…»: inicia con el comentario formal (Alex.pdf)",
-    e.narracion === "",
+    "la entrada dice el rótulo corto; la llave × n espera al foco (Alex.pdf §1)",
+    e.narracion === "Por propiedad distributiva:",
     e.narracion,
   );
 
@@ -1939,11 +1939,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
-    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 6 a cada miembro/.test(e.d.texto));
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6:/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "cuando el tutor dice «restamos 6 a cada miembro», la pizarra ESCRIBE la resta y NO tacha nada",
+      "cuando el tutor dice «Restamos 6:», la pizarra ESCRIBE la resta y NO tacha nada",
       enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
@@ -2014,9 +2014,9 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       enCoef.foco?.etiqueta === "× 2" && /multiplicada por 2/.test(enCoef.foco?.narracion ?? ""),
       `${enCoef.foco?.etiqueta} · ${enCoef.foco?.narracion}`,
     );
-    const enDivide = dondeSuena(/dividimos los dos lados entre 2/i);
-    check(
-      "«dividimos los dos lados entre 2» suena con la FRACCIÓN ya escrita, no con 2x = 10",
+    const enDivide = dondeSuena(/dividimos entre 2/i);
+  check(
+      "«Dividimos entre 2:» suena con la FRACCIÓN ya escrita, no con 2x = 10",
       enDivide.texto === "2x/2 = 10/2",
       `${enDivide.texto}`,
     );
@@ -5512,7 +5512,7 @@ if (!vivo) {
         const e = escenaDeLinea({ latex: "2x/2 = 10/2", operacion: paso?.accion, narracion: paso?.explica }, "d");
         return (
           e.focos.length > 0 &&
-          /dividimos los dos lados entre 2\.$/i.test(e.focos[0].narracion) &&
+          /dividimos entre 2:$/i.test(e.focos[0].narracion) &&
           !/queda/.test(e.focos[0].narracion)
         );
       })(),
@@ -5583,11 +5583,11 @@ if (!vivo) {
         sinFoco.length === 0,
         sinFoco.map((x) => x.texto).join(" · "),
       );
-      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /restamos 3x en ambos miembros/i.test(e.d.texto));
+      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x:/.test(e.d.texto));
       const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /A la derecha se cancela 3x con -3x/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
       check(
-        "cuando dice «restamos 3x en ambos miembros» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
+        "cuando dice «Restamos 3x:» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
         iResta >= 0 && iTacha > iResta &&
           focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
           focoEn(iTacha)?.tipo === "tachado",
@@ -5782,7 +5782,7 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     const paso = solveLinearSteps("2(x + 3) = 16").steps[0];
     check(
       "Paso 1, columna izquierda: el comentario formal, y debajo 2x + 6 = 16",
-      paso.ambiente1?.explicacion === "Primero aplicamos la propiedad distributiva en el miembro izquierdo." &&
+      paso.ambiente1?.explicacion === "Por propiedad distributiva:" &&
         paso.ambiente1?.ecuacionKaTeX === "2x + 6 = 16",
       JSON.stringify(paso.ambiente1),
     );
@@ -5805,17 +5805,43 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     );
     const dosLados = solveLinearSteps("2(3x + 5) = 4(x + 7)").steps[0];
     check(
-      "con paréntesis a los dos lados se reparte en los dos, y así se dice",
-      /en los dos miembros/.test(dosLados.ambiente1?.explicacion ?? "") &&
+      "con paréntesis a los dos lados se reparte en los dos (taller con ×2 y ×4)",
+      dosLados.ambiente1?.explicacion === "Por propiedad distributiva:" &&
         /\(2\) · \(3x\) = 6x/.test(dosLados.ambiente2?.calculoKaTeX ?? "") &&
         /\(4\) · \(7\) = 28/.test(dosLados.ambiente2?.calculoKaTeX ?? ""),
       `${dosLados.ambiente1?.explicacion} :: ${dosLados.ambiente2?.calculoKaTeX}`,
     );
     check(
-      "y con uno solo se sigue diciendo \"en el miembro izquierdo\"",
-      /en el miembro izquierdo/.test(solveLinearSteps("2(x + 3) = 16").steps[0].ambiente1?.explicacion ?? ""),
+      "y el rótulo corto ya no alarga con «en el miembro izquierdo» (Alex.pdf §3)",
+      solveLinearSteps("2(x + 3) = 16").steps[0].ambiente1?.explicacion === "Por propiedad distributiva:",
     );
   }
+
+  // 4c. Alex.pdf §2: Ambiente 2 con la narración del reparto, no después.
+  {
+    const tramo = motor.slice(
+      motor.indexOf("export function linealResueltaLSG"),
+      motor.indexOf("export function", motor.indexOf("export function linealResueltaLSG") + 10),
+    );
+    check(
+      "el taller auxiliar sale con el comentario del reparto, antes de narrar «El 2 multiplica…»",
+      /const apoyoInicial = sol\.steps\[0\]\?\.apoyo;\s*if \(apoyoInicial\) dir\.push\(\.\.\.tallerAuxiliar\(apoyoInicial\)\);/.test(tramo) &&
+        tramo.indexOf("tallerAuxiliar(apoyoInicial)") < tramo.indexOf("const reparto = locucionesDistributiva") &&
+        tramo.indexOf("explicaEnPizarra(sol.steps[0].explica)") < tramo.indexOf("tallerAuxiliar(apoyoInicial)"),
+    );
+  }
+
+  // 4d. Alex.pdf §1: la llave × n no se pinta en la entrada (foco < 0).
+  check(
+    "la llave × n sólo con foco activo ≥ 0, nunca en la entrada (Alex.pdf §1)",
+    /conEtiqueta=\{j === 0 && estado === "activa" && i === foco && foco >= 0\}/.test(panel),
+  );
+
+  // 4e. Alex.pdf §4: persistencia — los ambientes no recortan pasos ya escritos.
+  check(
+    "los ambientes no recortan lo ya escrito (overflow visible, Alex.pdf §4)",
+    /\.pz-ambientes \{[\s\S]{0,400}?overflow: visible;/.test(estilos),
+  );
 
   // 5. El puntero guía («efecto láser o foco»), con los valores de su nota.
   check(

@@ -2035,14 +2035,23 @@ export function linealResueltaLSG(opts = {}) {
     { tipo: "esperar", segundos: 1 },
   );
   if (sol.steps[0]?.explica) dir.push(explicaEnPizarra(sol.steps[0].explica));
+  // Ambiente 2 AL MISMO TIEMPO que la explicación del reparto (Alex.pdf §2):
+  // antes el taller se escribía DESPUÉS de narrar «El 2 multiplica…» y de
+  // pintar ya 2x + 6 = 16 (en el 0:27). Aquí sale con el comentario, para que
+  // acompañe a la voz desde el primer «multiplica a».
+  const apoyoInicial = sol.steps[0]?.apoyo;
+  if (apoyoInicial) dir.push(...tallerAuxiliar(apoyoInicial));
   // Si la ecuación empieza repartiendo un paréntesis, el reparto se cuenta foco a foco —2 × x, 2 × 4 y lo
   // que queda— con su pausa de lectura: es lo que hace que la animación de abajo termine de repartir los
   // dos términos, en vez de quedarse en el primero mientras el tutor ya habla del paso siguiente.
   const reparto = locucionesDistributiva(sol.original);
   sol.steps.forEach((s, k) => {
     // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
-    // antes de escribir la siguiente.
-    dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+    // antes de escribir la siguiente. En el reparto inicial el rótulo ya está
+    // en pizarra/entrada; no se repite en voz para no duplicar.
+    if (!(k === 0 && reparto)) {
+      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+    }
     // EL REPARTO, TÉRMINO A TÉRMINO —Y EL "QUEDA…" CUANDO YA ESTÁ ESCRITO.
     //
     // Las frases de los términos acompañan a la escuadra del "× 2" sobre la
@@ -2060,10 +2069,9 @@ export function linealResueltaLSG(opts = {}) {
     if (s.accion?.tipo === "cancelacion") {
       dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
     }
-    // El desglose de dónde sale el valor, al taller de la derecha: «aquí se
-    // detalla el cálculo de dónde sale cada valor intermedio ANTES o durante su
-    // incorporación al Ambiente 1».
-    dir.push(...tallerAuxiliar(s.apoyo));
+    // El desglose de dónde sale el valor, al taller de la derecha. El del
+    // primer paso (distributiva) ya se escribió arriba; aquí van los demás.
+    if (!(k === 0 && apoyoInicial)) dir.push(...tallerAuxiliar(s.apoyo));
     // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
     if (k === sol.steps.length - 1) {
       dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));

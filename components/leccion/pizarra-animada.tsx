@@ -615,7 +615,7 @@ export function PizarraAnimada({
                   factor={factor}
                   termino={termino}
                   glifos={medidas.glifos}
-                  etiqueta={f.etiqueta}
+                  etiqueta={foco >= 0 ? f.etiqueta : undefined}
                   marcador={`${idPizarra}-flecha`}
                   rotulo={rotulo}
                 />,
@@ -633,9 +633,10 @@ export function PizarraAnimada({
                   caja={caja}
                   ancla={f.anclaEtiqueta ? medidas.cajas[f.anclaEtiqueta] : undefined}
                   glifos={medidas.glifos}
-                  // El rótulo se escribe una sola vez, sobre la primera pieza, y
-                  // sólo en el paso activo.
-                  conEtiqueta={j === 0 && estado === "activa"}
+                  // El rótulo (× 2) sólo con el foco activo y YA empezada la
+                  // explicación —nunca en la entrada (Alex.pdf §1: la llave no
+                  // puede aparecer en el 0:01, apenas inicia el ejercicio).
+                  conEtiqueta={j === 0 && estado === "activa" && i === foco && foco >= 0}
                   rotulo={rotulo}
                 />,
               ];

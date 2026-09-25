@@ -692,7 +692,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       clase: "pz-uniforme",
       piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
       tipo: "caja",
-      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: lo escribimos en los dos miembros.`,
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)}:`,
     });
     if (!soloEscritura) focos.push({
       clase: "pz-cancela",
@@ -900,7 +900,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
     id,
     texto,
     latex: `${numerador(arribaIzq, "pz-divisor pz-divisor-izq")} = ${numerador(dividendo, "pz-divisor pz-divisor-der")}`,
-    narracion: `Aplicamos la operación inversa: dividimos los dos lados entre ${divisor}.`,
+    narracion: `Dividimos entre ${divisor}:`,
     clase: "despeje",
     focos: [
       {
@@ -908,7 +908,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
         // Una caja por miembro: ninguna marca cruza el igual.
         piezas: ["pz-divisor-izq", "pz-divisor-der"],
         tipo: "caja",
-        narracion: `Aplicamos la operación inversa: dividimos los dos lados entre ${divisor}.`,
+        narracion: `Dividimos entre ${divisor}:`,
         etiqueta: `÷ ${divisor}`,
       },
     ],
@@ -964,7 +964,7 @@ export function escenaDeRestaDeIncognita(texto: string, id: string): Escena | nu
         clase: "pz-uniforme",
         piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
         tipo: "caja",
-        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)} en los dos lados: lo escribimos en los dos miembros.`,
+        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)}:`,
       },
     ],
   };
@@ -1448,16 +1448,13 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     id,
     texto,
     latex,
-    // SIN «Vamos a repartir el 2…» EN LA PIZARRA NI EN LA ENTRADA.
+    // ENTRADA SIN LA LLAVE × n (Alex.pdf §1).
     //
-    // El cliente lo cronometró otra vez (Alex.pdf + vídeo): en 0:00-0:05 esa
-    // frase flotaba bajo la ecuación y duplicaba el comentario formal
-    // («Primero aplicamos la propiedad distributiva…»). Debe eliminarse; la
-    // explicación inicia directamente con el comentario pedagógico, que el
-    // motor ya escribe con `explicaEnPizarra` y narra con `hablar`. La entrada
-    // queda vacía: los focos siguen contando el reparto en voz (y su desglose
-    // vive en el Ambiente 2), sin dejar un pie residual en la columna.
-    narracion: "",
+    // Con narración vacía el sincronizador saltaba al primer foco en cuanto
+    // aparecía la ecuación, y la llave amarilla «× 2» se dibujaba en el 0:01,
+    // antes de explicar la distributiva. La entrada dice el rótulo corto; la
+    // llave sólo aparece cuando el foco nombra «El 2 multiplica a…».
+    narracion: m[3] ? "Por propiedad distributiva:" : `Vamos a repartir el ${factor}.`,
     clase: "distributiva",
     focos,
   };
