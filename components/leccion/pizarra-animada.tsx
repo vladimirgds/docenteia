@@ -523,15 +523,20 @@ export function PizarraAnimada({
   };
 
   const narracionActiva = foco >= 0 ? (escena.focos[foco]?.narracion ?? "") : escena.narracion;
-  // El pie de una distributiva ES el desglose auxiliar («El 2 multiplica a…»,
-  // «Vamos a repartir…»). Fuera de la columna, siempre: vive en el Ambiente 2.
-  // El comentario formal (`.pz-comentario`) cubre la frase del tutor en proyección.
+  // El pie NO duplica el comentario formal (Alex.pdf: «Dividimos entre 2:»
+  // salía dos veces). En proyección `.pz-comentario` ya cubre los rótulos;
+  // el desglose del reparto vive en Ambiente 2.
+  const esRotuloDeComentario =
+    /^(Por propiedad|Restamos|Sumamos|Dividimos|La .+ está multiplicada)/i.test(
+      (narracionActiva ?? "").trim(),
+    );
   const pieEnColumna =
     conPie &&
     estado === "activa" &&
     Boolean(narracionActiva?.trim()) &&
     escena.clase !== "distributiva" &&
-    !/vamos a repartir|multiplica a /i.test(narracionActiva);
+    !esRotuloDeComentario &&
+    !/vamos a repartir|multiplica a |por cada término/i.test(narracionActiva);
 
   return (
     <div
@@ -604,7 +609,11 @@ export function PizarraAnimada({
           </text>
 
           {aDibujar.flatMap(({ f, i }) => {
+            // Llave × n SÓLO en el paso activo de la distributiva (Alex.pdf §2):
+            // no en la entrada (foco < 0) y no cuando el paso ya pasó a
+            // 2x + 6 = 16 (estado !== activa → aDibujar ya vacío para conectores).
             if (f.conector) {
+              if (!(estado === "activa" && foco >= 0 && i === foco)) return [];
               const [a, b] = f.piezas ?? [];
               const factor = a ? medidas.cajas[a] : undefined;
               const termino = b ? medidas.cajas[b] : undefined;
@@ -615,7 +624,7 @@ export function PizarraAnimada({
                   factor={factor}
                   termino={termino}
                   glifos={medidas.glifos}
-                  etiqueta={foco >= 0 ? f.etiqueta : undefined}
+                  etiqueta={f.etiqueta}
                   marcador={`${idPizarra}-flecha`}
                   rotulo={rotulo}
                 />,
@@ -634,8 +643,7 @@ export function PizarraAnimada({
                   ancla={f.anclaEtiqueta ? medidas.cajas[f.anclaEtiqueta] : undefined}
                   glifos={medidas.glifos}
                   // El rótulo (× 2) sólo con el foco activo y YA empezada la
-                  // explicación —nunca en la entrada (Alex.pdf §1: la llave no
-                  // puede aparecer en el 0:01, apenas inicia el ejercicio).
+                  // explicación —nunca en la entrada (Alex.pdf §2).
                   conEtiqueta={j === 0 && estado === "activa" && i === foco && foco >= 0}
                   rotulo={rotulo}
                 />,

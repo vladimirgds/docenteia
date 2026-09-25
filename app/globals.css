@@ -359,7 +359,8 @@
    —donde el mínimo es de aula— lo fija la regla de más abajo, que gana por ser
    más específica. */
 .pz-ambiente .katex {
-  font-size: 1.25rem;
+  /* text-lg (Alex.pdf §3): cabe el ejercicio entero en h-[80vh] sin scroll */
+  font-size: 1.125rem;
 }
 
 /* Y en proyección manda la escala compacta (Alex.pdf text-xl), no la de aula. */

@@ -692,9 +692,10 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       clase: "pz-uniforme",
       piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
       tipo: "caja",
-      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)}:`,
+      // Alex.pdf §4: «Restamos 6 a ambos miembros:»
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} a ambos miembros:`,
     });
-    if (!soloEscritura) focos.push({
+  if (!soloEscritura) focos.push({
       clase: "pz-cancela",
       // Una caja por término, y las dos DENTRO DEL MISMO MIEMBRO: el término que
       // estaba y su opuesto. Ninguna marca cruza el igual.
@@ -900,7 +901,9 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
     id,
     texto,
     latex: `${numerador(arribaIzq, "pz-divisor pz-divisor-izq")} = ${numerador(dividendo, "pz-divisor pz-divisor-der")}`,
-    narracion: `Dividimos entre ${divisor}:`,
+    // Alex.pdf §4: «Dividimos ambos miembros entre 2:» — misma frase que el
+    // comentario formal; el pie de proyección no la repite (ver pieEnColumna).
+    narracion: `Dividimos ambos miembros entre ${divisor}:`,
     clase: "despeje",
     focos: [
       {
@@ -908,7 +911,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
         // Una caja por miembro: ninguna marca cruza el igual.
         piezas: ["pz-divisor-izq", "pz-divisor-der"],
         tipo: "caja",
-        narracion: `Dividimos entre ${divisor}:`,
+        narracion: `Dividimos ambos miembros entre ${divisor}:`,
         etiqueta: `÷ ${divisor}`,
       },
     ],
@@ -964,7 +967,7 @@ export function escenaDeRestaDeIncognita(texto: string, id: string): Escena | nu
         clase: "pz-uniforme",
         piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
         tipo: "caja",
-        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)}:`,
+        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)} a ambos miembros:`,
       },
     ],
   };
@@ -1414,21 +1417,32 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
   // así que la escribe el paso siguiente del hilo —con su comentario encima— y
   // el filtro de repetidos la deja pasar.
 
-  const focos: Foco[] = interior.map((t, i) => ({
-    clase: "pz-reparte",
-    // El factor y el sumando al que llega: el conector sale del uno y entra en
-    // el otro. Es lo que enseña que el de fuera entra en los dos, y no sólo en
-    // el primero.
-    piezas: ["pz-reparte-0", `pz-reparte-${i + 1}`],
-    tipo: "caja",
-    conector: true,
-    // Con SU signo: en "2(x − 3)" el 2 multiplica a −3 y da −6. Sin el signo la
-    // frase decía "multiplica a 3: da 6" mientras debajo aparecía "2x − 6".
-    narracion: `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${t.signo === -1 ? "-" : ""}${
-      t.variable ? `${t.coeficiente === 1 ? "" : t.coeficiente}${t.variable}` : t.coeficiente
-    }: da ${escribirTermino(t, factor * t.signo)}.`,
-    etiqueta: `× ${factor}`,
-  }));
+  const nombreTermino = (t: (typeof interior)[number]) => {
+    const cuerpo = t.variable
+      ? `${t.coeficiente === 1 ? "" : t.coeficiente}${t.variable}`
+      : String(t.coeficiente);
+    return `${t.signo === -1 ? "-" : ""}${cuerpo}`;
+  };
+  // Misma locución que `locucionesDistributiva` / Ambiente 2 (Alex.pdf §1):
+  // el avatar narra el cálculo auxiliar en el momento en que se proyecta.
+  const focos: Foco[] = interior.map((t, i) => {
+    const prod = escribirTermino(t, factor * t.signo);
+    const trozo = `${factor} por ${nombreTermino(t)} es ${prod}`;
+    const narracion =
+      i === 0
+        ? `Multiplicamos el ${factor} por cada término: ${trozo},`
+        : i === interior.length - 1
+          ? `y ${trozo}.`
+          : `y ${trozo},`;
+    return {
+      clase: "pz-reparte",
+      piezas: ["pz-reparte-0", `pz-reparte-${i + 1}`],
+      tipo: "caja" as const,
+      conector: true,
+      narracion,
+      etiqueta: `× ${factor}`,
+    };
+  });
 
   // EL FOCO DEL RESULTADO SÓLO SI EL RESULTADO ESTÁ EN ESTA ESCENA.
   //
@@ -1440,7 +1454,7 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     focos.push({
       clase: "pz-resultado",
       tipo: "resultado",
-      narracion: `Queda ${expandido.replace(/\s+/g, " ").trim().replace(/^-\s+/, "-")}.`,
+      narracion: `Por eso obtenemos ${expandido.replace(/\s+/g, " ").trim().replace(/^-\s+/, "-")}.`,
     });
   }
 
@@ -1448,12 +1462,12 @@ export function escenaDeDistributiva(texto: string, id: string): Escena | null {
     id,
     texto,
     latex,
-    // ENTRADA SIN LA LLAVE × n (Alex.pdf §1).
+    // ENTRADA SIN LA LLAVE × n (Alex.pdf §2).
     //
     // Con narración vacía el sincronizador saltaba al primer foco en cuanto
-    // aparecía la ecuación, y la llave amarilla «× 2» se dibujaba en el 0:01,
-    // antes de explicar la distributiva. La entrada dice el rótulo corto; la
-    // llave sólo aparece cuando el foco nombra «El 2 multiplica a…».
+    // aparecía la ecuación, y la llave amarilla «× 2» se dibujaba en el 0:01.
+    // La entrada dice el rótulo corto; la llave sólo con el foco activo del
+    // reparto, y se desmonta al pasar a 2x + 6 = 16 (estado completada).
     narracion: m[3] ? "Por propiedad distributiva:" : `Vamos a repartir el ${factor}.`,
     clase: "distributiva",
     focos,

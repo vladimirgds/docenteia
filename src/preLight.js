@@ -679,8 +679,8 @@ export function fraseCancelacionIncognita(izquierdo, derecho, v) {
  * porque el panel sigue a la voz comparando lo dicho con el pie de cada foco.
  */
 export function fraseDivisionEnDosLados(divisor) {
-  // Alex.pdf §3: rótulo de una sola línea, no la frase larga.
-  return `Dividimos entre ${divisor}:`;
+  // Alex.pdf §4: «Dividimos ambos miembros entre 2:»
+  return `Dividimos ambos miembros entre ${divisor}:`;
 }
 
 // Devuelve { original, steps:[{explica, escribe}], answer, varName } o null.
@@ -847,8 +847,8 @@ export function solveLinearSteps(text) {
     // tiempos —cuando se escribe la resta y cuando se tacha el par—.
     const terminoX = `${xc(Math.abs(rhsX))}${v}`;
     steps.push({
-      // Alex.pdf §3: «Restamos 6:» — rótulo corto, una sola línea.
-      explica: `${rhsX > 0 ? "Restamos" : "Sumamos"} ${xc(Math.abs(rhsX))}${v}:`,
+      // Alex.pdf §4: «Restamos 6 a ambos miembros:»
+      explica: `${rhsX > 0 ? "Restamos" : "Sumamos"} ${xc(Math.abs(rhsX))}${v} a ambos miembros:`,
       escribe: `${conLaResta(coefL, konstL)} = ${conLaResta(coefR, konstR)}`,
       accion: { tipo: "cancelacion", terminosFoco: [terminoX] },
     });
@@ -903,8 +903,8 @@ export function solveLinearSteps(text) {
   if (konst !== 0) {
     const op = konst > 0 ? `restamos ${fmt(konst)}` : `sumamos ${fmt(-konst)}`;
     steps.push({
-      // Alex.pdf §3: «Restamos 6:» — rótulo de una sola línea.
-      explica: `${konst > 0 ? "Restamos" : "Sumamos"} ${fmt(Math.abs(konst))}:`,
+      // Alex.pdf §4: «Restamos 6 a ambos miembros:»
+      explica: `${konst > 0 ? "Restamos" : "Sumamos"} ${fmt(Math.abs(konst))} a ambos miembros:`,
       escribe: `${xc(coef)}${v} = ${fmt(c - konst)}`,
       accion: { tipo: "cancelacion", terminosFoco: [fmt(Math.abs(konst))] },
       // «Justificación de cancelaciones: por ejemplo, debajo de un separador
@@ -925,8 +925,8 @@ export function solveLinearSteps(text) {
     // resultado, igual que con la multiplicación y con la resta.
     steps.push({
       // CADA FRASE CUENTA LA LÍNEA QUE ESTÁ A LA VISTA, NO LA SIGUIENTE.
-      // Sobre "2x = 10" se nombra el coeficiente; el «Dividimos entre 2:» va
-      // con la fracción ya escrita (Alex.pdf §3).
+      // Sobre "2x = 10" se nombra el coeficiente; el «Dividimos ambos miembros
+      // entre 2:» va con la fracción ya escrita (Alex.pdf §4).
       explica: `La ${v} está multiplicada por ${fmt(Math.abs(coef))}:`,
       // COMO SE ESCRIBE EN CLASE: en fracción, no con el signo de dividir. Lo
       // pidió el cliente como regla general —"2x/2 = 10/2"—, y es además la
@@ -942,8 +942,8 @@ export function solveLinearSteps(text) {
       },
     });
     steps.push({
-      // Alex.pdf §3: «Dividimos entre 2:». Misma frase que el panel
-      // (`escenaDeDivisionEnFraccion`); la batería lo fija.
+      // Alex.pdf §4: «Dividimos ambos miembros entre 2:». Misma frase que el
+      // panel (`escenaDeDivisionEnFraccion`); la batería lo fija.
       explica: fraseDivisionEnDosLados(Math.abs(coef)),
       escribe: `${v} = ${answerStr}`,
       // El gesto sobre la línea ANTERIOR —la división escrita—: se señala el

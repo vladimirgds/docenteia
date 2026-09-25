@@ -1900,14 +1900,26 @@ export function locucionesDistributiva(texto) {
   const factor = Number(m[1]);
   const ts = terminosDelParentesis(m[2]);
   if (!Number.isFinite(factor) || factor === 0 || !ts) return null;
-  const frases = ts.map((t, i) => `${i === 0 ? "El" : "Y el"} ${factor} multiplica a ${t.signo === -1 ? "-" : ""}${
-    t.v ? `${t.coef === 1 ? "" : t.coef}${t.v}` : t.coef}: da ${terminoPor(t, factor * t.signo)}.`);
+  // Alex.pdf (vídeo 0:27): narrar LO QUE HAY EN Ambiente 2, no otra frase.
+  // «Multiplicamos el 2 por cada término: 2 por x es 2x, y 2 por 3 es 6.
+  //  Por eso obtenemos 2x + 6.»
+  const nombre = (t) => {
+    const cuerpo = t.v ? `${t.coef === 1 ? "" : t.coef}${t.v}` : String(t.coef);
+    return `${t.signo === -1 ? "-" : ""}${cuerpo}`;
+  };
+  const frases = ts.map((t, i) => {
+    const prod = terminoPor(t, factor * t.signo);
+    const trozo = `${factor} por ${nombre(t)} es ${prod}`;
+    if (i === 0) return `Multiplicamos el ${factor} por cada término: ${trozo},`;
+    if (i === ts.length - 1) return `y ${trozo}.`;
+    return `y ${trozo},`;
+  });
   const expandido = ts.map((t, i) => {
     const val = terminoPor(t, factor * t.signo);
     return `${val.startsWith("-") ? " - " : i > 0 ? " + " : ""}${val.replace(/^-/, "")}`;
   }).join("").replace(/\s+/g, " ").trim().replace(/^-\s+/, "-");
   const derecho = String(texto ?? "").split("=").slice(1).join("=").trim();
-  frases.push(`Queda ${expandido}${m[3] && derecho ? ` = ${derecho}` : ""}.`);
+  frases.push(`Por eso obtenemos ${expandido}${m[3] && derecho ? ` = ${derecho}` : ""}.`);
   return frases;
 }
 /**
@@ -2035,16 +2047,11 @@ export function linealResueltaLSG(opts = {}) {
     { tipo: "esperar", segundos: 1 },
   );
   if (sol.steps[0]?.explica) dir.push(explicaEnPizarra(sol.steps[0].explica));
-  // Ambiente 2 AL MISMO TIEMPO que la explicación del reparto (Alex.pdf §2):
-  // antes el taller se escribía DESPUÉS de narrar «El 2 multiplica…» y de
-  // pintar ya 2x + 6 = 16 (en el 0:27). Aquí sale con el comentario, para que
-  // acompañe a la voz desde el primer «multiplica a».
+  // Ambiente 2 + su narración AL MISMO TIEMPO (Alex.pdf §1, vídeo 0:27):
+  // el taller se escribe y el avatar cuenta el cálculo auxiliar —no otra frase—.
   const apoyoInicial = sol.steps[0]?.apoyo;
-  if (apoyoInicial) dir.push(...tallerAuxiliar(apoyoInicial));
-  // Si la ecuación empieza repartiendo un paréntesis, el reparto se cuenta foco a foco —2 × x, 2 × 4 y lo
-  // que queda— con su pausa de lectura: es lo que hace que la animación de abajo termine de repartir los
-  // dos términos, en vez de quedarse en el primero mientras el tutor ya habla del paso siguiente.
   const reparto = locucionesDistributiva(sol.original);
+  if (apoyoInicial) dir.push(...tallerAuxiliar(apoyoInicial));
   sol.steps.forEach((s, k) => {
     // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
     // antes de escribir la siguiente. En el reparto inicial el rótulo ya está
@@ -2052,13 +2059,10 @@ export function linealResueltaLSG(opts = {}) {
     if (!(k === 0 && reparto)) {
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
     }
-    // EL REPARTO, TÉRMINO A TÉRMINO —Y EL "QUEDA…" CUANDO YA ESTÁ ESCRITO.
-    //
-    // Las frases de los términos acompañan a la escuadra del "× 2" sobre la
-    // ecuación original, que es donde vive. La última —"Queda 2x + 6 = 16"— ya
-    // no destapa un segundo renglón de esa misma escena: esa ecuación es ahora
-    // el paso siguiente del hilo, con su comentario encima, así que se dice
-    // DESPUÉS de escribirla. Una línea, un tiempo.
+    // EL REPARTO = LO QUE HAY EN Ambiente 2, término a término.
+    // «Multiplicamos el 2 por cada término: 2 por x es 2x, y 2 por 3 es 6.»
+    // La última —«Por eso obtenemos 2x + 6.»— se dice DESPUÉS de escribir
+    // esa ecuación en el hilo.
     const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
     if (k === 0 && reparto) {
       for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });

@@ -493,18 +493,29 @@ function juzgarPie(foco, escena, donde, indice) {
   const linea = normalizar(escena.texto ?? "");
   const [izqLinea, derLinea] = linea.split("=").map((p) => (p ?? "").trim());
 
-  // "El 2 multiplica a x: da 2x."
-  const producto = frase.match(/El (-?[\d.]+) multiplica a (-?[^:]+): da ([^.]+)\./i);
-  if (producto) {
+  // "Multiplicamos el 2 por cada término: 2 por x es 2x," (Alex.pdf Ambiente 2)
+  const producto = frase.match(
+    /(?:Multiplicamos el |y )?(-?[\d.]+) por (-?[^.:,]+?) es ([^.,]+)/i,
+  );
+  if (producto && /por cada término| por /i.test(frase)) {
     anotar("reparto del paréntesis");
     const f = leer(producto[1]);
     const t = leer(producto[2]);
     const r = leer(producto[3]);
     check(`el reparto del paréntesis está bien hecho (${donde})`, Boolean(f && t && r) && igualesP(porP(f, t), r), frase);
   }
+  // Forma previa: "El 2 multiplica a x: da 2x."
+  const productoViejo = frase.match(/El (-?[\d.]+) multiplica a (-?[^:]+): da ([^.]+)\./i);
+  if (productoViejo) {
+    anotar("reparto del paréntesis");
+    const f = leer(productoViejo[1]);
+    const t = leer(productoViejo[2]);
+    const r = leer(productoViejo[3]);
+    check(`el reparto del paréntesis está bien hecho (${donde})`, Boolean(f && t && r) && igualesP(porP(f, t), r), frase);
+  }
 
-  // "Queda 2x + 6 = 16." — lo repartido tiene que valer lo mismo que la línea.
-  const queda = frase.match(/^Queda ([^.]+)\.$/i);
+  // "Por eso obtenemos 2x + 6 = 16." / "Queda 2x + 6 = 16."
+  const queda = frase.match(/^(?:Por eso obtenemos|Queda) ([^.]+)\.$/i);
   if (queda && escena.clase === "distributiva") {
     anotar("lo que queda tras repartir");
     const partes = queda[1].split("=").map((p) => leer(p));
@@ -551,10 +562,9 @@ function juzgarPie(foco, escena, donde, indice) {
     );
   }
 
-  // "Restamos 6:" / "Sumamos 6:" (Alex.pdf §3) — y la forma larga previa.
-  // El verbo tiene que decir lo que se hace, y el signo del término manda.
+  // "Restamos 6 a ambos miembros:" / "Restamos 6:" / forma larga previa.
   const enLosDosLados =
-    frase.match(/^(Restamos|Sumamos|Quitamos|Añadimos) (\d+)(?: en los dos lados|:)/i);
+    frase.match(/^(Restamos|Sumamos|Quitamos|Añadimos) (\d+)(?: a ambos miembros| en los dos lados|:)/i);
   if (enLosDosLados && escena.clase === "despeje") {
     anotar("la operación que se dice en el despeje");
     const terminos = terminosDe(izqLinea) ?? [];

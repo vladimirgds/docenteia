@@ -658,14 +658,14 @@ titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecu
   // 3. LO QUE SE DICE ES LO QUE SE HACE, en el despeje y en el polinomio.
   const conMenos = escenaDeDespeje("2x - 6 = 16", "e");
   check(
-    "con «2x − 6 = 16» el tutor SUMA 6 (no «quitamos»)",
-    /^Sumamos 6:/.test(conMenos.focos[0]?.narracion ?? ""),
+    "con «2x − 6 = 16» el tutor SUMA 6 a ambos miembros (no «quitamos»)",
+    /^Sumamos 6 a ambos miembros:/.test(conMenos.focos[0]?.narracion ?? ""),
     conMenos.focos[0]?.narracion,
   );
   const conMas = escenaDeDespeje("2x + 6 = 16", "e");
   check(
-    "y con «2x + 6 = 16» resta 6",
-    /^Restamos 6:/.test(conMas.focos[0]?.narracion ?? ""),
+    "y con «2x + 6 = 16» resta 6 a ambos miembros",
+    /^Restamos 6 a ambos miembros:/.test(conMas.focos[0]?.narracion ?? ""),
     conMas.focos[0]?.narracion,
   );
   const poli = escenaDePolinomio("2x⁵ - 3x⁴ + x²", "e");
@@ -723,8 +723,8 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       JSON.stringify(e.focos[0]),
     );
     check(
-      "…y lo dice sin cancelar todavía: «Restamos 6:»",
-      /^Restamos 6:/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
+      "…y lo dice sin cancelar todavía: «Restamos 6 a ambos miembros:»",
+      /^Restamos 6 a ambos miembros:/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
       e.focos[0]?.narracion,
     );
     // El SEGUNDO tiempo es otro renglón: la igualdad con la resta ya escrita, y
@@ -1425,9 +1425,9 @@ titulo("A00a. La distributiva se reparte a la vista");
       JSON.stringify(e.focos[1].piezas) === JSON.stringify(["pz-reparte-0", "pz-reparte-2"]),
   );
   check(
-    "y se dice qué da cada producto",
-    /El 2 multiplica a x: da 2x\./.test(e.focos[0].narracion) &&
-      /Y el 2 multiplica a 4: da 8\./.test(e.focos[1].narracion),
+    "y se dice qué da cada producto (narración de Ambiente 2)",
+    /Multiplicamos el 2 por cada término: 2 por x es 2x,/.test(e.focos[0].narracion) &&
+      /y 2 por 4 es 8\./.test(e.focos[1].narracion),
     e.focos[0].narracion,
   );
   // Y LA ECUACIÓN REPARTIDA NO SE ESCRIBE AQUÍ.
@@ -1460,14 +1460,14 @@ titulo("A00a. La distributiva se reparte a la vista");
   check(
     "una expresión suelta sí destapa su resultado, en su propia línea",
     /pz-rev-2/.test(suelta.latex) && suelta.focos.at(-1).clase === "pz-resultado" &&
-      suelta.focos.at(-1).narracion === "Queda 2x + 8.",
+      suelta.focos.at(-1).narracion === "Por eso obtenemos 2x + 8.",
     suelta.focos.at(-1).narracion,
   );
 
   const conResta = escenaDeDistributiva("3(2x - 5)", "e");
   check(
     "con un signo menos dentro, también",
-    conResta.focos.at(-1).narracion === "Queda 6x - 15.",
+    conResta.focos.at(-1).narracion === "Por eso obtenemos 6x - 15.",
     conResta.focos.at(-1).narracion,
   );
   check(
@@ -1939,11 +1939,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
-    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6:/.test(e.d.texto));
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6 a ambos miembros:/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "cuando el tutor dice «Restamos 6:», la pizarra ESCRIBE la resta y NO tacha nada",
+      "cuando el tutor dice «Restamos 6 a ambos miembros:», la pizarra ESCRIBE la resta y NO tacha nada",
       enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
@@ -2014,9 +2014,9 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       enCoef.foco?.etiqueta === "× 2" && /multiplicada por 2/.test(enCoef.foco?.narracion ?? ""),
       `${enCoef.foco?.etiqueta} · ${enCoef.foco?.narracion}`,
     );
-    const enDivide = dondeSuena(/dividimos entre 2/i);
+    const enDivide = dondeSuena(/dividimos ambos miembros entre 2/i);
   check(
-      "«Dividimos entre 2:» suena con la FRACCIÓN ya escrita, no con 2x = 10",
+      "«Dividimos ambos miembros entre 2:» suena con la FRACCIÓN ya escrita, no con 2x = 10",
       enDivide.texto === "2x/2 = 10/2",
       `${enDivide.texto}`,
     );
@@ -2474,9 +2474,9 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     check("KaTeX compone el renglón nuevo sin errores", compone);
     const signo = escenaDeDistributiva("2(x - 3) = 10", "e");
     check(
-      "cada producto con SU signo: en 2(x − 3), el 2 multiplica a −3 y da −6",
-      signo.focos[1].narracion === "Y el 2 multiplica a -3: da -6." &&
-        locucionesDistributiva("2(x - 3) = 10").at(-1) === "Queda 2x - 6 = 10.",
+      "cada producto con SU signo: en 2(x − 3), el 2 por −3 es −6",
+      /y 2 por -3 es -6\./.test(signo.focos[1].narracion) &&
+        locucionesDistributiva("2(x - 3) = 10").at(-1) === "Por eso obtenemos 2x - 6 = 10.",
       `${signo.focos[1].narracion} / ${locucionesDistributiva("2(x - 3) = 10").at(-1)}`,
     );
     // Las frases del motor y las del panel no pueden separarse: la voz tiene
@@ -2665,8 +2665,9 @@ titulo("A00a1g. Revisión 9b06d70: pizza circular, brazo de la distributiva, lle
   );
   check(
     "sólo se dibuja para los focos de conector, y sólo con sus dos piezas medidas",
-    /if \(f\.conector\) \{\s*const \[a, b\] = f\.piezas \?\? \[\];/.test(panelTsx) &&
-      /if \(!factor \|\| !termino\) return \[\];/.test(panelTsx),
+    /if \(f\.conector\) \{[\s\S]{0,200}?const \[a, b\] = f\.piezas \?\? \[\];/.test(panelTsx) &&
+      /if \(!factor \|\| !termino\) return \[\];/.test(panelTsx) &&
+      /estado === "activa" && foco >= 0 && i === foco/.test(panelTsx),
   );
   check(
     "reutiliza el trazo de las marcas —mismo color, misma animación de dibujado—",
@@ -4643,8 +4644,7 @@ titulo("D. Máquina de estados del avatar");
     "la pizarra no deja medio lienzo en blanco en Concepto y Reglas",
     /const compacta = actual != null && !planteaEjercicio;/.test(pizarraTsx) &&
       pizarraTsx.includes('"h-[21rem] sm:h-[25rem]"') &&
-      (pizarraTsx.includes('"h-[26rem] sm:h-[32rem]"') ||
-        pizarraTsx.includes('max-h-[85vh] h-[26rem] sm:h-[32rem]')),
+      (pizarraTsx.includes('"h-[80vh]"') || pizarraTsx.includes("h-[80vh]")),
   );
   check(
     // La "tarjeta residual" que el cliente fotografió —la regla sin fórmula,
@@ -5510,13 +5510,14 @@ if (!vivo) {
       (() => {
         const paso = (solveLinearSteps("2x + 5 = 15")?.steps ?? []).find((x) => x.escribe === "x = 5");
         const e = escenaDeLinea({ latex: "2x/2 = 10/2", operacion: paso?.accion, narracion: paso?.explica }, "d");
+        const dicha = e?.focos?.[0]?.narracion ?? "";
         return (
-          e.focos.length > 0 &&
-          /dividimos entre 2:$/i.test(e.focos[0].narracion) &&
-          !/queda/.test(e.focos[0].narracion)
+          (e?.focos?.length ?? 0) > 0 &&
+          /dividimos ambos miembros entre 2/i.test(dicha) &&
+          !/queda x\s*=/i.test(dicha)
         );
       })(),
-      JSON.stringify(escenaDeLinea({ latex: "2x/2 = 10/2", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "d").focos),
+      JSON.stringify(escenaDeLinea({ latex: "2x/2 = 10/2", operacion: { tipo: "factor", terminosFoco: ["2"] } }, "d")?.focos),
     );
     check(
       "…y marca los DOS denominadores, uno en cada miembro, como dice el pie",
@@ -5583,11 +5584,11 @@ if (!vivo) {
         sinFoco.length === 0,
         sinFoco.map((x) => x.texto).join(" · "),
       );
-      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x:/.test(e.d.texto));
+      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x a ambos miembros:/.test(e.d.texto));
       const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /A la derecha se cancela 3x con -3x/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
       check(
-        "cuando dice «Restamos 3x:» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
+        "cuando dice «Restamos 3x a ambos miembros:» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
         iResta >= 0 && iTacha > iResta &&
           focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
           focoEn(iTacha)?.tipo === "tachado",
@@ -5772,8 +5773,8 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
   );
   check(
-    "KaTeX a text-xl en pantalla y compacto en proyección (Alex.pdf: que entre entero)",
-    /\.pz-ambiente \.katex \{\s*font-size: 1\.25rem;\s*\}/.test(estilos) &&
+    "KaTeX a text-lg en pantalla y compacto en proyección (Alex.pdf §3: que entre en h-[80vh])",
+    /\.pz-ambiente \.katex \{[^}]*font-size: 1\.125rem;/.test(estilos) &&
       /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: clamp\(1\.25rem,/.test(estilos),
   );
 
@@ -5817,30 +5818,39 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     );
   }
 
-  // 4c. Alex.pdf §2: Ambiente 2 con la narración del reparto, no después.
+  // 4c. Alex.pdf §1: Ambiente 2 narrado al proyectarse.
   {
     const tramo = motor.slice(
       motor.indexOf("export function linealResueltaLSG"),
       motor.indexOf("export function", motor.indexOf("export function linealResueltaLSG") + 10),
     );
+    const dichas = locucionesDistributiva("2(x + 3) = 16");
     check(
-      "el taller auxiliar sale con el comentario del reparto, antes de narrar «El 2 multiplica…»",
-      /const apoyoInicial = sol\.steps\[0\]\?\.apoyo;\s*if \(apoyoInicial\) dir\.push\(\.\.\.tallerAuxiliar\(apoyoInicial\)\);/.test(tramo) &&
-        tramo.indexOf("tallerAuxiliar(apoyoInicial)") < tramo.indexOf("const reparto = locucionesDistributiva") &&
+      "el avatar narra el cálculo de Ambiente 2 («Multiplicamos el 2 por cada término…»)",
+      /Multiplicamos el 2 por cada término: 2 por x es 2x,/.test(dichas?.[0] ?? "") &&
+        /y 2 por 3 es 6\./.test(dichas?.[1] ?? "") &&
+        dichas?.at(-1) === "Por eso obtenemos 2x + 6 = 16.",
+      JSON.stringify(dichas),
+    );
+    check(
+      "el taller auxiliar sale antes de narrar el reparto (Ambiente 2 a tiempo)",
+      /const apoyoInicial = sol\.steps\[0\]\?\.apoyo;/.test(tramo) &&
+        tramo.indexOf("tallerAuxiliar(apoyoInicial)") < tramo.indexOf("for (const frase of reparto") &&
         tramo.indexOf("explicaEnPizarra(sol.steps[0].explica)") < tramo.indexOf("tallerAuxiliar(apoyoInicial)"),
     );
   }
 
-  // 4d. Alex.pdf §1: la llave × n no se pinta en la entrada (foco < 0).
+  // 4d. Alex.pdf §2: la llave × n no se pinta en la entrada (foco < 0).
   check(
-    "la llave × n sólo con foco activo ≥ 0, nunca en la entrada (Alex.pdf §1)",
-    /conEtiqueta=\{j === 0 && estado === "activa" && i === foco && foco >= 0\}/.test(panel),
+    "la llave × n sólo con foco activo ≥ 0, nunca en la entrada (Alex.pdf §2)",
+    /if \(!\(estado === "activa" && foco >= 0 && i === foco\)\) return \[\];/.test(panel) &&
+      /conEtiqueta=\{j === 0 && estado === "activa" && i === foco && foco >= 0\}/.test(panel),
   );
 
-  // 4e. Alex.pdf §4: persistencia — los ambientes no recortan pasos ya escritos.
+  // 4e. Alex.pdf §3: persistencia — h-[80vh] overflow-hidden.
   check(
-    "los ambientes no recortan lo ya escrito (overflow visible, Alex.pdf §4)",
-    /\.pz-ambientes \{[\s\S]{0,400}?overflow: visible;/.test(estilos),
+    "la pizarra fija h-[80vh] overflow-hidden (Alex.pdf §3)",
+    /h-\[80vh\]/.test(pizarra) && /pz-tablero-caja relative overflow-hidden/.test(pizarra),
   );
 
   // 5. El puntero guía («efecto láser o foco»), con los valores de su nota.

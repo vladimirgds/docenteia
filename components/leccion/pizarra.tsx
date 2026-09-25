@@ -662,14 +662,12 @@ export function Pizarra({
       {/* La tira de fases es interfaz: no se proyecta. */}
       {!proyeccion && <Fases fases={fases} />}
 
-      {/* ALTURA ACOTADA (Alex.pdf): max-h-[85vh] overflow-hidden para que el
-          ejercicio entero entre sin empujar el encabezado. El desbordamiento
-          residual, si lo hubiera, se resuelve dentro. En proyección la pizarra
-          ocupa la pantalla. */}
+      {/* ALTURA FIJA (Alex.pdf §3): h-[80vh] overflow-hidden — el encabezado
+          no se empuja fuera; el ejercicio entero cabe reduciendo aire/KaTeX. */}
       <div
         className={cn(
           "pz-tablero-caja relative overflow-hidden rounded-lg border bg-card shadow-inner",
-          compacta ? "h-[21rem] sm:h-[25rem]" : "max-h-[85vh] h-[26rem] sm:h-[32rem]",
+          compacta ? "h-[21rem] sm:h-[25rem]" : "h-[80vh]",
         )}
         aria-live="polite"
         aria-label="Pizarra"
@@ -719,7 +717,7 @@ export function Pizarra({
                           data-papel-ambiente="hilo"
                           data-paso={p.id}
                         >
-                          <div className="pz-bloque-paso flex flex-col space-y-1">
+                          <div className="pz-bloque-paso flex flex-col space-y-0.5">
                             {p.comentario ? renderElemento(p.comentario) : null}
                             {p.ecuaciones.map(renderElemento)}
                           </div>
