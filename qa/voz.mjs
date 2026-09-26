@@ -225,6 +225,17 @@ const navegador = await chromium.launch({ executablePath: CHROME, headless: true
   const { p, ctx, peticiones, errores } = await abrirClase(navegador, { rutaVoz: "neural" });
   await p.waitForTimeout(9000);
 
+  // LA PIZARRA EMPIEZA EN REPOSO, Y ESO ES LO CORRECTO.
+  //
+  // La frase con la que el tutor presenta el ejercicio ya no señala nada —«la
+  // explicación debe iniciar directamente con el comentario formal»; una flecha
+  // antes de que se diga nada era justo la queja—. Así que mirar el primer
+  // instante y exigir marcas encendidas mediría lo contrario de lo que se quiere.
+  // Se espera a que el tutor OPERE, que es cuando tiene que haberlas.
+  await p
+    .waitForFunction(() => document.querySelectorAll(".pz-resaltado").length > 0, null, { timeout: 45_000 })
+    .catch(() => {});
+
   const estado = await p.evaluate(() => ({
     local: window.__speakLocal ?? -1,
     audios: window.__audios ?? [],

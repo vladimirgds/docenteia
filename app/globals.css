@@ -1148,8 +1148,11 @@
 /* LAS NOTAS, a tamaño de aula (24 px como mínimo), en blanco sobre la pizarra
    oscura, alineadas a la izquierda y con aire entre una y otra. La fórmula de
    una nota, a 48 px como cualquier otra. */
+/* La nota, en la familia compacta de los pasos (Alex.pdf): se quedó con la
+   escala de aula cuando los pasos bajaron, y proyectando era el texto más
+   grande de la pantalla, por encima del propio ejercicio. */
 .modo-proyeccion .pz-nota {
-  font-size: clamp(1.6rem, 2.2vw, 2.3rem);
+  font-size: clamp(1.5rem, 1.8vw, 1.8rem);
   color: hsl(0 0% 100%);
   gap: 0.6em;
 }
@@ -1159,9 +1162,15 @@
 }
 
 /* La fórmula de una nota —"2 × 3 = 6" en "MCM(2, 3): 2 × 3 = 6"— es una
-   fórmula como cualquier otra: 48 px como mínimo, igual que los pasos. */
+   fórmula como cualquier otra: AL MISMO TAMAÑO QUE LOS PASOS.
+   Se quedó en los 48 px del informe cuando la escala de los pasos bajó a la
+   compacta que pidió el cliente, y proyectando se veía el desajuste de frente:
+   "3 + 4" en la columna izquierda a 25 px y "unidades: 3 + 4 = 7" a su derecha
+   a 48 px, en la misma pantalla. Una nota no es más importante que el paso que
+   acompaña. Un pelín mayor, para que se distinga de la prosa de al lado. */
 .modo-proyeccion .pz-nota .katex {
-  font-size: max(3rem, 1.3em);
+  /* Un escalón por encima de su rótulo, como siempre. */
+  font-size: clamp(1.6rem, 2.1vw, 2rem);
 }
 
 /* Y la de lo que dice el tutor bajo el paso, al tamaño de su frase. */
@@ -1184,8 +1193,9 @@
   border-color: hsl(45 96% 60% / 0.55);
 }
 
+/* El nombre de la regla, al tamaño del texto de las notas (R2-04). */
 .modo-proyeccion .pz-tarjeta-regla-nombre {
-  font-size: clamp(1.6rem, 2.2vw, 2.3rem);
+  font-size: clamp(1.5rem, 1.8vw, 1.8rem);
   color: hsl(45 96% 62%);
 }
 
@@ -1196,7 +1206,10 @@
    fórmula de una nota (48 px, el mínimo de aula), su nombre al del texto de
    las notas, y con el mismo aire que el lienzo deja a los lados. */
 .modo-proyeccion .pz-regla-formula .katex {
-  font-size: 3rem;
+  /* Al tamaño de la fórmula de una nota, como manda R2-04: cuando la escala de
+     los pasos bajó a la compacta, la tarjeta se quedó en los 48 px del informe y
+     volvía a ser el elemento más grande de la pantalla. */
+  font-size: clamp(1.6rem, 2.1vw, 2rem);
 }
 
 .modo-proyeccion .pz-tarjeta-regla {

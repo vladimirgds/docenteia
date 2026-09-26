@@ -70,6 +70,47 @@ const explicaEnPizarra = (texto) => ({
  * lo presenta, la cuenta suelta y qué se hace con ella. Cada trozo es una línea
  * de la columna derecha, y se quedan todas a la vista (regla de persistencia).
  */
+/** Una línea suelta del taller (columna derecha). */
+const lineaDeTaller = (texto, papel) => ({
+  tipo: "pizarra",
+  accion: "escribir",
+  contenido: String(texto).trim(),
+  ambiente: 2,
+  ...(papel ? { papel } : {}),
+});
+
+/**
+ * EL REPARTO, SUB-PASO A SUB-PASO (Alex.pdf §1 y §4).
+ *
+ * «Los índices de terminoActivo están desfasados»: las cuentas del reparto se
+ * escribían TODAS de golpe y el halo se quedaba en la última, así que el avatar
+ * hablaba de multiplicar la x mientras la derecha señalaba (2)·(3) = 6. El
+ * cliente lo dejó escrito como una secuencia:
+ *
+ *   Paso 1.1: flecha hacia x → voz "2 · x" → sombra en (2) · (x) = 2x
+ *   Paso 1.2: flecha hacia 3 → voz "2 · 3" → sombra en (2) · (3) = 6
+ *   Paso 1.3: sin flecha ni sombra → 2x + 6 = 16, fija
+ *
+ * Cada cuenta se escribe JUSTO ANTES de su frase: la escena enfoca el término
+ * que la voz nombra y el halo del taller —que sigue al último renglón escrito—
+ * cae sobre la cuenta de ESE término. Los tres compases quedan atados sin un
+ * índice aparte que pueda desfasarse.
+ */
+function repartoSincronizado(apoyo, frases, pausa) {
+  const cuentas = apoyo?.porTermino ?? [];
+  if (!cuentas.length || !frases?.length) return null;
+  const dichas = frases.slice(0, -1);
+  // Una frase por cuenta: si el motor y el panel dejaran de emparejar, se
+  // escriben igual y se cuentan igual, pero sin prometer una sincronía falsa.
+  if (dichas.length !== cuentas.length) return null;
+  const out = [];
+  if (apoyo.textoAuxiliar) out.push(lineaDeTaller(apoyo.textoAuxiliar, "explicacion"));
+  cuentas.forEach((cuenta, i) => {
+    out.push(lineaDeTaller(cuenta), { tipo: "hablar", texto: dichas[i] }, { ...pausa });
+  });
+  return out;
+}
+
 function tallerAuxiliar(apoyo) {
   if (!apoyo) return [];
   // Y LA PROSA DEL TALLER SE PINTA COMO PROSA, con la misma tipografía que los
@@ -2046,16 +2087,27 @@ export function linealResueltaLSG(opts = {}) {
     escribePaso(sol.original, gestoSobre(0), sol.steps[0]?.explica),
     { tipo: "esperar", segundos: 1 },
   );
-  if (sol.steps[0]?.explica) dir.push(explicaEnPizarra(sol.steps[0].explica));
   // Ambiente 2 + su narración AL MISMO TIEMPO (Alex.pdf §1, vídeo 0:27):
   // el taller se escribe y el avatar cuenta el cálculo auxiliar —no otra frase—.
+  // Y CUENTA A CUENTA: ver `repartoSincronizado`. Sólo se escribe aquí el
+  // rótulo que las presenta; cada producto va con su frase, dentro del bucle.
   const apoyoInicial = sol.steps[0]?.apoyo;
   const reparto = locucionesDistributiva(sol.original);
-  if (apoyoInicial) dir.push(...tallerAuxiliar(apoyoInicial));
+  const compases = repartoSincronizado(apoyoInicial, reparto, PAUSA_LECTURA);
+  if (apoyoInicial && !compases) dir.push(...tallerAuxiliar(apoyoInicial));
   sol.steps.forEach((s, k) => {
     // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
     // antes de escribir la siguiente. En el reparto inicial el rótulo ya está
     // en pizarra/entrada; no se repite en voz para no duplicar.
+    // EL COMENTARIO, JUSTO ANTES DE CONTARLO —NO UN PASO ANTES—.
+    //
+    // Se escribía al cerrar el paso anterior, así que se quedaba solo encima del
+    // sitio vacío que su ecuación aún no ocupaba: «debajo de "Por propiedad
+    // distributiva:" queda un espacio vacío grande y de pronto el texto
+    // "Restamos 6 a ambos miembros:" se mueve o salta hacia arriba». Ahora se
+    // escribe cuando le toca hablar, y su ecuación aparece con él: ningún
+    // comentario flota sobre un hueco, y nada se empuja después.
+    if (s.explica) dir.push(explicaEnPizarra(s.explica));
     if (!(k === 0 && reparto)) {
       dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
     }
@@ -2065,7 +2117,8 @@ export function linealResueltaLSG(opts = {}) {
     // esa ecuación en el hilo.
     const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
     if (k === 0 && reparto) {
-      for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+      if (compases) dir.push(...compases);
+      else for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
     }
     // El despeje se cuenta en dos tiempos: primero se escribe la resta en los dos
     // lados (la frase de arriba) y, tras su pausa, se dice que se cancela — y es
@@ -2082,9 +2135,6 @@ export function linealResueltaLSG(opts = {}) {
     } else {
       dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
       if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
-      // Y el objetivo del paso SIGUIENTE, escrito encima de la ecuación que va
-      // a producir: primero para qué, luego la ecuación.
-      if (sol.steps[k + 1]?.explica) dir.push(explicaEnPizarra(sol.steps[k + 1].explica));
     }
   });
   dir.push({ tipo: "hablar", texto: "Ahora te toca a ti con otra ecuación parecida." }, { ...PAUSA_LECTURA });

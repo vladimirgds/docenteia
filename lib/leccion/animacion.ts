@@ -1784,6 +1784,14 @@ export function guionDeLeccion(lineas: readonly (string | PasoSemantico)[]): Esc
     const linea = typeof paso === "string" ? paso : String(paso?.latex ?? "").trim();
     if (!linea) continue;
 
+    // EL TALLER NO ES GUION. Un cálculo de la columna de apoyo —"6 - 6 = 0"— no
+    // es un paso que el tutor recorra: se escribe cuando lo narra y se queda
+    // (la pizarra ya lo trata así, ver `animable`). Colado en el guion corría
+    // los índices de los pasos de verdad, y la ecuación que el tutor acababa de
+    // decir quedaba DOS escenas por delante de la voz en vez de una: se ocultaba
+    // y dejaba en su columna el hueco que el cliente fotografió.
+    if (typeof paso !== "string" && paso.ambiente === 2) continue;
+
     const escena = escenaDeLinea(paso, `escena-${escenas.length}`);
     // La prosa no entra en el guion. Una frase del tutor no tiene nada que
     // resaltar: como escena sólo repite lo que ya está en el subtítulo, y
@@ -1887,6 +1895,21 @@ export function situacionParaNarracion(
   const cierre = cierreDeColumna(escenas, palabras, escenaActual);
   if (cierre) return cierre;
 
+  // PRESENTAR UNA LÍNEA NO ES OPERARLA.
+  //
+  // "Vamos a resolver 2(x + 3) = 16 paso a paso" y "Vamos con otra ecuación:
+  // 2(x + 3) = 16" dicen la ecuación ENTERA y ninguna operación. Por parecido
+  // acababan en un foco —comparten el 2, el 3 y el 16 con "y 2 por 3 es 6"—, y
+  // dos frases de ésas seguidas dejaban la escuadra del reparto del 2 al 3 antes
+  // de que el tutor hubiera dicho nada: «la flecha salta directamente conectando
+  // el 2 con el 3, ignorando la multiplicación inicial (2·x)».
+  //
+  // Una frase que REPITE la línea entera y no nombra ninguno de sus focos deja la
+  // pizarra en REPOSO sobre ella: escrita, sin nada señalado. Es lo que hace un
+  // profesor al leer el enunciado antes de empezar.
+  const presenta = presentaLaLinea(escenas, dicho, escenaActual);
+  if (presenta) return presenta;
+
   // ¿Está el tutor DANDO un paso, o describiendo el método?
   const enumera = enumeraColumnas(dicho);
 
@@ -1981,6 +2004,41 @@ export function situacionParaNarracion(
  * La segunda regla es además la que impide que la primera congele nada: pase lo
  * que pase, la locución siguiente puede avanzar un paso.
  */
+/**
+ * ¿La frase se limita a PRESENTAR una línea de la pizarra?
+ *
+ * Lo es cuando repite la línea entera —sin espacios, como se escribe— y no dice
+ * nada que distinga a ninguno de sus focos. Entonces no hay paso que señalar: la
+ * pizarra se pone en esa línea, en reposo.
+ */
+const ABRE_EL_EJERCICIO = /^(?:vamos|veamos|empecemos|resolvamos)\b|paso a paso/;
+
+function presentaLaLinea(
+  escenas: readonly Escena[],
+  dicho: string,
+  escenaActual: number,
+): Situacion | null {
+  // Sólo las frases con las que se PRESENTA —"vamos a resolver…", "vamos con
+  // otra ecuación…", "…paso a paso"—. Cualquier otra que repita la línea la
+  // está operando y le toca a su foco.
+  if (!ABRE_EL_EJERCICIO.test(dicho.trim())) return null;
+  const sinEspacios = (t: string) => normalizar(t).replace(/[^a-z0-9+\-*/=().]/gi, "");
+  const dichoPegado = sinEspacios(dicho);
+  // NUNCA HACIA ATRÁS. Al encadenar ejercicios el tutor dice «Vamos con otra
+  // ecuación: 2(x + 3) = 16» mientras la pizarra aún tiene el anterior resuelto:
+  // si esa frase llevara el puntero a la primera línea, todo lo de detrás
+  // volvería a estar «por explicar» y se borraría de la pizarra. Se busca de la
+  // escena en curso en adelante; al empezar de cero, el reposo ya es la 0.
+  for (let indice = Math.max(0, escenaActual); indice < escenas.length; indice++) {
+    const escena = escenas[indice];
+    const linea = sinEspacios(String(escena.texto ?? ""));
+    // Una línea corta —"x = 5"— aparece dentro de cualquier frase por azar.
+    if (linea.length < 6 || !dichoPegado.includes(linea)) continue;
+    return { escena: indice, foco: -1 };
+  }
+  return null;
+}
+
 function enOrden(
   destino: Situacion | null,
   escenaActual: number,

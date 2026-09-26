@@ -817,15 +817,24 @@ export function solveLinearSteps(text) {
     const desgloses = [desglose(lhs), parentesisDerecho ? desglose(rhs) : null].filter(Boolean);
     let apoyoReparto;
     if (tieneParentesis && desgloses.length) {
+      // UNA CUENTA POR SUB-PASO, Y EN ORDEN.
+      //
+      // «Cuando el avatar habla de multiplicar la x (2·x = 2x), el halo resalta
+      // en la derecha el renglón (2)·(3) = 6»: las cuentas se escribían todas de
+      // golpe y el foco se quedaba en la última. El cliente lo dejó escrito paso
+      // por paso —"Paso 1.1: flecha hacia x, voz 2·x, sombra en (2)·(x) = 2x;
+      // Paso 1.2: flecha hacia 3, voz 2·3, sombra en (2)·(3) = 6"—, así que el
+      // apoyo viaja como LISTA: una cuenta por término, en el mismo orden en que
+      // la escena las enfoca y la voz las nombra.
+      const porTermino = desgloses.map((d, i) => (i === 0 ? d.cuentas : [d.rotulo, ...d.cuentas])).flat();
       apoyoReparto = {
         textoAuxiliar: desgloses[0].rotulo,
         // Y SIN "Por eso queda…": la ecuación que queda ya está escrita en el
         // Ambiente 1, en el renglón de debajo de su comentario. El cliente
         // escribió la columna derecha entera y la cierra en la última cuenta.
-        calculoKaTeX: desgloses
-          .map((d, i) => (i === 0 ? d.cuentas : [d.rotulo, ...d.cuentas]))
-          .flat()
-          .join("\n"),
+        calculoKaTeX: porTermino.join("\n"),
+        // Las mismas cuentas, sueltas: el guion las escribe de una en una.
+        porTermino,
       };
     }
     steps.push({
@@ -960,7 +969,17 @@ export function solveLinearSteps(text) {
   // Se deriva de lo que el paso ya trae, para que no haya dos verdades.
   for (const paso of steps) {
     paso.ambiente1 = { explicacion: paso.explica, ecuacionKaTeX: paso.escribe };
-    if (paso.apoyo) paso.ambiente2 = paso.apoyo;
+    // SÓLO los tres campos del contrato: el apoyo lleva además la lista suelta
+    // de cuentas que usa el guion para escribirlas una a una, y el contrato que
+    // escribió el cliente no la tiene.
+    if (paso.apoyo) {
+      const { textoAuxiliar, calculoKaTeX, conclusion } = paso.apoyo;
+      paso.ambiente2 = {
+        ...(textoAuxiliar ? { textoAuxiliar } : {}),
+        ...(calculoKaTeX ? { calculoKaTeX } : {}),
+        ...(conclusion ? { conclusion } : {}),
+      };
+    }
   }
   return { original, steps, answer: answerStr, varName: v };
 }

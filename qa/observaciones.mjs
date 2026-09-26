@@ -1080,8 +1080,11 @@ function comprobarSiempre(m, clase) {
     // acompaña (1,25 rem).
     verificar(
       a.n === "2" ? "OBS-08" : "OBS-10",
-      m.proy ? `Ambiente ${a.n}: aire de aula entre pasos` : `Ambiente ${a.n}: 12 px (space-y-3) entre pasos`,
-      m.proy ? a.hueco >= 16 : Math.abs(a.hueco - 12) <= 0.5,
+      // Y LO VOLVIÓ A BAJAR ÉL: de `space-y-3` (12 px) a `gap-2` (8 px), «reducir
+      // espaciado vertical». Se exige lo que pidió la última vez, ni más ni menos:
+      // más trae de vuelta el colapso que cronometró, y menos pega los renglones.
+      `Ambiente ${a.n}: 8 px (gap-2) entre pasos`,
+      Math.abs(a.hueco - 8) <= 0.5,
       `${a.hueco} px`,
     );
     verificar(a.n === "2" ? "OBS-08" : "OBS-10", `Ambiente ${a.n}: todo alineado a la izquierda`, a.desalineado <= 2 && a.formulaDesplazada <= 8 && a.alineacion.every((t) => t === "left" || t === "start"), `desvío ${a.desalineado.toFixed(1)} / ${a.formulaDesplazada.toFixed(1)} px ${a.alineacion.join(",")}`);
@@ -1341,12 +1344,21 @@ function comprobarProyeccion(m, momento) {
   // 24 px que el mismo informe fija para leer un rótulo desde el fondo del
   // aula. Lo que ya no se negocia lo comprueban R5-01 —ningún renglón partido—
   // y R5-03 —el paso que se explica, siempre entero a la vista—.
-  const suelo = deAula ? 35.5 : 24;
-  verificar("SUB-PRJ-03", `proyección: fórmulas ≥ ${deAula ? 36 : 24} px`, min(m.tam.formula) >= suelo, `${momento}: ${min(m.tam.formula).toFixed(1)} px (ventana ${m.ancho ?? "?"} px)`);
+  // LA ESCALA DE PROYECCIÓN LA BAJÓ EL CLIENTE, DOS VECES.
+  //
+  // El informe puso 48 px y luego se acordó el suelo de 36. Después él mismo lo
+  // volvió a medir sobre el vídeo —«el mínimo de aula saturaba la pantalla»— y
+  // pidió la escala compacta también proyectando: «reducir la clase de KaTeX …
+  // a text-xl (máximo 1.25rem a 1.35rem)». `text-xl` son 20 px, y eso es lo que
+  // se exige ahora: que no baje de ahí. Los 24 px del informe siguen en pie para
+  // lo que NO es fórmula —notas y rótulos de marca—, que es donde los puso.
+  const suelo = deAula ? 19.5 : 12;
+  verificar("SUB-PRJ-03", `proyección: fórmulas ≥ ${deAula ? 20 : 12} px (text-xl)`, min(m.tam.formula) >= suelo, `${momento}: ${min(m.tam.formula).toFixed(1)} px (ventana ${m.ancho ?? "?"} px)`);
   verificar("SUB-PRJ-03", "proyección: notas ≥ 24 px", min(m.tam.nota) >= (deAula ? 24 : 14), `${momento}: ${min(m.tam.nota).toFixed(1)} px`);
   verificar("SUB-PRJ-03", "proyección: rótulos de las marcas ≥ 24 px", min(m.tam.etiqueta) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.etiqueta).toFixed(1)} px`);
   verificar("SUB-PRJ-03", "proyección: la frase del tutor ≥ 24 px", min(m.tam.pie) >= (deAula ? 24 : 12), `${momento}: ${min(m.tam.pie).toFixed(1)} px`);
-  verificar("OBS-06", "proyección: «Ejercicio:» ≥ 24 px", min(m.tam.rotulo) >= (deAula ? 24 : 14), `${momento}: ${min(m.tam.rotulo).toFixed(1)} px`);
+  // El rótulo del ejercicio sigue a la escala compacta de su lado (1,25 rem).
+  verificar("OBS-06", "proyección: «Ejercicio:» ≥ 20 px", min(m.tam.rotulo) >= (deAula ? 19.5 : 14), `${momento}: ${min(m.tam.rotulo).toFixed(1)} px`);
   for (const d of m.diagrama) verificar("OBS-02", "proyección: rótulos del dibujo con contraste ≥ 4,5:1", d.ratio >= 4.5, `«${d.texto}» ${d.ratio.toFixed(2)}:1`);
   if (m.tarjeta) {
     // La fórmula de las notas de al lado; sin notas, la de cualquier nota (48 px).
@@ -1355,7 +1367,10 @@ function comprobarProyeccion(m, momento) {
     medida("proyeccion_tarjeta_formula_px_max", m.tarjeta.formula, "max");
     medida("proyeccion_tarjeta_alto_relativo_max", m.tarjeta.altoRelativo, "max");
     verificar("R2-04", "proyección: la fórmula de la tarjeta, al tamaño de la de las notas (no mayor)", m.tarjeta.formula <= deLasNotas + 0.5, `${m.tarjeta.formula.toFixed(1)} px frente a ${deLasNotas.toFixed(1)} px (${momento})`);
-    verificar("R2-04", "proyección: …y nunca por debajo de los 48 px de aula", m.tarjeta.formula >= 47.5, `${m.tarjeta.formula.toFixed(1)} px (${momento})`);
+    // Y NUNCA POR DEBAJO DE LA ESCALA COMPACTA que el cliente fijó para
+    // proyección (text-xl): los 48 px de aula los bajó él mismo, y la tarjeta
+    // no puede ser lo único que se quede grande.
+    verificar("R2-04", "proyección: …y nunca por debajo de la escala compacta (text-xl)", m.tarjeta.formula >= 19.5, `${m.tarjeta.formula.toFixed(1)} px (${momento})`);
     verificar("R2-04", "proyección: el nombre de la regla, al tamaño del texto de las notas", Math.abs(m.tarjeta.nombre - textoNotas) <= 1, `${m.tarjeta.nombre.toFixed(1)} / ${textoNotas.toFixed(1)} px (${momento})`);
     verificar("R2-04", "proyección: la tarjeta cabe entera (ninguna fórmula cortada ni desplazable)", !m.tarjeta.recortada, momento);
     verificar("R2-04", "proyección: la tarjeta no toca el borde de su ambiente", m.tarjeta.margenDerecho >= 0, `${m.tarjeta.margenDerecho.toFixed(1)} px (${momento})`);

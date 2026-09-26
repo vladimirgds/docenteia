@@ -445,6 +445,32 @@ export function Pizarra({
   }, [animacion?.escena, animacion?.terminada]);
 
   /** El estado de la escena de un elemento, según por dónde va la voz. */
+  /**
+   * HASTA DÓNDE HA LLEGADO LA CLASE, Y NO VUELVE ATRÁS.
+   *
+   * El puntero del guion sigue a la voz y puede moverse en los dos sentidos: una
+   * frase encaja mejor en una línea anterior y la pizarra vuelve a señalarla, que
+   * es lo que tiene que hacer. Lo que NO puede pasar es que al volver atrás lo ya
+   * explicado se DESESCRIBA: «lo escrito se queda escrito». Así que lo que decide
+   * qué se ve no es dónde está el puntero, sino hasta dónde ha llegado.
+   *
+   * Se reinicia cuando la pizarra se rehace desde cero (una sola escena).
+   */
+  const marcaDeAgua = useRef(-1);
+  const totalEscenas = animacion?.escenas?.length ?? 0;
+  if (totalEscenas <= 1) marcaDeAgua.current = -1;
+  if ((animacion?.escena ?? -1) > marcaDeAgua.current) marcaDeAgua.current = animacion?.escena ?? -1;
+  const hastaDonde = marcaDeAgua.current;
+
+  /**
+   * ¿Es la línea que el tutor está produciendo ahora mismo?
+   *
+   * La de justo después de donde ha llegado la clase: el motor la escribe y la
+   * nombra en el mismo compás. Ver `visibles`.
+   */
+  const esLaQueSeEstaDiciendo = (indiceGuion: number): boolean =>
+    animacion != null && indiceGuion >= 0 && indiceGuion === hastaDonde + 1;
+
   const estadoDe = (indiceGuion: number): EstadoEscena => {
     if (!animacion || indiceGuion < 0) return "completada";
     if (indiceGuion < animacion.escena) return "completada";
@@ -485,7 +511,27 @@ export function Pizarra({
    */
   const visibles = useMemo(
     () => {
-      const escritos = elementos.filter((e) => animacion?.terminada || estadoDe(e.indiceGuion) !== "pendiente");
+      /**
+       * LA LÍNEA QUE EL TUTOR ACABA DE PRODUCIR NO ES UN PASO FUTURO.
+       *
+       * El motor escribe la ecuación que cierra un paso y la nombra en el mismo
+       * compás —"Por eso obtenemos 2x + 6 = 16"—, pero el puntero del guion no
+       * llega a ella hasta la frase siguiente. Entre medias quedaba invisible
+       * reservando su sitio, y el comentario del paso que viene se colocaba
+       * encima del hueco: es el «espacio vacío grande» que el cliente fotografió
+       * bajo "Por propiedad distributiva:", y el salto de cuando por fin aparecía.
+       *
+       * Así que la pizarra puede ir UNA línea por delante de la voz, y sólo una:
+       * la que el tutor está produciendo. No es adelantar el paso a paso —lo que
+       * el cliente fotografió era el ejercicio ENTERO pintado de golpe—; es no
+       * esconder la ecuación que se acaba de decir. Hasta que el guion llega a
+       * ella se pinta en reposo, sin destapar la operación que lleva dentro, que
+       * es exactamente la ecuación limpia que pidió. De la segunda en adelante,
+       * nada (R4-01).
+       */
+      const escritos = elementos.filter(
+        (e) => animacion?.terminada || e.indiceGuion < 0 || e.indiceGuion <= hastaDonde + 1,
+      );
       /**
        * NADA SE BORRA, NI EN UNA COLUMNA NI EN LA OTRA.
        *
@@ -577,9 +623,16 @@ export function Pizarra({
    */
   const ultimoDelTaller = visibles.at(-1)?.ambiente === 2 ? visibles.at(-1)?.linea.id : null;
 
+  // La última línea escrita: la que el tutor está produciendo ahora (ver
+  // `visibles`). Si el guion aún no ha llegado a ella no es un paso PENDIENTE
+  // —de esos no se pinta ninguno—, sino una línea RECIENTE: se ve en reposo.
   const renderElemento = (e: ElementoPizarra) => {
     const regla = esFaseDeEjemplo(actual?.id ?? "") && reglas.length ? identificarRegla(e.linea.texto, reglas) : null;
     const estado = estadoDe(e.indiceGuion);
+    // RECIENTE, no PENDIENTE: la línea que el tutor acaba de decir se ve en
+    // reposo (ver `visibles`). Un paso PENDIENTE de verdad no se pinta, y por eso
+    // R4-01 sigue contando los que encuentre.
+    const rotulo = estado === "pendiente" && esLaQueSeEstaDiciendo(e.indiceGuion) ? "reciente" : estado;
 
     /**
      * EL COMENTARIO DEL PASO, CON UNA SOLA TIPOGRAFÍA.
@@ -609,7 +662,7 @@ export function Pizarra({
         key={e.linea.id}
         className="pz-elemento"
         data-papel={e.papel}
-        data-estado={e.escena ? estado : "estatica"}
+        data-estado={e.escena ? rotulo : "estatica"}
         // EL PUNTERO GUÍA. Un paso del hilo lo enciende cuando es el activo —y
         // dentro de él, el halo cae sobre el término que el tutor nombra—; un
         // cálculo del taller, mientras sea el último escrito.
@@ -940,9 +993,22 @@ function esOperacionDispuesta(enunciado: string): boolean {
  */
 /** Hasta dónde puede llegar lo compuesto, y hasta dónde llega. */
 function medidaDeAjuste(el: HTMLElement): { disponible: number; ancho: number } {
-  const ambiente = el.closest("[data-ambiente]") ?? el.parentElement;
+  // EL LÍMITE ES LA CAJA QUE DE VERDAD RECORTA.
+  //
+  // Se medía contra el borde del AMBIENTE, y la tarjeta de la regla tiene su
+  // propio marco con relleno dentro de él: la fórmula salía del recuadro sin
+  // llegar al borde de la columna, y como la tarjeta no desborda, el último
+  // número se cortaba. Es el «el recuadro delimitador y el número 10 se
+  // desbordan o se cortan al final de la línea» del informe. Si la fórmula vive
+  // dentro de un contenedor delimitado, manda su interior.
+  const tarjeta = el.closest<HTMLElement>(".pz-tarjeta-regla");
+  const contenedor = tarjeta ?? el.closest<HTMLElement>("[data-ambiente]") ?? el.parentElement;
   const caja = el.getBoundingClientRect();
-  const limite = (ambiente?.getBoundingClientRect().right ?? caja.right) - 4;
+  const relleno = contenedor
+    ? parseFloat(getComputedStyle(contenedor).paddingRight || "0") +
+      parseFloat(getComputedStyle(contenedor).borderRightWidth || "0")
+    : 0;
+  const limite = (contenedor?.getBoundingClientRect().right ?? caja.right) - relleno - 4;
   const piezas = [...el.querySelectorAll<HTMLElement>(".katex-html *")];
   const derecha = Math.max(caja.left, ...piezas.map((d) => d.getBoundingClientRect().right));
   return { disponible: Math.max(0, limite - caja.left), ancho: Math.max(0, derecha - caja.left) };
@@ -995,8 +1061,12 @@ function FormulaQueCabe({
       setFilas(siguiente);
       return;
     }
-    // Ya no hay por dónde partir: se encoge lo justo para que quepa.
-    const propuesta = Math.max(0.8, estado.current.escala * (disponible / ancho));
+    // Ya no hay por dónde partir: se encoge lo justo para que quepa. Dentro de
+    // un contenedor delimitado se baja más —hasta el 60 %— antes que recortar:
+    // «el número 10 se corta al final de la línea» es peor que una tarjeta un
+    // punto más pequeña, y el informe lo pide expresamente para esos recuadros.
+    const suelo = el.closest(".pz-tarjeta-regla") ? 0.6 : 0.8;
+    const propuesta = Math.max(suelo, estado.current.escala * (disponible / ancho));
     if (propuesta < estado.current.escala - 0.01) {
       estado.current = { ...estado.current, escala: propuesta };
       setEscala(propuesta);
