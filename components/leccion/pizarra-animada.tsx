@@ -527,13 +527,10 @@ export function PizarraAnimada({
   // Los rótulos viven en `.pz-comentario` (tipografía unificada, text-base);
   // el detalle numérico, en Ambiente 2. Así no reaparece «A la izquierda se
   // cancela…» ni un segundo «Dividimos…».
-  // `conPie` se conserva en la API por compatibilidad con llamadas externas.
-  const pieEnColumna =
-    false &&
-    conPie &&
-    estado === "activa" &&
-    Boolean(narracionActiva?.trim()) &&
-    escena.clase !== "distributiva";
+  // `conPie` / `narracionActiva` se conservan por compatibilidad de la API.
+  const pieEnColumna = false;
+  void conPie;
+  void narracionActiva;
 
   return (
     <div
