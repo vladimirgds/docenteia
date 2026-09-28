@@ -1985,8 +1985,8 @@ export function locucionCancelacion(texto) {
   const b = m[3] ? Number(m[3]) : 0;
   const c = Number(m[4]);
   if (!b || !Number.isFinite(c)) return null;
-  const abs = Math.abs(b);
-  return `A la izquierda se cancela ${b > 0 ? "+" : "-"}${abs} con ${b > 0 ? "-" : "+"}${abs}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${abs} son ${c - b}.`;
+  // Forma: rótulo corto en pizarra/voz de foco; el desglose va en Ambiente 2.
+  return "Se cancelan:";
 }
 
 /**

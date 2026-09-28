@@ -707,7 +707,8 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       // Y sin un "y" pegado a un signo ("+6 y -6"): esa "y" es prosa, pero la
       // composición de fórmulas dentro de la frase leía "y - 6" como expresión y
       // la escribía en cursiva matemática.
-      narracion: `A la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
+      // Forma: rótulo corto «Se cancelan:»; la cuenta queda en Ambiente 2.
+      narracion: "Se cancelan:",
       etiqueta: "se cancelan",
     });
   }
@@ -812,14 +813,14 @@ export function escenaDeCancelacion(texto: string, id: string): Escena | null {
     id,
     texto,
     latex: `${izquierda} = ${derecha}`,
-    narracion: "Se cancelan.",
+    narracion: "Se cancelan:",
     clase: "despeje",
     focos: [
       {
         clase: "pz-cancela",
         piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
         tipo: "tachado",
-        narracion: `A la izquierda se cancela ${signo(b)}${Math.abs(b)} con ${signo(opuesto)}${Math.abs(opuesto)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c + compensa}.`,
+        narracion: "Se cancelan:",
         etiqueta: "se cancelan",
       },
     ],
@@ -829,23 +830,14 @@ export function escenaDeCancelacion(texto: string, id: string): Escena | null {
 /**
  * LA FRASE CON LA QUE SE TACHAN LOS TÉRMINOS EN x.
  *
- * Se construye aquí y en el motor (`solveLinearSteps`) con los mismos números,
- * y la batería comprueba que las dos digan exactamente lo mismo: si se separan,
- * la pizarra tacharía cuando el tutor ya está en otra cosa.
+ * Forma: rótulo corto. El desglose numérico va en Ambiente 2.
  */
 export function fraseDeCancelacionDeIncognita(
-  izquierdo: number,
-  derecho: number,
-  variable: string,
+  _izquierdo: number,
+  _derecho: number,
+  _variable: string,
 ): string {
-  const conVariable = (k: number) => (k === 1 ? variable : k === -1 ? `-${variable}` : `${k}${variable}`);
-  const sinSigno = (k: number) => conVariable(Math.abs(k));
-  const queda = izquierdo - derecho;
-  return (
-    `A la derecha se cancela ${derecho > 0 ? "" : "-"}${sinSigno(derecho)} con ` +
-    `${derecho > 0 ? "-" : "+"}${sinSigno(derecho)}, y a la izquierda ${conVariable(izquierdo)} ` +
-    `${derecho > 0 ? "menos" : "más"} ${sinSigno(derecho)} es ${conVariable(queda)}.`
-  );
+  return "Se cancelan:";
 }
 
 /**

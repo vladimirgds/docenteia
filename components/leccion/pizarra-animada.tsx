@@ -523,20 +523,17 @@ export function PizarraAnimada({
   };
 
   const narracionActiva = foco >= 0 ? (escena.focos[foco]?.narracion ?? "") : escena.narracion;
-  // El pie NO duplica el comentario formal (Alex.pdf: «Dividimos entre 2:»
-  // salía dos veces). En proyección `.pz-comentario` ya cubre los rótulos;
-  // el desglose del reparto vive en Ambiente 2.
-  const esRotuloDeComentario =
-    /^(Por propiedad|Restamos|Sumamos|Dividimos|La .+ está multiplicada)/i.test(
-      (narracionActiva ?? "").trim(),
-    );
+  // Forma (cliente): NINGÚN pie largo ni duplicado bajo la fórmula.
+  // Los rótulos viven en `.pz-comentario` (tipografía unificada, text-base);
+  // el detalle numérico, en Ambiente 2. Así no reaparece «A la izquierda se
+  // cancela…» ni un segundo «Dividimos…».
+  // `conPie` se conserva en la API por compatibilidad con llamadas externas.
   const pieEnColumna =
+    false &&
     conPie &&
     estado === "activa" &&
     Boolean(narracionActiva?.trim()) &&
-    escena.clase !== "distributiva" &&
-    !esRotuloDeComentario &&
-    !/vamos a repartir|multiplica a |por cada término/i.test(narracionActiva);
+    escena.clase !== "distributiva";
 
   return (
     <div

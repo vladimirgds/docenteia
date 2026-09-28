@@ -744,8 +744,8 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       JSON.stringify(tachada2.focos[0]),
     );
     check(
-      "…y lo dicho lo cuenta igual: a la izquierda se cancelan, a la derecha se resta",
-      /^A la izquierda se cancela \+6 con -6, y a la derecha 16 menos 6 son 10/.test(tachada2.focos[0]?.narracion ?? ""),
+      "…y lo dicho lo cuenta con el rótulo corto «Se cancelan:»",
+      /^Se cancelan:/.test(tachada2.focos[0]?.narracion ?? ""),
       tachada2.focos[0]?.narracion,
     );
     check(
@@ -1948,11 +1948,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
     );
-    const iCancela = ev.findIndex((e) => e.d.tipo === "hablar" && /A la izquierda se cancela \+6 con -6/.test(e.d.texto));
+    const iCancela = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
     const enCancela = ev[iCancela];
     const focoCancela = enCancela?.escenas[enCancela.escena]?.focos[enCancela.foco];
     check(
-      "y al decir «a la izquierda se cancela +6 con −6» el tachado se dibuja en el RENGLÓN NUEVO, sin borrar el anterior",
+      "y al decir «Se cancelan:» el tachado se dibuja en el RENGLÓN NUEVO, sin borrar el anterior",
       iCancela > iResta && enCancela?.escenas[enCancela.escena]?.texto === "2x + 6 - 6 = 16 - 6" &&
         focoCancela?.tipo === "tachado",
       `${enCancela?.escenas[enCancela.escena]?.texto} foco ${enCancela?.foco} (${focoCancela?.tipo})`,
@@ -3689,7 +3689,7 @@ titulo("A2. Polinomios, despejes y prosa");
   );
   check(
     "la resta del otro lado está bien contada",
-    /20 menos 5 son 15/.test(tachado.focos[0].narracion),
+    /^Se cancelan:/.test(tachado.focos[0].narracion),
     tachado.focos[0].narracion,
   );
 
@@ -5596,10 +5596,10 @@ if (!vivo) {
         sinFoco.map((x) => x.texto).join(" · "),
       );
       const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x a ambos miembros:/.test(e.d.texto));
-      const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /A la derecha se cancela 3x con -3x/.test(e.d.texto));
+      const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
       check(
-        "cuando dice «Restamos 3x a ambos miembros:» la pizarra lo ESCRIBE, y tacha al decir que se cancela",
+        "cuando dice «Restamos 3x a ambos miembros:» la pizarra lo ESCRIBE, y tacha al decir «Se cancelan:»",
         iResta >= 0 && iTacha > iResta &&
           focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
           focoEn(iTacha)?.tipo === "tachado",
@@ -5754,7 +5754,7 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   );
   check(
     "…y el comentario formal cubre la frase del tutor en proyección (Alex.pdf)",
-    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos) &&
+    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: clamp\(1\.75rem,/.test(estilos) &&
       /pieEnColumna/.test(panel) &&
       /escena\.clase !== "distributiva"/.test(panel),
   );
@@ -5762,8 +5762,8 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   // 2. «Todos los comentarios explicativos … font-sans text-sm … leading-snug
   //    text-slate-300.» (esquema JSX exacto del cliente)
   check(
-    "los comentarios, text-sm leading-snug y gris de pizarra (esquema JSX del cliente)",
-    /\.pz-comentario \{[^}]*font-size: 0\.875rem;[^}]*line-height: 1\.375;/.test(estilos) &&
+    "los comentarios, text-base (1rem) y gris de pizarra — tamaño que pidió el cliente",
+    /\.pz-comentario \{[^}]*font-size: 1rem;[^}]*line-height: 1\.375;/.test(estilos) &&
       /\.dark \.pz-comentario \{[^}]*color: hsl\(213 27% 84%\)/.test(estilos),
   );
   check(

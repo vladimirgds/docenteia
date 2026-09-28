@@ -295,11 +295,12 @@
    «hasta cuatro tamaños distintos de texto … en la misma columna», y con dos
    columnas son las dos. */
 .pz-comentario {
-  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  /* font-sans text-sm leading-snug text-slate-300 — esquema JSX del cliente */
-  font-size: 0.875rem;
+  /* Cliente (forma): misma clase, letra LEGIBLE — text-base, no text-sm.
+     «cambia el tamaño de la letra» / antes se leía como «letra minúscula». */
+  font-family: var(--font-comentario, var(--font-sans, ui-sans-serif, system-ui, sans-serif));
+  font-size: 1rem; /* text-base */
   font-weight: 400;
-  line-height: 1.375;
+  line-height: 1.375; /* leading-snug */
   color: hsl(215 16% 47%);
   margin: 0;
 }
@@ -308,9 +309,9 @@
   color: hsl(213 27% 84%); /* slate-300 */
 }
 
-/* Proyectada: misma familia; crece lo justo para leerse (≥ 24 px SUB-PRJ-03). */
+/* Proyectada: letra claramente más grande (pedido reiterado del cliente). */
 .modo-proyeccion .pz-comentario {
-  font-size: clamp(1.5rem, 1.7vw, 1.75rem);
+  font-size: clamp(1.75rem, 2.1vw, 2.15rem);
   color: hsl(213 27% 84%);
 }
 

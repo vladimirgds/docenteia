@@ -658,15 +658,9 @@ export function computeAnswer(text) {
  * aquí porque este módulo es JavaScript de servidor y no importa la interfaz;
  * qa/hito2.mjs comprueba que digan exactamente lo mismo.
  */
-export function fraseCancelacionIncognita(izquierdo, derecho, v) {
-  const conVariable = (k) => (k === 1 ? v : k === -1 ? `-${v}` : `${k}${v}`);
-  const sinSigno = (k) => conVariable(Math.abs(k));
-  const queda = izquierdo - derecho;
-  return (
-    `A la derecha se cancela ${derecho > 0 ? "" : "-"}${sinSigno(derecho)} con ` +
-    `${derecho > 0 ? "-" : "+"}${sinSigno(derecho)}, y a la izquierda ${conVariable(izquierdo)} ` +
-    `${derecho > 0 ? "menos" : "más"} ${sinSigno(derecho)} es ${conVariable(queda)}.`
-  );
+export function fraseCancelacionIncognita(_izquierdo, _derecho, _v) {
+  // Forma: rótulo corto en pizarra; la cuenta queda en Ambiente 2.
+  return "Se cancelan:";
 }
 
 /**
@@ -874,7 +868,7 @@ export function solveLinearSteps(text) {
       apoyo: {
         textoAuxiliar: `Por qué se cancelan los ${xc(coefR)}${v}:`,
         calculoKaTeX: `${xc(coefR)}${v} - ${xc(coefR)}${v} = 0`,
-        conclusion: `Y a la izquierda, ${xc(coefL)}${v} ${coefR > 0 ? "menos" : "más"} ${xc(Math.abs(coefR))}${v} es ${xc(coef)}${v}`,
+        conclusion: `${xc(coefL)}${v} ${coefR > 0 ? "-" : "+"} ${xc(Math.abs(coefR))}${v} = ${xc(coef)}${v}`,
       },
     });
   }
@@ -921,7 +915,8 @@ export function solveLinearSteps(text) {
       apoyo: {
         textoAuxiliar: `Por qué se cancela el ${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))}:`,
         calculoKaTeX: `${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))} ${konst > 0 ? "-" : "+"} ${fmt(Math.abs(konst))} = 0`,
-        conclusion: `Y a la derecha, ${fmt(c)} ${konst > 0 ? "menos" : "más"} ${fmt(Math.abs(konst))} es ${fmt(c - konst)}`,
+        // Forma: conclusión en una línea, como KaTeX corto.
+        conclusion: `${fmt(c)} ${konst > 0 ? "-" : "+"} ${fmt(Math.abs(konst))} = ${fmt(c - konst)}`,
       },
     });
   }
