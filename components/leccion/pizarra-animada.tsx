@@ -1032,12 +1032,50 @@ export function PanelAnimado({
   // La pizarra sigue a la voz del tutor. Se le dice DÓNDE ESTÁ, no sólo en qué
   // escena: la cuenta se cuenta en orden y desde el reposo, así que una
   // locución no puede plantar la pizarra tres pasos más allá.
+  //
+  // Y CADA FRASE SITÚA UNA VEZ, cuando se dice.
+  //
+  // El efecto se repetía también al crecer el guion, así que la última frase
+  // dicha volvía a compararse contra una escena que aún no existía cuando sonó.
+  // La apertura —"Vamos a resolver 2(x + 3) = 16 paso a paso"— nombra el 2, el 3
+  // y el 16, y al escribirse la línea se la llevaba el último foco del reparto:
+  // la escuadra aparecía del 2 al 3 antes de que el tutor hubiera dicho nada.
+  // Es el «la flecha salta directamente conectando el 2 con el 3, ignorando la
+  // multiplicación inicial (2·x)» del informe. Una línea recién escrita se queda
+  // en reposo hasta que su propia frase la enfoca.
   useEffect(() => {
     if (!narracion) return;
     const destino = situacionParaNarracion(escenas, narracion, estado.escena, estado.foco);
     if (!destino) return;
     mandos.situar(destino.escena, destino.foco);
   }, [narracion, escenas, estado.escena, estado.foco, mandos]);
+
+  /**
+   * UN EJERCICIO NUEVO EMPIEZA EN REPOSO.
+   *
+   * `enOrden` impide saltar por delante —desde el reposo no se pasa del primer
+   * foco—, pero al encadenar ejercicios ("Más difícil", "otra ecuación") la
+   * pizarra conservaba el foco del anterior: entraba en el reparto nuevo ya en el
+   * último término, y la escuadra salía del 2 al 3 sin pasar por la x —la
+   * «flecha que salta directamente conectando el 2 con el 3, ignorando (2·x)»—.
+   *
+   * La señal de que se empieza de cero es que el guion ENCOGE: la pizarra se
+   * vacía y se rehace desde su primera línea. Que el texto de esa primera línea
+   * coincida no basta —"Más difícil" puede repetir la misma ecuación—.
+   */
+  const cuantasEscenas = escenas.length;
+  const cuantasHabia = useRef(0);
+  useEffect(() => {
+    const antes = cuantasHabia.current;
+    cuantasHabia.current = cuantasEscenas;
+    // SÓLO cuando el guion se queda en UNA línea viniendo de varias: eso es la
+    // pizarra reconstruida desde cero. Bastaba con «encoge» y era demasiado: el
+    // guion se recompone en cada pintado y puede perder un renglón un instante
+    // —el destapado prestado que se recoge—; con eso el puntero volvía a la
+    // primera línea y TODO lo de detrás pasaba a estar «sin explicar», o sea, se
+    // borraba de la pizarra. A media lección el guion no baja a una.
+    if (cuantasEscenas === 1 && antes > 1) mandos.situar(0, -1);
+  }, [cuantasEscenas, mandos]);
 
   // AL TERMINAR LA LECCIÓN, LA PIZARRA QUEDA RESUELTA: último paso de la última
   // línea. Se vuelve a situar si el guion cambia estando terminada —el cierre del

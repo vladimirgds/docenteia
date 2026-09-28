@@ -1371,11 +1371,12 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
   // es lo que lo llenaba de ecuaciones futuras (ronda de septiembre, R4-01).
   check(
     "el Ambiente 2 no enseña nada hasta que un paso llega a él",
-    // El hilo se dibuja por BLOQUES —comentario y desarrollo juntos— y el apoyo
-    // como pila propia; los dos salen de `visibles`: lo ya explicado y nada más.
-    /const bloques = useMemo\(/.test(fuentePizarra2) &&
-      /visibles\.filter\(\(e\) => e\.ambiente === 2\)/.test(fuentePizarra2) &&
-      /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(fuentePizarra2),
+    // Las dos columnas iteran el MISMO `pasos[]`, y `pasos` sale de `visibles`:
+    // lo ya explicado, más como mucho la línea que el tutor está diciendo.
+    /const pasos = useMemo/.test(fuentePizarra2) &&
+      /for \(const e of visibles\)/.test(fuentePizarra2) &&
+      /e\.indiceGuion <= hastaDonde \+ 1/.test(fuentePizarra2) &&
+      /const marcaDeAgua = useRef/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
   check(

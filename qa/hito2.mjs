@@ -1045,14 +1045,14 @@ titulo("A00h. Segunda ronda del cliente: las ayudas en la práctica, a/b vertica
   // 4. LA TARJETA PROYECTADA, EN PROPORCIÓN CON LAS NOTAS DE AL LADO.
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   check(
-    "en proyección, la fórmula de la tarjeta va al tamaño exacto de la de una nota (48 px), no a 64",
-    /\.modo-proyeccion \.pz-regla-formula \.katex \{\s*font-size: 3rem;\s*\}/.test(css) &&
-      /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);\s*\}/.test(css),
+    "en proyección, la fórmula de la tarjeta va al tamaño exacto de la de una nota",
+    /\.modo-proyeccion \.pz-regla-formula \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(css),
   );
   check(
     "…y el nombre de la regla, al tamaño del texto de las notas",
-    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: clamp\(1\.6rem, 2\.2vw, 2\.3rem\);/.test(css) &&
-      /\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(1\.6rem, 2\.2vw, 2\.3rem\);/.test(css),
+    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: clamp\(1\.5rem, 1\.8vw, 1\.8rem\);/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(1\.5rem, 1\.8vw, 1\.8rem\);/.test(css),
   );
 }
 
@@ -2060,7 +2060,7 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // IZQUIERDA ("definiciones amontonadas al centro", OBS-10), no centradas.
   check(
     "una nota proyectada nunca baja de 24 px, en blanco y alineada a la izquierda",
-    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: clamp\(1\.6rem,[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
+    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: clamp\(1\.5rem,[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
       /^\.pz-nota \{[^}]*align-items: flex-start;[^}]*text-align: left;/m.test(estilos),
   );
   check(
@@ -2838,7 +2838,14 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
     "y la regla, igual: las dos por la fórmula que se ajusta a su mitad de la pizarra",
     (pizarraClasica.match(/<FormulaQueCabe/g) ?? []).length === 2 &&
       /partirLaMasLarga\(estado\.current\.filas\)/.test(pizarraClasica) &&
-      /Math\.max\(0\.8, estado\.current\.escala/.test(pizarraClasica),
+      // Y DENTRO DE UN RECUADRO SE BAJA MÁS ANTES QUE CORTAR (Alex.pdf §3): el
+      // suelo general sigue en el 80 %; en la tarjeta llega al 60 %, porque allí
+      // lo que sobra se corta contra su marco —"el número 10 se corta al final
+      // de la línea"—, y una tarjeta algo menor se lee; un 10 a medias, no.
+      /Math\.max\(suelo, estado\.current\.escala/.test(pizarraClasica) &&
+      /pz-tarjeta-regla[^;]{0,12}0\.6 : 0\.8/.test(pizarraClasica) &&
+      // Y el límite es el INTERIOR de ese recuadro, no el borde de la columna.
+      /const tarjeta = el\.closest<HTMLElement>/.test(pizarraClasica),
   );
   // El informe pidió después lo contrario de centrar (OBS-10: "definiciones
   // amontonadas al centro… alinear a la izquierda").
@@ -4085,7 +4092,11 @@ titulo("B2. La pizarra sigue a la voz del tutor");
   const panelAnimado = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
   check(
     "no hay un desarrollo aparte: cada línea es un paso de LA pizarra, con su estado",
-    !aula.includes("ocultarDesarrollo") && /data-estado=\{e\.escena \? estado : "estatica"\}/.test(pizarra) &&
+    // El rótulo del estado distingue ahora PENDIENTE de RECIENTE: la línea que
+    // el tutor acaba de decir se ve, en reposo, y no es un paso adelantado.
+    !aula.includes("ocultarDesarrollo") &&
+      /data-estado=\{e\.escena \? rotulo : "estatica"\}/.test(pizarra) &&
+      /\? "reciente" : estado/.test(pizarra) &&
       /estado=\{estado\}/.test(pizarra),
   );
   check(
@@ -4729,7 +4740,7 @@ titulo("D. Máquina de estados del avatar");
       const [, suelo, , techo] = m.map(Number);
       return suelo >= 1.25 && suelo <= 1.75 && techo >= suelo && techo <= 2;
     })() &&
-      /\.modo-proyeccion \.pz-nota \.katex \{\s*font-size: max\(3rem, 1\.3em\);/.test(estilos),
+      /\.modo-proyeccion \.pz-nota \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(estilos),
   );
   check(
     "y las rayas de KaTeX engordadas para que se vean proyectadas",
@@ -5073,9 +5084,9 @@ if (!vivo) {
   // segundo ambiente con las tres ecuaciones del ejercicio a la vez —pasadas y
   // futuras— y varias barras de desplazamiento encima.
   check(
-    "la pizarra sólo pinta lo ya explicado: filtra por el estado del guion antes de repartir",
+    "la pizarra sólo pinta lo ya explicado: filtra por hasta dónde ha llegado la clase",
     /const visibles = useMemo\(/.test(pizarraSrc) &&
-      /estadoDe\(e\.indiceGuion\) !== "pendiente"/.test(pizarraSrc),
+      /e\.indiceGuion <= hastaDonde \+ 1/.test(pizarraSrc),
   );
   check(
     "y los DOS ambientes se dibujan desde ese filtro, no desde la lista entera",
@@ -5089,7 +5100,7 @@ if (!vivo) {
   );
   check(
     "al terminar la lección sí se ve todo: el repaso no se queda a medias",
-    /animacion\?\.terminada \|\| estadoDe/.test(pizarraSrc),
+    /animacion\?\.terminada \|\| e\.indiceGuion < 0/.test(pizarraSrc),
   );
 
   // R4-03. NINGUNA BARRA GRIS. Se desplaza si hace falta (móvil estrecho), pero
@@ -5879,6 +5890,97 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     "el verde queda para la respuesta: un resultado intermedio va en el azul del foco",
     /\.pz-solucion \{\s*color: hsl\(160 84% 30%\)/.test(estilos) &&
       !/\.pz-solucion,\s*\.pz-resultado/.test(estilos),
+  );
+}
+
+
+titulo("A55. Alex.pdf: el reparto sub-paso a sub-paso, sin hueco y sin recortar");
+
+{
+  const motor = readFileSync(new URL("../src/lsgPrompt.js", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
+  const pizarra = readFileSync(new URL("../components/leccion/pizarra.tsx", import.meta.url), "utf8");
+
+  // §1 y §4: una cuenta por sub-paso, escrita justo antes de su frase.
+  {
+    const paso = solveLinearSteps("2(x + 3) = 16").steps[0];
+    check(
+      "el apoyo del reparto viaja como LISTA: una cuenta por término",
+      Array.isArray(paso.apoyo?.porTermino) &&
+        paso.apoyo.porTermino.length === 2 &&
+        paso.apoyo.porTermino[0] === "(2) · (x) = 2x" &&
+        paso.apoyo.porTermino[1] === "(2) · (3) = 6",
+      JSON.stringify(paso.apoyo?.porTermino),
+    );
+    check(
+      "…y el contrato del cliente sigue llevando sólo sus tres campos",
+      Object.keys(paso.ambiente2 ?? {}).every((k) => ["textoAuxiliar", "calculoKaTeX", "conclusion"].includes(k)),
+      JSON.stringify(Object.keys(paso.ambiente2 ?? {})),
+    );
+  }
+  check(
+    "cada cuenta se escribe y SE CUENTA en el mismo compás (sub-paso a sub-paso)",
+    /function repartoSincronizado/.test(motor) &&
+      /out.push\(lineaDeTaller\(cuenta\), \{ tipo: "hablar", texto: dichas\[i\] \}/.test(motor),
+  );
+
+  // La secuencia entera del guion: escribir la cuenta, decirla, y así con cada una.
+  {
+    const crudo = linealResueltaLSG({ nivel: "dificil" });
+    const guion = processLSG(crudo, crudo.intencion, "prueba").lsg;
+    const dir = (guion.modulos ?? []).flatMap((m) => m.directivas ?? []).concat(guion.directivas ?? []);
+    const iCuenta1 = dir.findIndex((d) => d.tipo === "pizarra" && /\(2\) · \(x\)/.test(String(d.contenido ?? "")));
+    const iFrase1 = dir.findIndex((d) => d.tipo === "hablar" && /2 por x es 2x/.test(d.texto ?? ""));
+    const iCuenta2 = dir.findIndex((d) => d.tipo === "pizarra" && /\(2\) · \(3\)/.test(String(d.contenido ?? "")));
+    const iFrase2 = dir.findIndex((d) => d.tipo === "hablar" && /2 por 3 es 6/.test(d.texto ?? ""));
+    check(
+      "Paso 1.1 → Paso 1.2: cada cuenta antes de su frase, y en orden",
+      iCuenta1 >= 0 && iCuenta1 < iFrase1 && iFrase1 < iCuenta2 && iCuenta2 < iFrase2,
+      `cuenta1=${iCuenta1} frase1=${iFrase1} cuenta2=${iCuenta2} frase2=${iFrase2}`,
+    );
+  }
+
+  // §1: presentar la línea no es operarla —la escuadra no sale en la apertura—.
+  {
+    const g = guionDeLeccion([{ latex: "2(x + 3) = 16", operacion: { tipo: "distributiva" } }]);
+    const donde = (frase, e, f) => situacionParaNarracion(g, frase, e, f);
+    check(
+      "la frase que presenta el ejercicio deja la pizarra en reposo, sin escuadra",
+      donde("Vamos a resolver 2(x + 3) = 16 paso a paso. La meta es dejar la x sola.", 0, -1)?.foco === -1 &&
+        donde("Vamos con otra ecuación: 2(x + 3) = 16.", 0, 0)?.foco === -1,
+    );
+    check(
+      "…y cada frase del reparto lleva la escuadra a SU término, en orden",
+      donde("Multiplicamos el 2 por cada término: 2 por x es 2x,", 0, -1)?.foco === 0 &&
+        donde("y 2 por 3 es 6.", 0, 0)?.foco === 1,
+    );
+  }
+  check(
+    "lo escrito se queda escrito: la marca de agua no vuelve atrás",
+    /const marcaDeAgua = useRef/.test(pizarra) && /marcaDeAgua\.current = animacion\?\.escena/.test(pizarra),
+  );
+  check(
+    "y un ejercicio nuevo empieza en reposo (el guion encoge)",
+    /cuantasEscenas === 1 && antes > 1/.test(panel) && /mandos\.situar\(0, -1\)/.test(panel),
+  );
+
+  // §2: la ecuación que cierra el paso se ve en cuanto se dice.
+  check(
+    "la pizarra va como mucho UNA línea por delante de la voz, nunca dos",
+    /indiceGuion === hastaDonde \+ 1/.test(pizarra) &&
+      /e.indiceGuion <= hastaDonde \+ 1/.test(pizarra),
+  );
+  check(
+    "…y el taller no cuenta como paso del guion: no corre los índices",
+    /paso.ambiente === 2\) continue;/.test(
+      readFileSync(new URL("../lib/leccion/animacion.ts", import.meta.url), "utf8").match(
+        /export function guionDeLeccion[\s\S]{0,1600}/,
+      )?.[0] ?? "",
+    ),
+  );
+  check(
+    "el comentario se escribe justo antes de contarlo, no un paso antes",
+    /if \(s.explica\) dir.push\(explicaEnPizarra\(s.explica\)\);/.test(motor),
   );
 }
 

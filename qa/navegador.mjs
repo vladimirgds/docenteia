@@ -1446,8 +1446,8 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
       // Ya está: con la repartida escrita y las dos frases dichas, no hay más que ver.
       if (
         repartidaEnElHilo(muestras.at(-1)) &&
-        muestras.some((m) => /multiplica a x/.test(m.pie)) &&
-        muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie))
+        muestras.some((m) => /por cada término/.test(m.pie)) &&
+        muestras.some((m) => /\d+ por \d+ es \d+/.test(m.pie))
       ) {
         break;
       }
@@ -1478,8 +1478,8 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
       repartidasVistas: repartidas.length,
       busco: laRepartida(conDistributiva[0]?.tarjeta ?? ""),
       gesto: muestras.some((m) => m.gesto === "distributiva"),
-      frase1: muestras.some((m) => /multiplica a x/.test(m.pie)),
-      frase2: muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie)),
+      frase1: muestras.some((m) => /por cada término/.test(m.pie)),
+      frase2: muestras.some((m) => /\d+ por \d+ es \d+/.test(m.pie)),
       hilo: (muestras.map((m) => m.hilo ?? []).sort((x, y) => y.length - x.length)[0] ?? [])
         .slice(0, 8)
         .map((x) => `${x.papel}:${x.t.slice(0, 30)}`),
@@ -1490,7 +1490,7 @@ console.log("\n── Revisión 9b06d70: pizza circular, sincronía, brazo, llev
       "y la animación de abajo reparte los dos términos, y la ecuación repartida llega al hilo",
       (conDistributiva.length === 0 || repartidas.length > 0) &&
         muestras.some((m) => m.gesto === "distributiva") &&
-        muestras.some((m) => /multiplica a x/.test(m.pie)) && muestras.some((m) => /Y el \d+ multiplica a/.test(m.pie)),
+        muestras.some((m) => /por cada término/.test(m.pie)) && muestras.some((m) => /\d+ por \d+ es \d+/.test(m.pie)),
       JSON.stringify(diagnostico),
     );
 

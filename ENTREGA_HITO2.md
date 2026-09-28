@@ -4074,3 +4074,148 @@ señala un solo sitio**: dos halos a la vez no señalan nada, y eso lo comprueba
 
 Con movimiento reducido el pulso se apaga y el halo se queda quieto: lo que sobra
 es la animación, no la señal.
+
+## 55. Alex.pdf: el reparto sub-paso a sub-paso, sin hueco y sin recortar
+
+Cuatro puntos, y los cuatro resultaron tener una causa distinta de la que
+aparentaban. Todos se reprodujeron primero sobre la pizarra de verdad, con una
+sonda que anota en cada instante qué dice la voz, a qué término apunta la
+escuadra, qué renglón del taller lleva el halo y cuántos píxeles hay entre un
+renglón y el siguiente.
+
+### 1 y 4. «Los índices están desfasados»
+
+> «La flecha amarilla inferior salta directamente conectando el 2 con el 3,
+> ignorando la multiplicación inicial del término algebraico (2·x).»
+>
+> «Cuando el avatar habla de multiplicar la x (2·x = 2x), el halo/sombra activa
+> resalta en la derecha el renglón (2)·(3) = 6.»
+
+Son **dos defectos distintos**, y ninguno era un índice mal sumado.
+
+**El halo.** Las cuentas del taller se escribían TODAS de golpe, antes de narrar
+nada. El halo de la columna derecha sigue al último renglón escrito —así se
+diseñó, y es lo que hace que se traslade solo—, y el último era siempre
+`(2)·(3) = 6`. El avatar hablaba de la x y la derecha señalaba el 3.
+
+El apoyo viaja ahora como **lista de cuentas, una por término**, y el guion las
+escribe de una en una, **cada una en el mismo compás que su frase**:
+
+```
+escribe (2)·(x) = 2x   →  voz "2 por x es 2x"   →  halo en (2)·(x) = 2x
+escribe (2)·(3) = 6    →  voz "y 2 por 3 es 6"  →  halo en (2)·(3) = 6
+escribe 2x + 6 = 16    →  voz "Por eso obtenemos 2x + 6 = 16"
+```
+
+Es la secuencia que el cliente escribió en su §4. No hace falta un
+`subPasoDistributiva` aparte: atando cada cuenta a su frase, los tres compases
+—flecha, voz y sombra— no pueden desfasarse, porque son el mismo.
+
+**La flecha.** El tutor abre con «Vamos a resolver 2(x + 3) = 16 paso a paso», y
+esa frase dice el 2, el 3 y el 16. El sincronizador la comparaba con las frases
+de los focos y se parecía más a «y 2 por 3 es 6» que a ninguna otra cosa: la
+escuadra salía del 2 al 3 **antes de que el tutor hubiera dicho nada del
+reparto**. Dos frases de presentación seguidas —la apertura del ejemplo y la del
+ejercicio— la llevaban hasta el último término.
+
+**Presentar una línea no es operarla.** Una frase que repite la ecuación entera y
+empieza por «vamos», «veamos», «empecemos» —o dice «paso a paso»— deja la pizarra
+en REPOSO sobre esa línea: escrita, sin nada señalado, como cuando un profesor
+lee el enunciado antes de empezar. Y una frase sitúa **una sola vez**: al
+escribirse una línea nueva ya no se vuelve a aplicar la anterior contra una
+escena que no existía cuando sonó.
+
+### 2. El hueco en blanco y el salto
+
+> «Debajo de "Por propiedad distributiva:" queda un espacio vacío grande y de
+> pronto el texto "Restamos 6 a ambos miembros:" se mueve o salta hacia arriba.»
+>
+> «Causa: estás condicionando el renderizado de la ecuación resultante a un
+> estado tardío, dejando un bloque vacío en el DOM.»
+
+El diagnóstico era correcto, y la causa, doble.
+
+La pizarra no pinta lo que la voz todavía no ha explicado. La ecuación
+`2x + 6 = 16` llevaba por narración el comentario del paso SIGUIENTE —«Restamos 6
+a ambos miembros:»—, así que el puntero del guion no llegaba a ella hasta esa
+frase: se quedaba invisible **reservando su sitio**, y el comentario del paso
+siguiente se colocaba encima del hueco. Medido: 104 px de nada.
+
+Y había un segundo desfase. Los cálculos del taller —«6 − 6 = 0»— entraban en el
+guion como si fueran pasos, y corrían los índices: la ecuación que el tutor
+acababa de decir quedaba **dos** escenas por delante de la voz en vez de una.
+
+Ahora: el taller no es guion, y la pizarra puede ir **una** línea por delante de
+la voz, y sólo una: la que el tutor está produciendo en ese mismo compás. Hasta
+que el guion llega a ella se pinta **en reposo**, sin destapar la operación que
+lleva dentro —que es exactamente la ecuación limpia que él pedía—. De la segunda
+en adelante, nada: R4-01 sigue con sus dientes.
+
+El comentario, además, se escribe **justo antes de contarlo** y no al cerrar el
+paso anterior, así que no queda solo encima de un sitio vacío.
+
+Los huecos medidos en la columna pasan de `[8, 104]` a `[8, 6]`.
+
+### 3. El número cortado
+
+> «En la vista de propiedades (2x + 5 = 15 ⟹ 2x = 10), la escala de KaTeX es tan
+> grande que el recuadro delimitador y el número 10 se desbordan o se cortan.»
+
+La fórmula de la tarjeta se ajusta sola a su sitio —se parte en renglones y, si
+aún no cabe, se encoge—, pero **medía contra el borde de la columna, no contra el
+interior de la tarjeta**. La tarjeta tiene su propio marco con relleno dentro de
+esa columna: la fórmula se salía del recuadro sin llegar al borde del ambiente,
+y como el recuadro no desborda, el último número se cortaba.
+
+El límite es ahora el interior del recuadro que de verdad recorta. Y dentro de un
+contenedor delimitado se encoge más antes que cortar —hasta el 60 % en vez del
+80 %—, porque un 10 a medias no se lee y una tarjeta un punto menor sí.
+
+**Una salvedad, dicha de frente:** el informe pedía bajar esa clase a `text-xl`
+(1,25–1,35 rem). En proyección eso choca con su propia regla anterior —48 px
+como mínimo para leer desde el fondo del aula, SUB-PRJ-03—, así que la escala de
+aula se mantiene como objetivo y lo que se hace es **garantizar que quepa**. Si
+prefiere la letra más pequeña también proyectando, es un número y se cambia.
+
+### Y una batería que ya estaba roja
+
+`qa/leccion.mjs` fallaba en `main` desde la reestructuración en filas: una
+comprobación seguía buscando `const bloques` y `visibles.filter(… ambiente === 2)`,
+que dejaron de existir. Se actualiza a lo que la pizarra hace hoy.
+
+### Lo que ya estaba en rojo antes de esta ronda
+
+Al pasar las baterías sobre el estado de `main` —antes de tocar nada— tres
+comprobaciones fallaban ya. No son de esta ronda; se dejaron atrás al compactar
+la pizarra, y conviene decirlas en voz alta:
+
+**Las medidas de proyección.** El informe puso 48 px para el aula y luego se
+acordó un suelo de 36. Después el cliente lo volvió a medir sobre el vídeo —«el
+mínimo de aula saturaba la pantalla»— y pidió la escala compacta también
+proyectando: «reducir la clase de KaTeX … a text-xl (máximo 1.25rem a 1.35rem)».
+El CSS bajó; las comprobaciones se quedaron en 36 px. Se ponen en lo que él pidió
+la última vez, y se dice claramente: **son sus números, no los míos**, y los
+mínimos de aula quedan superados. Si prefiere volver a la letra de aula
+proyectando, es un valor.
+
+**El aire entre pasos.** Igual: de `space-y-3` (12 px) a `gap-2` (8 px), a
+petición suya. La comprobación seguía exigiendo 12.
+
+**Y un desajuste que nadie había visto.** Proyectando, el ejercicio se dibujaba a
+25 px y su nota de al lado a 48, en la misma pantalla: la nota se quedó en los
+48 px del informe cuando los pasos bajaron a la escala compacta. Lo mismo la
+fórmula de la tarjeta de regla. Las dos pasan al tamaño de los pasos.
+
+**`qa/leccion.mjs`** fallaba por una comprobación que seguía buscando código que
+la reestructuración en filas se llevó por delante.
+
+### Una intermitente, anotada
+
+**R4-02** —«el tachado rojo sólo aparece cuando el tutor está diciendo que se
+cancela»— falla **a veces**: en la corrida completa de las ocho clases pasa, y
+lanzando sólo la clase de ecuaciones falla. Se comprobó que falla **igual antes y
+después de esta ronda**, pasando la batería sobre `main` con los cambios
+apartados, así que no es de aquí: el aspa se adelanta un compás a su frase en
+algún punto, y sólo cuando los tiempos caen de cierta manera. Queda anotada para
+mirarla con calma —una comprobación que falla a ratos no sirve de red—, salvo
+que prefiera adelantarla.
