@@ -200,24 +200,26 @@
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.75rem;
-  margin-bottom: 0.5rem; /* mb-1 / my-1 — Alex.pdf */
+  align-items: baseline; /* misma línea de base: «Ejercicio:» y la fórmula */
+  gap: 0.25rem 0.5rem;
+  margin-bottom: 0.5rem;
   padding: 0.15rem 0 0.35rem;
   border-bottom: 2px solid hsl(var(--border));
   background: hsl(var(--card));
 }
 
 .pz-encabezado-rotulo {
-  /* text-xl / amber-400 del esquema JSX del cliente */
+  /* Mismo tamaño que la fórmula del encabezado (cliente: «la letra deben
+     tener el mismo tamaño»). */
   font-size: 1.25rem;
   font-weight: 700;
+  line-height: 1.25;
   color: hsl(38 92% 50%);
 }
 
 .pz-encabezado-formula .katex {
-  /* Misma escala base text-xl que el resto de la pizarra */
   font-size: 1.25rem;
+  line-height: 1.25;
 }
 
 /* EL ANCHO ÚTIL, REPARTIDO SEGÚN LO QUE LLEVA CADA COLUMNA.
@@ -295,24 +297,30 @@
    «hasta cuatro tamaños distintos de texto … en la misma columna», y con dos
    columnas son las dos. */
 .pz-comentario {
-  /* Cliente (forma): misma clase, letra LEGIBLE — text-base, no text-sm.
-     «cambia el tamaño de la letra» / antes se leía como «letra minúscula». */
+  /* Forma (cliente): text-sm — el text-base «sobrepasó el tamaño».
+     Una sola línea; no sube ni baja al aparecer la ecuación. */
   font-family: var(--font-comentario, var(--font-sans, ui-sans-serif, system-ui, sans-serif));
-  font-size: 1rem; /* text-base */
+  font-size: 0.875rem; /* text-sm */
   font-weight: 400;
   line-height: 1.375; /* leading-snug */
   color: hsl(215 16% 47%);
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.375em; /* hueco estable: no salta al escribir */
 }
 
 .dark .pz-comentario {
   color: hsl(213 27% 84%); /* slate-300 */
 }
 
-/* Proyectada: letra claramente más grande (pedido reiterado del cliente). */
+/* Proyectada: misma escala que KaTeX (text-xl), sin pasarse. */
 .modo-proyeccion .pz-comentario {
-  font-size: clamp(1.75rem, 2.1vw, 2.15rem);
+  font-size: 1.25rem;
+  line-height: 1.375;
   color: hsl(213 27% 84%);
+  min-height: 1.375em;
 }
 
 .pz-paso-taller,
@@ -364,9 +372,9 @@
   font-size: 1.125rem;
 }
 
-/* Y en proyección manda la escala compacta (Alex.pdf text-xl), no la de aula. */
+/* Y en proyección: MISMO 1.25rem que «Ejercicio:» (cliente: no sobrepasar). */
 .modo-proyeccion .pz-ambiente .katex {
-  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+  font-size: 1.25rem;
 }
 
 /* KaTeX centra la fórmula DENTRO de su bloque: hay que alinearla también ahí. */
@@ -1055,7 +1063,7 @@
    encima de los 24 px de rótulo del informe; el mínimo de aula de 48 px
    saturaba la pantalla en el vídeo del cliente. */
 .modo-proyeccion .katex {
-  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+  font-size: 1.25rem;
   font-weight: 600;
   color: hsl(0 0% 100%);
 }
@@ -1070,21 +1078,27 @@
 @media (max-width: 900px) {
   .modo-proyeccion .katex,
   .modo-proyeccion .pz-encabezado-formula .katex {
-    font-size: clamp(1.25rem, 5vw, 1.75rem);
+    font-size: 1.25rem;
   }
   .modo-proyeccion .pz-encabezado-rotulo {
     font-size: 1.25rem;
   }
 }
 
-/* "Ejercicio:" y el enunciado: text-xl / amber (Alex.pdf). El tamaño de aula
-   anterior saturaba la proyección en el vídeo del cliente. */
+/* "Ejercicio:" y el enunciado: MISMO tamaño (cliente). */
 .modo-proyeccion .pz-encabezado-rotulo {
   font-size: 1.25rem;
+  line-height: 1.25;
   color: hsl(38 92% 50%);
 }
 
 .modo-proyeccion .pz-encabezado-formula .katex {
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+/* KaTeX de los pasos = mismo 1.25rem que el encabezado (no más grande). */
+.modo-proyeccion .pz-ambiente .katex {
   font-size: 1.25rem;
 }
 
@@ -1153,7 +1167,7 @@
    escala de aula cuando los pasos bajaron, y proyectando era el texto más
    grande de la pantalla, por encima del propio ejercicio. */
 .modo-proyeccion .pz-nota {
-  font-size: clamp(1.5rem, 1.8vw, 1.8rem);
+  font-size: 1.25rem;
   color: hsl(0 0% 100%);
   gap: 0.6em;
 }
@@ -1170,8 +1184,7 @@
    a 48 px, en la misma pantalla. Una nota no es más importante que el paso que
    acompaña. Un pelín mayor, para que se distinga de la prosa de al lado. */
 .modo-proyeccion .pz-nota .katex {
-  /* Un escalón por encima de su rótulo, como siempre. */
-  font-size: clamp(1.6rem, 2.1vw, 2rem);
+  font-size: 1.25rem;
 }
 
 /* Y la de lo que dice el tutor bajo el paso, al tamaño de su frase. */
@@ -1196,7 +1209,7 @@
 
 /* El nombre de la regla, al tamaño del texto de las notas (R2-04). */
 .modo-proyeccion .pz-tarjeta-regla-nombre {
-  font-size: clamp(1.5rem, 1.8vw, 1.8rem);
+  font-size: 1.25rem;
   color: hsl(45 96% 62%);
 }
 
@@ -1207,10 +1220,7 @@
    fórmula de una nota (48 px, el mínimo de aula), su nombre al del texto de
    las notas, y con el mismo aire que el lienzo deja a los lados. */
 .modo-proyeccion .pz-regla-formula .katex {
-  /* Al tamaño de la fórmula de una nota, como manda R2-04: cuando la escala de
-     los pasos bajó a la compacta, la tarjeta se quedó en los 48 px del informe y
-     volvía a ser el elemento más grande de la pantalla. */
-  font-size: clamp(1.6rem, 2.1vw, 2rem);
+  font-size: 1.25rem;
 }
 
 .modo-proyeccion .pz-tarjeta-regla {

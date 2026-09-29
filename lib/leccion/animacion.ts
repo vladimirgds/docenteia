@@ -692,8 +692,8 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       clase: "pz-uniforme",
       piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
       tipo: "caja",
-      // Alex.pdf §4: «Restamos 6 a ambos miembros:»
-      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} a ambos miembros:`,
+      // Forma: «Restamos 6:» — sin «a ambos miembros» (tachado por el cliente).
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)}:`,
     });
   if (!soloEscritura) focos.push({
       clase: "pz-cancela",
@@ -893,9 +893,8 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
     id,
     texto,
     latex: `${numerador(arribaIzq, "pz-divisor pz-divisor-izq")} = ${numerador(dividendo, "pz-divisor pz-divisor-der")}`,
-    // Alex.pdf §4: «Dividimos ambos miembros entre 2:» — misma frase que el
-    // comentario formal; el pie de proyección no la repite (ver pieEnColumna).
-    narracion: `Dividimos ambos miembros entre ${divisor}:`,
+    // Forma: «Dividimos entre 2:» — sin «ambos miembros» (tachado por el cliente).
+    narracion: `Dividimos entre ${divisor}:`,
     clase: "despeje",
     focos: [
       {
@@ -903,7 +902,7 @@ export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | 
         // Una caja por miembro: ninguna marca cruza el igual.
         piezas: ["pz-divisor-izq", "pz-divisor-der"],
         tipo: "caja",
-        narracion: `Dividimos ambos miembros entre ${divisor}:`,
+        narracion: `Dividimos entre ${divisor}:`,
         etiqueta: `÷ ${divisor}`,
       },
     ],
@@ -959,7 +958,7 @@ export function escenaDeRestaDeIncognita(texto: string, id: string): Escena | nu
         clase: "pz-uniforme",
         piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
         tipo: "caja",
-        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)} a ambos miembros:`,
+        narracion: `${c > 0 ? "Restamos" : "Sumamos"} ${abs(c)}:`,
       },
     ],
   };

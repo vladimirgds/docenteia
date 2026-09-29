@@ -658,14 +658,14 @@ titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecu
   // 3. LO QUE SE DICE ES LO QUE SE HACE, en el despeje y en el polinomio.
   const conMenos = escenaDeDespeje("2x - 6 = 16", "e");
   check(
-    "con «2x − 6 = 16» el tutor SUMA 6 a ambos miembros (no «quitamos»)",
-    /^Sumamos 6 a ambos miembros:/.test(conMenos.focos[0]?.narracion ?? ""),
+    "con «2x − 6 = 16» el tutor SUMA 6 (no «quitamos»)",
+    /^Sumamos 6:/.test(conMenos.focos[0]?.narracion ?? ""),
     conMenos.focos[0]?.narracion,
   );
   const conMas = escenaDeDespeje("2x + 6 = 16", "e");
   check(
-    "y con «2x + 6 = 16» resta 6 a ambos miembros",
-    /^Restamos 6 a ambos miembros:/.test(conMas.focos[0]?.narracion ?? ""),
+    "y con «2x + 6 = 16» resta 6",
+    /^Restamos 6:/.test(conMas.focos[0]?.narracion ?? ""),
     conMas.focos[0]?.narracion,
   );
   const poli = escenaDePolinomio("2x⁵ - 3x⁴ + x²", "e");
@@ -723,8 +723,8 @@ titulo("A00g. Tercera ronda del cliente: la cancelación dentro de su miembro, l
       JSON.stringify(e.focos[0]),
     );
     check(
-      "…y lo dice sin cancelar todavía: «Restamos 6 a ambos miembros:»",
-      /^Restamos 6 a ambos miembros:/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
+      "…y lo dice sin cancelar todavía: «Restamos 6:»",
+      /^Restamos 6:/.test(e.focos[0]?.narracion ?? "") && !/cancela/.test(e.focos[0]?.narracion ?? ""),
       e.focos[0]?.narracion,
     );
     // El SEGUNDO tiempo es otro renglón: la igualdad con la resta ya escrita, y
@@ -1045,14 +1045,14 @@ titulo("A00h. Segunda ronda del cliente: las ayudas en la práctica, a/b vertica
   // 4. LA TARJETA PROYECTADA, EN PROPORCIÓN CON LAS NOTAS DE AL LADO.
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   check(
-    "en proyección, la fórmula de la tarjeta va al tamaño exacto de la de una nota",
-    /\.modo-proyeccion \.pz-regla-formula \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(css) &&
-      /\.modo-proyeccion \.pz-nota \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(css),
+    "en proyección, la fórmula de la tarjeta va al tamaño unificado (1.25rem, mismo que Ejercicio:)",
+    /\.modo-proyeccion \.pz-regla-formula \.katex \{[^}]*font-size: 1\.25rem;/.test(css) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{[^}]*font-size: 1\.25rem;/.test(css),
   );
   check(
-    "…y el nombre de la regla, al tamaño del texto de las notas",
-    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: clamp\(1\.5rem, 1\.8vw, 1\.8rem\);/.test(css) &&
-      /\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(1\.5rem, 1\.8vw, 1\.8rem\);/.test(css),
+    "…y el nombre de la regla, al mismo tamaño que las notas (sin sobrepasar)",
+    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: 1\.25rem;/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \{\s*font-size: 1\.25rem;/.test(css),
   );
 }
 
@@ -1939,11 +1939,11 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
-    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6 a ambos miembros:/.test(e.d.texto));
+    const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6:/.test(e.d.texto));
     const enResta = ev[iResta];
     const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
     check(
-      "cuando el tutor dice «Restamos 6 a ambos miembros:», la pizarra ESCRIBE la resta y NO tacha nada",
+      "cuando el tutor dice «Restamos 6:», la pizarra ESCRIBE la resta y NO tacha nada",
       enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
         focoResta?.clase === "pz-uniforme",
       `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
@@ -2014,9 +2014,9 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       enCoef.foco?.etiqueta === "× 2" && /multiplicada por 2/.test(enCoef.foco?.narracion ?? ""),
       `${enCoef.foco?.etiqueta} · ${enCoef.foco?.narracion}`,
     );
-    const enDivide = dondeSuena(/dividimos ambos miembros entre 2/i);
+    const enDivide = dondeSuena(/dividimos entre 2/i);
   check(
-      "«Dividimos ambos miembros entre 2:» suena con la FRACCIÓN ya escrita, no con 2x = 10",
+      "«dividimos entre 2:» suena con la FRACCIÓN ya escrita, no con 2x = 10",
       enDivide.texto === "2x/2 = 10/2",
       `${enDivide.texto}`,
     );
@@ -2059,8 +2059,8 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // El informe lo afinó después: notas de 24 px como mínimo, ALINEADAS A LA
   // IZQUIERDA ("definiciones amontonadas al centro", OBS-10), no centradas.
   check(
-    "una nota proyectada nunca baja de 24 px, en blanco y alineada a la izquierda",
-    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: clamp\(1\.5rem,[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
+    "una nota proyectada a 1.25rem (sin sobrepasar), en blanco y alineada a la izquierda",
+    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: 1\.25rem;[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
       /^\.pz-nota \{[^}]*align-items: flex-start;[^}]*text-align: left;/m.test(estilos),
   );
   check(
@@ -2433,10 +2433,10 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
         /className=\{cn\("pz-nota", className\)\} \{\.\.\.rol\(ROL\.PIZARRA\)\}/.test(notaTsx) &&
         /\\\\displaystyle \$\{planoALatex\(p\.contenido\)\}/.test(notaTsx),
     );
-    const tam = estilos.match(/\.modo-proyeccion \.pz-nota \{\s*font-size: clamp\(([\d.]+)rem/);
+    const tam = estilos.match(/\.modo-proyeccion \.pz-nota \{\s*font-size: ([\d.]+)rem/);
     check(
-      "en proyección el rótulo nunca baja de text-2xl (1,5 rem) y crece con la pantalla",
-      Boolean(tam) && Number(tam[1]) >= 1.5,
+      "en proyección la nota va a 1.25rem (mismo tamaño que Ejercicio:, sin sobrepasar)",
+      Boolean(tam) && Number(tam[1]) === 1.25,
       tam?.[0],
     );
     // El informe del cliente cambió la letra del subtítulo: es voz del tutor
@@ -4733,14 +4733,9 @@ titulo("D. Máquina de estados del avatar");
   // ejercicio entero entre sin empujar el encabezado. El suelo de aula de
   // 2,25rem saturaba la pantalla en el vídeo del cliente.
   check(
-    "con la tipografía escalada: KaTeX proyectado compacto (text-xl), sin saturar la pantalla",
-    (() => {
-      const m = estilos.match(/\.modo-proyeccion \.katex \{\s*font-size: clamp\(([\d.]+)rem,\s*([\d.]+)vw,\s*([\d.]+)rem\)/);
-      if (!m) return false;
-      const [, suelo, , techo] = m.map(Number);
-      return suelo >= 1.25 && suelo <= 1.75 && techo >= suelo && techo <= 2;
-    })() &&
-      /\.modo-proyeccion \.pz-nota \.katex \{[^}]*font-size: clamp\(1\.6rem, 2\.1vw, 2rem\);/.test(estilos),
+    "con la tipografía unificada: KaTeX proyectado a 1.25rem (mismo que Ejercicio:)",
+    /\.modo-proyeccion \.katex \{\s*font-size: 1\.25rem;/.test(estilos) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1\.25rem;/.test(estilos),
   );
   check(
     "y las rayas de KaTeX engordadas para que se vean proyectadas",
@@ -4803,8 +4798,9 @@ titulo("D. Máquina de estados del avatar");
   // quedaba diminuta en medio de un lienzo en blanco y el avatar desaparecía.
   const bloqueProyeccion = estilos.slice(estilos.indexOf(".modo-proyeccion {"));
   check(
-    "la fórmula escala con el ancho de la pantalla, no a un tamaño fijo",
-    /\.modo-proyeccion \.katex \{[^}]*clamp\([^)]*vw/.test(bloqueProyeccion),
+    "la fórmula proyectada usa el mismo tamaño fijo que el encabezado (1.25rem)",
+    /\.modo-proyeccion \.katex \{[^}]*font-size: 1\.25rem;/.test(bloqueProyeccion) &&
+      /\.modo-proyeccion \.pz-encabezado-rotulo \{[^}]*font-size: 1\.25rem;/.test(bloqueProyeccion),
   );
   check(
     "y la pizarra ocupa la pantalla entera, no un renglón en medio de la nada",
@@ -5524,7 +5520,7 @@ if (!vivo) {
         const dicha = e?.focos?.[0]?.narracion ?? "";
         return (
           (e?.focos?.length ?? 0) > 0 &&
-          /dividimos ambos miembros entre 2/i.test(dicha) &&
+          /dividimos entre 2/i.test(dicha) &&
           !/queda x\s*=/i.test(dicha)
         );
       })(),
@@ -5595,11 +5591,11 @@ if (!vivo) {
         sinFoco.length === 0,
         sinFoco.map((x) => x.texto).join(" · "),
       );
-      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x a ambos miembros:/.test(e.d.texto));
+      const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x:/.test(e.d.texto));
       const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
       check(
-        "cuando dice «Restamos 3x a ambos miembros:» la pizarra lo ESCRIBE, y tacha al decir «Se cancelan:»",
+        "cuando dice «Restamos 3x:» la pizarra lo ESCRIBE, y tacha al decir «Se cancelan:»",
         iResta >= 0 && iTacha > iResta &&
           focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
           focoEn(iTacha)?.tipo === "tachado",
@@ -5754,16 +5750,16 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   );
   check(
     "…y el comentario formal cubre la frase del tutor en proyección (Alex.pdf)",
-    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: clamp\(1\.75rem,/.test(estilos) &&
+    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: 1\.25rem;/.test(estilos) &&
       /pieEnColumna/.test(panel) &&
-      /escena\.clase !== "distributiva"/.test(panel),
+      /escena\.clase !== "distributiva"|const pieEnColumna = false/.test(panel),
   );
 
   // 2. «Todos los comentarios explicativos … font-sans text-sm … leading-snug
   //    text-slate-300.» (esquema JSX exacto del cliente)
   check(
-    "los comentarios, text-base (1rem) y gris de pizarra — tamaño que pidió el cliente",
-    /\.pz-comentario \{[^}]*font-size: 1rem;[^}]*line-height: 1\.375;/.test(estilos) &&
+    "los comentarios, text-sm (0.875rem) en una sola línea — sin sobrepasar",
+    /\.pz-comentario \{[^}]*font-size: 0\.875rem;[^}]*white-space: nowrap;/.test(estilos) &&
       /\.dark \.pz-comentario \{[^}]*color: hsl\(213 27% 84%\)/.test(estilos),
   );
   check(
@@ -5784,9 +5780,9 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
   );
   check(
-    "KaTeX a text-lg en pantalla y compacto en proyección (Alex.pdf §3: que entre en h-[80vh])",
+    "KaTeX a text-lg en pantalla y 1.25rem unificado en proyección (mismo que Ejercicio:)",
     /\.pz-ambiente \.katex \{[^}]*font-size: 1\.125rem;/.test(estilos) &&
-      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: clamp\(1\.25rem,/.test(estilos),
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1\.25rem;/.test(estilos),
   );
 
   // 4. «Estructura exacta requerida para el Paso 1.»
