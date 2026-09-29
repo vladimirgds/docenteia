@@ -954,6 +954,15 @@ export function solveLinearSteps(text) {
       // miembros. Sin esta etiqueta esa línea se quedaba sin foco, y una línea
       // sin foco no se sincroniza con la voz: aparecería de golpe.
       accion: { tipo: "factor", terminosFoco: [fmt(coef)] },
+      // REGLA GENERAL (no sólo el primer ejercicio): la cuenta de la división
+      // también va al taller —igual que la cancelación y la distributiva—.
+      apoyo: {
+        textoAuxiliar: `Por qué dividimos entre ${fmt(Math.abs(coef))}:`,
+        calculoKaTeX: [
+          `${xc(coef)}${v}/${fmt(coef)} = ${v}`,
+          `${fmt(c - konst)}/${fmt(coef)} = ${answerStr}`,
+        ].join("\n"),
+      },
     });
   }
   if (steps.length === 0 || !steps[steps.length - 1].escribe.startsWith(`${v} =`)) {

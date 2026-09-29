@@ -977,44 +977,20 @@ export function desgloseDelEjercicioLSG({ ejercicio, tema = "", paso = "", conRe
     return conNueva({ ...base, directivas: dir });
   }
 
-  // 2) ECUACIÓN LINEAL: el despeje del propio ejercicio, con el reparto del paréntesis foco a foco.
+  // 2) ECUACIÓN LINEAL: el despeje del propio ejercicio, con el reparto del
+  //    paréntesis foco a foco Y el taller de Ambiente 2 —misma regla general
+  //    que el ejemplo guiado; el segundo ejercicio no puede quedarse sin apoyo.
   const lin = solveLinearSteps(ej);
   if (lin) {
     const lineas = [lin.original, ...lin.steps.map((s) => s.escribe)].map(compacto);
     const enDuda = paso ? lineas.indexOf(compacto(paso)) : -1;
-    const reparto = locucionesDistributiva(lin.original);
     const dir = [
       { tipo: "avatar", accion: "sonreir" },
       abre(`Sin problema. Vamos con la MISMA ecuación, ${lin.original}, paso a paso y más despacio.`),
       escribePaso(lin.original, lin.steps[0]?.accion ?? null, lin.steps[0]?.explica),
       { tipo: "esperar", segundos: 1 },
+      ...directivasDePasosLineales(lin, { andamiaje: andamiajeLineal, pasoEnDuda: enDuda }),
     ];
-    lin.steps.forEach((s, k) => {
-      // Sin saber el paso, todos llevan su andamiaje; sabiéndolo, sólo ése.
-      if (enDuda < 0 || enDuda === k) dir.push(abre(andamiajeLineal(s.explica)), { ...PAUSA_LECTURA });
-      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
-      // EL REPARTO, TÉRMINO A TÉRMINO —Y EL "QUEDA…" CUANDO YA ESTÁ ESCRITO.
-      //
-      // Las frases de los términos acompañan a la escuadra del "× 2" sobre la
-      // ecuación original, que es donde vive. La última —"Queda 2x + 6 = 16"— ya
-      // no destapa un segundo renglón de esa misma escena: esa ecuación es ahora
-      // el paso siguiente del hilo, con su comentario encima, así que se dice
-      // DESPUÉS de escribirla. Una línea, un tiempo.
-      const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
-      if (k === 0 && reparto) {
-        for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
-      }
-      if (s.accion?.tipo === "cancelacion") {
-        dir.push(...tiempoDeCancelacion(k === 0 ? lin.original : lin.steps[k - 1]?.escribe, PAUSA_LECTURA));
-      }
-      // La última línea es la solución, "x = 5": el cierre del ejercicio, enmarcado.
-      if (k === lin.steps.length - 1) {
-        dir.push(...cierreDelEjercicio(s.escribe, lin.answer, `¡Y listo! Resultado final: ${lin.varName} = ${lin.answer}.`));
-      } else {
-        dir.push(escribePaso(s.escribe, lin.steps[k + 1]?.accion ?? null, lin.steps[k + 1]?.explica));
-        if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
-      }
-    });
     dir.push(...(practica ? pasaLaPalabra() : [abre(`Así llegamos a la solución de ${lin.original}.`)]));
     return conNueva({ ...base, directivas: dir });
   }
@@ -2040,6 +2016,49 @@ function tiempoDeCancelacion(linea, pausa) {
   ];
 }
 
+/**
+ * REGLA GENERAL de ecuaciones lineales: el mismo guion para el ejemplo guiado
+ * y para el desglose del segundo ejercicio («resuélvelo» / «no entendí»).
+ *
+ * Comentario → voz → (reparto/taller) → cancelación → Ambiente 2 → ecuación.
+ * Antes el desglose omitía el taller: «para el segundo no hay apoyo auxiliar
+ * en la pantalla 2».
+ */
+function directivasDePasosLineales(sol, { andamiaje = null, pasoEnDuda = -1 } = {}) {
+  const dir = [];
+  const gestoSobre = (k) => sol.steps[k]?.accion ?? null;
+  const apoyoInicial = sol.steps[0]?.apoyo;
+  const reparto = locucionesDistributiva(sol.original);
+  const compases = repartoSincronizado(apoyoInicial, reparto, PAUSA_LECTURA);
+  if (apoyoInicial && !compases) dir.push(...tallerAuxiliar(apoyoInicial));
+
+  sol.steps.forEach((s, k) => {
+    if (andamiaje && (pasoEnDuda < 0 || pasoEnDuda === k)) {
+      dir.push({ tipo: "hablar", texto: andamiaje(s.explica) }, { ...PAUSA_LECTURA });
+    }
+    if (s.explica) dir.push(explicaEnPizarra(s.explica));
+    if (!(k === 0 && reparto)) {
+      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
+    }
+    const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
+    if (k === 0 && reparto) {
+      if (compases) dir.push(...compases);
+      else for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
+    }
+    if (s.accion?.tipo === "cancelacion") {
+      dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
+    }
+    if (!(k === 0 && apoyoInicial)) dir.push(...tallerAuxiliar(s.apoyo));
+    if (k === sol.steps.length - 1) {
+      dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
+    } else {
+      dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+      if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
+    }
+  });
+  return dir;
+}
+
 export function linealResueltaLSG(opts = {}) {
   let { ejemplo, practica } = elegirBoton(LINEALES, opts, "lineal", formaLineal);
   // Si el EJEMPLO tiene x en AMBOS lados, la práctica debe ser del MISMO tipo (dos lados), elegida de forma
@@ -2086,57 +2105,10 @@ export function linealResueltaLSG(opts = {}) {
     { tipo: "hablar", texto: `Vamos a resolver ${sol.original} paso a paso. La meta es dejar la ${sol.varName} sola en un lado del igual.`, _mod: opts.concepto ? "ejemplo_guiado" : undefined },
     escribePaso(sol.original, gestoSobre(0), sol.steps[0]?.explica),
     { tipo: "esperar", segundos: 1 },
+    // Misma regla general que el desglose del segundo ejercicio: comentarios,
+    // reparto y taller de Ambiente 2 en cada paso con apoyo.
+    ...directivasDePasosLineales(sol),
   );
-  // Ambiente 2 + su narración AL MISMO TIEMPO (Alex.pdf §1, vídeo 0:27):
-  // el taller se escribe y el avatar cuenta el cálculo auxiliar —no otra frase—.
-  // Y CUENTA A CUENTA: ver `repartoSincronizado`. Sólo se escribe aquí el
-  // rótulo que las presenta; cada producto va con su frase, dentro del bucle.
-  const apoyoInicial = sol.steps[0]?.apoyo;
-  const reparto = locucionesDistributiva(sol.original);
-  const compases = repartoSincronizado(apoyoInicial, reparto, PAUSA_LECTURA);
-  if (apoyoInicial && !compases) dir.push(...tallerAuxiliar(apoyoInicial));
-  sol.steps.forEach((s, k) => {
-    // La frase cuenta lo que se hace sobre la línea que YA está a la vista, y la pausa la sostiene
-    // antes de escribir la siguiente. En el reparto inicial el rótulo ya está
-    // en pizarra/entrada; no se repite en voz para no duplicar.
-    // EL COMENTARIO, JUSTO ANTES DE CONTARLO —NO UN PASO ANTES—.
-    //
-    // Se escribía al cerrar el paso anterior, así que se quedaba solo encima del
-    // sitio vacío que su ecuación aún no ocupaba: «debajo de "Por propiedad
-    // distributiva:" queda un espacio vacío grande y de pronto el texto
-    // "Restamos 6 a ambos miembros:" se mueve o salta hacia arriba». Ahora se
-    // escribe cuando le toca hablar, y su ecuación aparece con él: ningún
-    // comentario flota sobre un hueco, y nada se empuja después.
-    if (s.explica) dir.push(explicaEnPizarra(s.explica));
-    if (!(k === 0 && reparto)) {
-      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
-    }
-    // EL REPARTO = LO QUE HAY EN Ambiente 2, término a término.
-    // «Multiplicamos el 2 por cada término: 2 por x es 2x, y 2 por 3 es 6.»
-    // La última —«Por eso obtenemos 2x + 6.»— se dice DESPUÉS de escribir
-    // esa ecuación en el hilo.
-    const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
-    if (k === 0 && reparto) {
-      if (compases) dir.push(...compases);
-      else for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
-    }
-    // El despeje se cuenta en dos tiempos: primero se escribe la resta en los dos
-    // lados (la frase de arriba) y, tras su pausa, se dice que se cancela — y es
-    // esa segunda frase la que dispara el tachado rojo sobre la línea a la vista.
-    if (s.accion?.tipo === "cancelacion") {
-      dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
-    }
-    // El desglose de dónde sale el valor, al taller de la derecha. El del
-    // primer paso (distributiva) ya se escribió arriba; aquí van los demás.
-    if (!(k === 0 && apoyoInicial)) dir.push(...tallerAuxiliar(s.apoyo));
-    // La última línea —"x = 5"— es el cierre del ejercicio: se enmarca y se anuncia.
-    if (k === sol.steps.length - 1) {
-      dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
-    } else {
-      dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
-      if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
-    }
-  });
   dir.push({ tipo: "hablar", texto: "Ahora te toca a ti con otra ecuación parecida." }, { ...PAUSA_LECTURA });
   dir.push({ tipo: "pizarra", accion: "escribir", contenido: solP.original });
   dir.push({ tipo: "preguntar", texto: `¿Cuánto vale ${solP.varName} en ${solP.original}? Escribe solo el número.`, respuesta: solP.answer, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" });

@@ -1045,14 +1045,14 @@ titulo("A00h. Segunda ronda del cliente: las ayudas en la práctica, a/b vertica
   // 4. LA TARJETA PROYECTADA, EN PROPORCIÓN CON LAS NOTAS DE AL LADO.
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   check(
-    "en proyección, la fórmula de la tarjeta va al tamaño unificado (1.25rem, mismo que Ejercicio:)",
-    /\.modo-proyeccion \.pz-regla-formula \.katex \{[^}]*font-size: 1\.25rem;/.test(css) &&
-      /\.modo-proyeccion \.pz-ambiente \.katex \{[^}]*font-size: 1\.25rem;/.test(css),
+    "en proyección, la fórmula de la tarjeta va al tamaño unificado (1rem, mismo que Ejercicio:)",
+    /\.modo-proyeccion \.pz-regla-formula \.katex \{[^}]*font-size: 1rem;/.test(css) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{[^}]*font-size: 1rem;/.test(css),
   );
   check(
     "…y el nombre de la regla, al mismo tamaño que las notas (sin sobrepasar)",
-    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: 1\.25rem;/.test(css) &&
-      /\.modo-proyeccion \.pz-nota \{\s*font-size: 1\.25rem;/.test(css),
+    /\.modo-proyeccion \.pz-tarjeta-regla-nombre \{\s*font-size: 1rem;/.test(css) &&
+      /\.modo-proyeccion \.pz-nota \{\s*font-size: 1rem;/.test(css),
   );
 }
 
@@ -2059,13 +2059,13 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
   // El informe lo afinó después: notas de 24 px como mínimo, ALINEADAS A LA
   // IZQUIERDA ("definiciones amontonadas al centro", OBS-10), no centradas.
   check(
-    "una nota proyectada a 1.25rem (sin sobrepasar), en blanco y alineada a la izquierda",
-    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: 1\.25rem;[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
+    "una nota proyectada a 1rem (sin sobrepasar), en blanco y alineada a la izquierda",
+    /\.modo-proyeccion \.pz-nota \{[^}]*font-size: 1rem;[^}]*color: hsl\(0 0% 100%\)/.test(estilos) &&
       /^\.pz-nota \{[^}]*align-items: flex-start;[^}]*text-align: left;/m.test(estilos),
   );
   check(
-    "y lo que explica el tutor bajo cada paso, al menos text-2xl",
-    /\.modo-proyeccion \.pz-pie \{[^}]*font-size: clamp\(1\.5rem,/.test(estilos),
+    "y lo que explica el tutor bajo cada paso, al mismo tamaño compacto (1rem)",
+    /\.modo-proyeccion \.pz-pie \{[^}]*font-size: 1rem;/.test(estilos),
   );
   {
     const lin = leccion(linealResueltaLSG({ concepto: true, nivel: "normal" }));
@@ -2435,8 +2435,8 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     );
     const tam = estilos.match(/\.modo-proyeccion \.pz-nota \{\s*font-size: ([\d.]+)rem/);
     check(
-      "en proyección la nota va a 1.25rem (mismo tamaño que Ejercicio:, sin sobrepasar)",
-      Boolean(tam) && Number(tam[1]) === 1.25,
+      "en proyección la nota va a 1rem (mismo tamaño que Ejercicio:, sin sobrepasar)",
+      Boolean(tam) && Number(tam[1]) === 1,
       tam?.[0],
     );
     // El informe del cliente cambió la letra del subtítulo: es voz del tutor
@@ -2854,7 +2854,7 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
     (pizarraClasica.match(/className="pz-regla-formula/g) ?? []).length === 2 &&
       !/pz-regla-formula[^"]*text-center/.test(pizarraClasica) &&
       /\.pz-ambiente \.katex-display \{[^}]*text-align: left;/.test(estilos) &&
-      /\.pz-regla-formula \.katex \{[^}]*font-size: 1\.5rem/.test(estilos),
+      /\.pz-regla-formula \.katex \{[^}]*font-size: 1rem/.test(estilos),
   );
 
   // 1. EL "MÁS DIFÍCIL" NO SE QUEDA EN "PREPARANDO EL EJERCICIO…".
@@ -4729,13 +4729,13 @@ titulo("D. Máquina de estados del avatar");
   check("existe el tema de proyección", estilos.includes(".modo-proyeccion"));
   // ESCALADA, PERO NO MÁS GRANDE DE LO QUE CABE.
   //
-  // Alex.pdf: KaTeX a text-xl (1.25rem) también en proyección, para que el
-  // ejercicio entero entre sin empujar el encabezado. El suelo de aula de
-  // 2,25rem saturaba la pantalla en el vídeo del cliente.
+  // Forma: KaTeX a text-base (1rem) también en proyección — el cliente pidió
+  // reducir aún más — para que el ejercicio entero entre sin empujar el
+  // encabezado. El suelo de aula de 2,25rem saturaba la pantalla.
   check(
-    "con la tipografía unificada: KaTeX proyectado a 1.25rem (mismo que Ejercicio:)",
-    /\.modo-proyeccion \.katex \{\s*font-size: 1\.25rem;/.test(estilos) &&
-      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1\.25rem;/.test(estilos),
+    "con la tipografía unificada: KaTeX proyectado a 1rem (mismo que Ejercicio:)",
+    /\.modo-proyeccion \.katex \{\s*font-size: 1rem;/.test(estilos) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1rem;/.test(estilos),
   );
   check(
     "y las rayas de KaTeX engordadas para que se vean proyectadas",
@@ -4798,9 +4798,9 @@ titulo("D. Máquina de estados del avatar");
   // quedaba diminuta en medio de un lienzo en blanco y el avatar desaparecía.
   const bloqueProyeccion = estilos.slice(estilos.indexOf(".modo-proyeccion {"));
   check(
-    "la fórmula proyectada usa el mismo tamaño fijo que el encabezado (1.25rem)",
-    /\.modo-proyeccion \.katex \{[^}]*font-size: 1\.25rem;/.test(bloqueProyeccion) &&
-      /\.modo-proyeccion \.pz-encabezado-rotulo \{[^}]*font-size: 1\.25rem;/.test(bloqueProyeccion),
+    "la fórmula proyectada usa el mismo tamaño fijo que el encabezado (1rem)",
+    /\.modo-proyeccion \.katex \{[^}]*font-size: 1rem;/.test(bloqueProyeccion) &&
+      /\.modo-proyeccion \.pz-encabezado-rotulo \{[^}]*font-size: 1rem;/.test(bloqueProyeccion),
   );
   check(
     "y la pizarra ocupa la pantalla entera, no un renglón en medio de la nada",
@@ -5750,7 +5750,7 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   );
   check(
     "…y el comentario formal cubre la frase del tutor en proyección (Alex.pdf)",
-    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: 1\.25rem;/.test(estilos) &&
+    /\.modo-proyeccion \.pz-comentario \{[^}]*font-size: 0\.875rem;/.test(estilos) &&
       /pieEnColumna/.test(panel) &&
       /escena\.clase !== "distributiva"|const pieEnColumna = false/.test(panel),
   );
@@ -5780,9 +5780,9 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
     /\.pz-encabezado-ejercicio \{[^}]*position: sticky;[^}]*top: 0;/.test(estilos),
   );
   check(
-    "KaTeX a text-lg en pantalla y 1.25rem unificado en proyección (mismo que Ejercicio:)",
-    /\.pz-ambiente \.katex \{[^}]*font-size: 1\.125rem;/.test(estilos) &&
-      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1\.25rem;/.test(estilos),
+    "KaTeX a text-base en pantalla y 1rem unificado en proyección (mismo que Ejercicio:)",
+    /\.pz-ambiente \.katex \{[^}]*font-size: 1rem;/.test(estilos) &&
+      /\.modo-proyeccion \.pz-ambiente \.katex \{\s*font-size: 1rem;/.test(estilos),
   );
 
   // 4. «Estructura exacta requerida para el Paso 1.»
@@ -5826,10 +5826,12 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   }
 
   // 4c. Alex.pdf §1: Ambiente 2 narrado al proyectarse.
+  //    REGLA GENERAL: el mismo guion (`directivasDePasosLineales`) sirve al
+  //    ejemplo guiado y al desglose del segundo ejercicio.
   {
     const tramo = motor.slice(
+      motor.indexOf("function directivasDePasosLineales"),
       motor.indexOf("export function linealResueltaLSG"),
-      motor.indexOf("export function", motor.indexOf("export function linealResueltaLSG") + 10),
     );
     const dichas = locucionesDistributiva("2(x + 3) = 16");
     check(
@@ -5843,7 +5845,20 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
       "el taller auxiliar sale antes de narrar el reparto (Ambiente 2 a tiempo)",
       /const apoyoInicial = sol\.steps\[0\]\?\.apoyo;/.test(tramo) &&
         tramo.indexOf("tallerAuxiliar(apoyoInicial)") < tramo.indexOf("for (const frase of reparto") &&
-        tramo.indexOf("explicaEnPizarra(sol.steps[0].explica)") < tramo.indexOf("tallerAuxiliar(apoyoInicial)"),
+        /directivasDePasosLineales\(sol/.test(motor) &&
+        /directivasDePasosLineales\(lin/.test(motor),
+    );
+    // El segundo ejercicio (desglose / «resuélvelo») NO puede quedarse sin
+    // apoyo auxiliar en pantalla 2: misma regla que el ejemplo.
+    const { desgloseDelEjercicioLSG: desglose } = await import("../src/lsgPrompt.js");
+    const des = desglose({ ejercicio: "2x + 6 = 18" });
+    const taller = (des.directivas ?? []).filter((d) => d.ambiente === 2).map((d) => d.contenido);
+    check(
+      "regla general: el desglose del segundo ejercicio también llena Ambiente 2",
+      taller.includes("Por qué se cancela el 6:") &&
+        taller.includes("6 - 6 = 0") &&
+        taller.some((t) => /Por qué dividimos entre 2/.test(t)),
+      JSON.stringify(taller),
     );
   }
 
