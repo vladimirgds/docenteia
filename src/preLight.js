@@ -873,12 +873,48 @@ export function solveLinearSteps(text) {
     });
   }
   if (xTerms > 1 && rhsX === 0) {
-    // LOS TÉRMINOS CON x, TAL COMO ESTÁN ESCRITOS EN EL ENUNCIADO ("6x", "5x"):
-    // es lo que el taller suma al margen para justificar el "11x" del hilo. Sin
-    // espacios y con un literal de expresión regular: dentro de una plantilla
-    // las barras se pierden y "\d" acabaría siendo una "d" suelta.
-    const crudos = String(lhs).replace(/\s+/g, "").match(/[+-]?\d*[a-zA-Z]/g) ?? [];
-    const sumaEscrita = crudos
+    // LOS TÉRMINOS CON x, YA ESCALADOS (exactos).
+    //
+    // Antes se leían del enunciado con un regex (`x/4 + x/2` → "x" y "x") y el
+    // taller escribía «x + x = 3x», que es falso: tras quitar denominadores
+    // (×4) los sumandos son x y 2x. Se parsea CADA trozo con la misma
+    // aritmética racional, se multiplica por la escala y se reduce: así la
+    // cuenta del margen conserva la solución (regla general).
+    const trozosDelLado = (lado) => {
+      const s = String(lado ?? "").replace(/\s+/g, "");
+      if (!s) return [];
+      const out = [];
+      let ini = 0;
+      for (let i = 1; i < s.length; i++) {
+        if ((s[i] === "+" || s[i] === "-") && !"+-*/(".includes(s[i - 1])) {
+          out.push(s.slice(ini, i));
+          ini = i;
+        }
+      }
+      out.push(s.slice(ini));
+      return out.filter(Boolean);
+    };
+    // Coeficiente racional · escala, reducido, escrito como término con x.
+    const terminoEscalado = (r) => {
+      let n = r.n * escala, d = r.d;
+      if (!d) return null;
+      if (d < 0) { n = -n; d = -d; }
+      const g = gcd(n, d); n /= g; d /= g;
+      if (d === 1) return `${xc(n)}${v}`;
+      // n/d · v → "2x/3", "x/3", "-x/2"
+      const absN = Math.abs(n);
+      const cabeza = n < 0 ? "-" : "";
+      return absN === 1 ? `${cabeza}${v}/${d}` : `${cabeza}${absN}${v}/${d}`;
+    };
+    const terminosX = [];
+    for (const trozo of trozosDelLado(lhs)) {
+      if (/[()]/.test(trozo)) continue; // el reparto del paréntesis va en otro paso
+      const parte = parseLinealSide(trozo.replace(/^\+/, ""), v);
+      if (!parte || parte.a.n === 0) continue;
+      const t = terminoEscalado(parte.a);
+      if (t) terminosX.push(t);
+    }
+    const sumaEscrita = terminosX
       .map((t, i) => (i === 0 ? t.replace(/^\+/, "") : t.startsWith("-") ? ` - ${t.slice(1)}` : ` + ${t.replace(/^\+/, "")}`))
       .join("");
     const combined = konst === 0
@@ -890,7 +926,7 @@ export function solveLinearSteps(text) {
       // «Desglose de operaciones específicas: por ejemplo, para justificar la
       // reducción de términos semejantes: "entonces sumamos:" 6x + 5x = 11x
       // "Entonces, colocamos los 11x en la ecuación"». Sus palabras.
-      apoyo: crudos.length > 1
+      apoyo: terminosX.length > 1
         ? {
             textoAuxiliar: "entonces sumamos:",
             calculoKaTeX: `${sumaEscrita} = ${xc(coef)}${v}`,
