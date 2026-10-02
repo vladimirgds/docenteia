@@ -864,9 +864,23 @@
   background: rgb(16 185 129 / 0.1);
 }
 
+/* EN LA PIZARRA ANIMADA EL MARCO NO OCUPA SITIO.
+   Lo dibuja la capa de resaltados, así que el `\boxed` de KaTeX se oculta —y
+   además se le quita el hueco—: su borde y su relleno separaban el igual del
+   número 16 px y lo descolgaban de la línea base ("x =  5" con el 5 suelto, que
+   es lo que el cliente fotografió). Es su regla B: resaltar sin alterar el flujo
+   de la caja. */
 .pz-animada .pz-final .fbox {
   border-color: transparent;
   background: transparent;
+  border-width: 0 !important;
+}
+
+/* El relleno del marco lo pone KaTeX en `.boxpad`, no en el borde: son los
+   16 px que separaban el igual del número. Dibujándolo la capa de resaltados,
+   aquí no hace falta ninguno. */
+.pz-animada .pz-final .boxpad {
+  padding: 0;
 }
 
 /* Los rótulos de los resaltados —"llevo 1", "× 2", "entre 6"— son escritura de

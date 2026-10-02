@@ -65,6 +65,10 @@
 //          largo que sea el desarrollo (lo midió entre 0:49 y 0:58).
 //   R6-04  El puntero guía señala un solo sitio, y es el que la voz nombra.
 //   R6-05  El verde es de la respuesta: ningún resultado intermedio en verde.
+//   R7-01  Ninguna ecuación con un agujero: lo que aún no se ha destapado no
+//          reserva sitio («2x + 6 ␣␣ = 16», alex.pdf).
+//   R7-02  Y el marco de la respuesta no separa el igual del número: lo dibuja
+//          la capa de resaltados, no el relleno de KaTeX.
 //   R6-06  El comentario del reparto, ENTRE la ecuación original y la repartida:
 //          «justo debajo de la ecuación original y antes de mostrar 2x + 6 = 16».
 //
@@ -371,6 +375,7 @@ function instalarMedidor() {
       halos: [],
       verdesIntermedios: [],
       repartoFueraDeSitio: null,
+      agujeros: [],
       // R5-04 / R5-05: el orden dentro de cada bloque y la tipografía del comentario.
       ordenInvertido: [],
       comentarioSuelto: 0,
@@ -702,11 +707,16 @@ function instalarMedidor() {
     // sobre "2x + 6 = 16"— y volvería esquivo buscar la ecuación literal. Lo que
     // el cliente pidió es la POSICIÓN: la original antes, el desarrollo después.
     {
+      // EL MISMO SIGNO MENOS A LOS DOS LADOS. El enunciado viene del motor con el
+      // guión de teclado y KaTeX lo compone con el menos tipográfico (U+2212): sin
+      // igualarlos, "2(x + 4) = 3x - 1" no se reconocía dentro de "2(x+4)=3x−1" y
+      // la regla daba por descolocado un comentario que estaba en su sitio.
+      const igualar = (t) => String(t ?? "").replace(/[−–—]/g, "-").replace(/\s/g, "");
       const cab = document.querySelector(".pz-encabezado-ejercicio")?.getAttribute("data-enunciado") ?? "";
-      const enunciado = cab.replace(/\s/g, "");
+      const enunciado = igualar(cab);
       const fila = [...document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .pz-elemento')]
         .filter(visible)
-        .map((e) => ({ papel: e.getAttribute("data-papel"), t: textoDePizarra(e).replace(/\s/g, "") }));
+        .map((e) => ({ papel: e.getAttribute("data-papel"), t: igualar(textoDePizarra(e)) }));
       const i = fila.findIndex((x) => x.papel === "comentario" && /distributiva/i.test(x.t));
       // Sólo cuando el comentario ya está escrito Y detrás viene su desarrollo:
       // antes de eso no hay orden que juzgar.
@@ -719,6 +729,39 @@ function instalarMedidor() {
       }
     }
 
+    // R7-01 y R7-02: NINGUNA ECUACIÓN CON UN AGUJERO.
+    //
+    // «Los números y signos que pertenecen a la misma línea se desplazan»: lo que
+    // la línea aún no ha destapado —el "− 6" que se le va a hacer encima— se
+    // ocultaba con opacidad y seguía ocupando su ancho, así que "2x + 6 = 16"
+    // salía con 30 px de aire en medio. Y el marco de la respuesta añadía el
+    // relleno de KaTeX entre el igual y el número. Se mide lo mismo que se ve:
+    // el hueco entre glifos consecutivos de una misma fórmula.
+    for (const k of document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .katex-html')) {
+      if (!visible(k)) continue;
+      const glifos = [...k.querySelectorAll("*")]
+        .filter((e) => e.childElementCount === 0 && (e.textContent ?? "").trim() && visible(e))
+        .map((e) => ({ t: (e.textContent ?? "").trim(), r: R(e) }))
+        .filter((g) => g.r.h > 0 && g.r.w > 0)
+        .sort((a, b) => a.r.x - b.r.x);
+      // UN HUECO ES UN AGUJERO CUANDO HAY ALGO INVISIBLE DENTRO.
+      //
+      // Por ancho no se distingue: una coma de separación —"MCM(2, 3)"— mide 19 px
+      // y el `\\qquad` que separa los dos ejemplos de una regla, 35; el agujero que
+      // dejó el "− 6" oculto medía 34. Lo que lo delata no es el tamaño sino la
+      // causa: una pieza sin destapar ocupando sitio en medio de la ecuación.
+      const invisibles = [...k.querySelectorAll('[class*="pz-rev-"]')]
+        .filter((e) => Number(getComputedStyle(e).opacity) < 0.5)
+        .map((e) => R(e))
+        .filter((r) => r.w > 1);
+      for (let i = 1; i < glifos.length; i++) {
+        const desde = glifos[i - 1].r.x + glifos[i - 1].r.w;
+        const hasta = glifos[i].r.x;
+        if (hasta - desde <= 10) continue;
+        const dentro = invisibles.some((r) => r.x + r.w > desde + 1 && r.x < hasta - 1);
+        if (dentro) out.agujeros.push(`${glifos[i - 1].t}|${Math.round(hasta - desde)}px|${glifos[i].t}`);
+      }
+    }
     // R6-05: EL VERDE ES DE LA RESPUESTA. «Se están mezclando amarillo, azul,
     // blanco, verde, rojo… conviene unificar»: lo que se colaba en mitad del
     // desarrollo era el verde de un resultado INTERMEDIO.
@@ -1299,6 +1342,13 @@ function comprobarSiempre(m, clase) {
     );
   }
 
+  // R7-01: NINGUNA ECUACIÓN CON UN AGUJERO EN MEDIO.
+  verificar(
+    "R7-01",
+    "ninguna ecuación del hilo se abre por la mitad: sin huecos entre sus signos",
+    (m.agujeros ?? []).length === 0,
+    `${(m.agujeros ?? []).slice(0, 3).join(" · ")} (${clase}${m.proy ? ", proyección" : ""})`,
+  );
   // R6-05: EL VERDE ES DE LA RESPUESTA, Y DE NADA MÁS.
   verificar(
     "R6-05",
@@ -1829,7 +1879,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

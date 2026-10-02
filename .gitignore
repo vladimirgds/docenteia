@@ -28,3 +28,7 @@ math-ia-codigo-fuente.zip
 
 # Artefactos de las baterias de QA (capturas, volcados)
 qa/.tmp/
+
+# Capturas de vídeo de las baterías (decenas de MB): quedan en local.
+/cliente-*/
+/qa/.tmp/

@@ -216,7 +216,14 @@ export function PizarraAnimada({
    * terminar su paso (ver `elDestapadoEsPrestado`). Al recogerla la línea vuelve
    * a medir lo que medía, así que se recalculan el encaje y las filas.
    */
-  const recogida = estado === "completada" && elDestapadoEsPrestado(escena);
+  //
+  // Y TAMPOCO ANTES DE PRESTARLA. La operación prestada se ocultaba con opacidad
+  // mientras la línea esperaba su turno, así que seguía ocupando su sitio: "2x +
+  // 6 = 16" salía con 30 px de aire entre el 6 y el igual, el agujero que el
+  // cliente fotografió —«los números y signos de la misma línea se desplazan»—.
+  // La ecuación limpia es limpia ANTES y DESPUÉS; sólo durante su paso se abre
+  // para enseñar lo que se le hace.
+  const recogida = elDestapadoEsPrestado(escena) && (estado !== "activa" || foco < 0);
   useEffect(() => {
     setFilas(null);
     setEncaje(1);

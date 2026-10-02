@@ -4219,3 +4219,88 @@ apartados, así que no es de aquí: el aspa se adelanta un compás a su frase en
 algún punto, y sólo cuando los tiempos caen de cierta manera. Queda anotada para
 mirarla con calma —una comprobación que falla a ratos no sirve de red—, salvo
 que prefiera adelantarla.
+
+## alex.pdf: la ecuación, entera y sin agujeros
+
+> «Los números y signos que pertenecen a la misma línea se desplazan
+> verticalmente hacia arriba o hacia abajo (se ve claramente en el paso de
+> 2x + 6 = 16 y en las fracciones con recuadro).»
+
+El defecto se reprodujo primero sobre la pizarra de verdad, con una sonda que
+mide glifo a glifo la posición y el hueco entre signos consecutivos. Las dos
+causas que apuntaba el informe resultaron no serlo, y las de verdad eran otras
+dos. Conviene decirlo con los números delante.
+
+### Lo que NO era
+
+**«Fraccionamiento de strings en el DOM».** Cada ecuación del hilo se compone ya
+con **una sola llamada a KaTeX** —un `dangerouslySetInnerHTML` con el HTML que
+KaTeX devuelve—, no con `<span>` concatenados. Se midió: una sola `.katex-html`
+por renglón. Queda comprobado para que no se pierda.
+
+**«Padding y bordes en los halos de resaltado».** Los recuadros amarillos no son
+cajas HTML: se dibujan en una **capa SVG** por encima de la fórmula, con
+`pointer-events: none` y posición absoluta. No pueden empujar nada. Se midió la
+fracción `2x/2 = 10/2` con sus dos denominadores recuadrados: los dos `2` caen a
+la misma altura.
+
+**`items-baseline`.** Ya estaba, de una ronda anterior.
+
+### Lo que sí era
+
+**El agujero en `2x + 6 = 16`.** Una línea del hilo lleva escrita —aunque todavía
+invisible— la operación que se le va a hacer encima: el «− 6» de los dos
+miembros. Se ocultaba con **opacidad**, así que **seguía ocupando su ancho**: 30 px
+y 24 px medidos, y un hueco de 34 px entre el 6 y el igual. Es exactamente la
+captura del informe, `2x + 6 ␣␣ = 16`.
+
+La pizarra ya sabía recoger eso al TERMINAR el paso (`pz-recogida`, que lo quita
+del flujo en vez de hacerlo transparente). Ahora lo recoge **siempre que no haya
+nada destapado**: antes del paso, durante su entrada y después. La ecuación limpia
+es limpia; sólo se abre mientras se enseña lo que se le hace.
+
+**El hueco en `x = 5`.** El marco de la respuesta lo dibuja la capa de
+resaltados, así que el `\boxed` de KaTeX se ocultaba… pero sólo el **borde**. El
+relleno vive en otro elemento (`.boxpad`), y ahí seguía: **16 px** entre el igual
+y el número. Es la regla B del informe —resaltar sin alterar el flujo de la
+caja—, aplicada donde de verdad estaba el relleno.
+
+Medido antes y después: hueco de `2x + 6 = 16`, **34 px → 0**; hueco de `x = 5`,
+**16 px → 0**.
+
+### La regla que lo vigila
+
+**R7-01** no mide el tamaño del hueco, porque por tamaño no se distingue: una
+coma de separación —«MCM(2, 3)»— mide 19 px y el `\qquad` que separa los dos
+ejemplos de una regla, 35; el agujero medía 34. Lo que lo delata es la **causa**:
+una pieza sin destapar ocupando sitio **en medio** de la ecuación. Se comprobó
+que la regla falla sobre la versión sin arreglar (huecos de 33, 33 y 41 px) y
+pasa sobre la arreglada: una comprobación que pasa en los dos casos no comprueba
+nada.
+
+### Y una comprobación mía que estaba mal
+
+**R6-06** —el comentario entre la ecuación original y la repartida— fallaba desde
+que la escribí, 18 veces por corrida. No era la pizarra: el enunciado viene del
+motor con el guión de teclado (`-`) y KaTeX lo compone con el menos tipográfico
+(`−`), así que «2(x + 4) = 3x - 1» no se reconocía dentro de «2(x+4)=3x−1». La
+pizarra estaba bien todo el tiempo.
+
+### Lo que sigue en rojo, y no es de esta ronda
+
+Pasando la batería sobre `main` **con los cambios apartados**, salen los mismos
+fallos, uno por uno. Entraron con las rondas #78–#82 y conviene mirarlos:
+
+| Regla | Qué mide | Qué sale |
+|---|---|---|
+| SUB-PRJ-03 | fórmulas ≥ 20 px proyectando | 16 px (79 veces) |
+| SUB-PRJ-03 | notas ≥ 24 px · rótulos de marca ≥ 24 px | 27 y 21 veces |
+| OBS-06 | «Ejercicio:» ≥ 20 px proyectando | 16 px (71 veces) |
+| R2-04 | la tarjeta de regla, no por debajo de la escala compacta | 16 px |
+| OBS-05 | cada rol con su letra | un rótulo del taller en Montserrat |
+| OBS-13 | ni «/» ni «*» en el texto visible | un «9/» a la vista |
+| R4-01 | ningún paso futuro pintado | 1 pendiente a la vista |
+
+No se tocan aquí a propósito: no son lo que pedía este informe, y meter siete
+arreglos sin relación en la misma entrega es la forma más segura de colar una
+regresión. Quedan anotados para que decida el orden.

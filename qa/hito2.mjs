@@ -5996,6 +5996,50 @@ titulo("A55. Alex.pdf: el reparto sub-paso a sub-paso, sin hueco y sin recortar"
 }
 
 
+titulo("A56. alex.pdf: la ecuación, entera y sin agujeros");
+
+{
+  const estilos = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../components/leccion/pizarra-animada.tsx", import.meta.url), "utf8");
+  const trozo = (texto, desde, largo) => {
+    const i = texto.indexOf(desde);
+    return i < 0 ? "" : texto.slice(i, i + largo);
+  };
+
+  // «Los números y signos que pertenecen a la misma línea se desplazan»: lo que la
+  // línea aún no ha destapado se ocultaba con opacidad y seguía ocupando su ancho,
+  // y "2x + 6 = 16" salía con 30 px de aire en medio.
+  check(
+    "lo prestado sólo ocupa sitio mientras se enseña: antes y después, no",
+    panel.includes('const recogida = elDestapadoEsPrestado(escena) && (estado !== "activa" || foco < 0)'),
+  );
+  check(
+    "…y recogido no ocupa sitio: se quita del flujo, no se vuelve transparente",
+    trozo(estilos, '.pz-animada.pz-recogida [class*="pz-rev-"]', 90).includes("display: none"),
+  );
+
+  // Su regla B: resaltar sin alterar el flujo de la caja. El marco de la respuesta
+  // lo dibuja la capa de resaltados; el de KaTeX no puede dejar hueco.
+  check(
+    "el marco de la respuesta no separa el igual del número (ni borde ni relleno)",
+    trozo(estilos, ".pz-animada .pz-final .fbox", 170).includes("border-width: 0 !important") &&
+      trozo(estilos, ".pz-animada .pz-final .boxpad", 70).includes("padding: 0"),
+  );
+
+  // Su regla C: una fila que mezcla texto y KaTeX se alinea por la línea base.
+  check(
+    "la fila del enunciado se alinea por la línea base, no por el centro",
+    trozo(estilos, ".pz-encabezado-ejercicio {", 320).includes("align-items: baseline"),
+  );
+
+  // Su regla A: cada ecuación del hilo, UNA llamada a KaTeX —ya era así—.
+  check(
+    "cada ecuación se compone de una sola vez, no por trozos de HTML",
+    panel.includes('className="pz-formula"') && panel.includes("dangerouslySetInnerHTML"),
+  );
+}
+
+
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` ${ok} comprobaciones superadas · ${fallos.length} fallidas`);
 if (fallos.length > 0) {
