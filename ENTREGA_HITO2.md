@@ -4304,3 +4304,78 @@ fallos, uno por uno. Entraron con las rondas #78–#82 y conviene mirarlos:
 No se tocan aquí a propósito: no son lo que pedía este informe, y meter siete
 arreglos sin relación en la misma entrega es la forma más segura de colar una
 regresión. Quedan anotados para que decida el orden.
+
+## alex.pdf: solo agregar, nunca borrar
+
+> «La pizarra debe ser estrictamente de agregado: solo agregar, nunca
+> sobreescribir ni eliminar. 2x + 6 - 6 = 16 - 6 no puede desaparecer, y cada
+> comentario emitido debe quedarse fijo donde se escribió.»
+
+Tenía razón, y la causa era un diseño mío. Conviene decir cuál, porque explica
+por qué se veía como un borrado aunque nada se borrase «a propósito».
+
+### Qué pasaba
+
+Para enseñar la propiedad uniforme, una línea del hilo **se prestaba** la
+operación que estaba a punto de recibir: la ecuación limpia `2x + 6 = 16` se
+destapaba un momento como `2x + 6 - 6 = 16 - 6`, se tachaba, y luego **se
+recogía** para dejar sitio a la línea siguiente. Sobre el renglón, eso es
+exactamente lo que el informe describe: algo que estaba escrito deja de estar.
+Y el paso canónico —la resta en los dos miembros— no llegaba nunca a tener
+renglón propio: vivía prestado dentro del anterior y se iba con él.
+
+### Qué se hizo
+
+La operación se escribe **en su propio renglón**, debajo del comentario que la
+anuncia, y se queda. Ninguna escena que se compusiera para retirarse después
+llega a componerse: ni en el guión de la lección, ni en la pizarra, ni en el
+rótulo del paso. La línea limpia es limpia y no se usa como borrador.
+
+Medido sobre la pizarra de verdad, siguiendo cada renglón por su posición a lo
+largo de la lección entera: **0 incidencias**. Ni un renglón cambia de texto, ni
+uno encoge, ni un comentario se mueve de sitio. El hilo queda así, de arriba
+abajo:
+
+```
+[0] planteamiento  2(x + 3) = 16
+[1] comentario     Por propiedad distributiva:
+[2] paso           2x + 6 = 16
+[3] comentario     Restamos 6:
+[4] paso           2x + 6 - 6 = 16 - 6
+[5] paso           2x = 10
+[6] comentario     La x está multiplicada por 2:
+[7] paso           2x/2 = 10/2
+[8] comentario     Dividimos entre 2:
+[9] cierre         x = 5
+```
+
+### La regla que lo vigila
+
+**R8-01** no compara capturas: sigue cada renglón por su posición y guarda lo que
+decía. Si en un instante posterior ese renglón dice otra cosa, o dice menos, lo
+canta con el antes y el después. Mide el hilo completo en las ocho clases que
+corre la batería —1.947 renglones— y pasa en todas. Sobre la versión sin arreglar
+falla, que es la única forma de saber que la regla mide algo.
+
+### Y una comprobación mía que pedía de más
+
+La batería de aceptación en vivo salía **21/24** —también sobre `main`, antes de
+esta ronda— con el mismo aviso tres veces: «PIZARRA≠VOZ: 2x/2 = 10/2 vs x».
+
+Las dos igualdades son ciertas. En el hilo, `2x/2 = 10/2` es la operación
+aplicada a los dos miembros; en la tarjeta del taller, `2x/2 = x` es por qué se
+puede dividir. El criterio pide que **ninguna expresión tenga dos valores
+distintos**, y aquí no había dos valores: había un valor y una simplificación. El
+verificador no las distinguía y daba por incoherente una pizarra correcta en las
+tres consultas cuyo ejercicio se divide.
+
+Ahora las separa, y de forma independiente del motor: si los dos lados valen lo
+mismo para x = 1, 2 y 3, la igualdad no depende de x, es una identidad y no
+afirma ningún valor. Lo que sí afirma un valor se sigue comparando igual —`2x =
+10` frente a `2x = 11` se canta, y `2x/2 = 3x` también—. **24/24** contra el
+despliegue.
+
+### Lo que sigue en rojo, y no es de esta ronda
+
+Los mismos siete de la tabla anterior, verificados otra vez apartando los
+cambios: entraron con las rondas #78-#82 y siguen esperando turno.

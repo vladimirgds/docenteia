@@ -2009,6 +2009,11 @@ function tiempoDeCancelacion(linea, pausa) {
   const termino = /^-?\d*[a-zA-Z]([+-]\d+)=/.exec(limpio)?.[1];
   if (!termino) return [];
   const abs = String(Math.abs(Number(termino)));
+  // SIN ESCRIBIR AQUÍ EL COMENTARIO "Se cancelan:". El motor ya lo emite como el
+  // `explica` de su paso en los ejercicios que lo tienen —"3(2x − 1) + 4 = 5x + 9"
+  // cancela dos veces—, y añadirlo también aquí dejaba el mismo rótulo dos veces
+  // en la misma pizarra. Lo que el cliente pidió es que el comentario emitido NO
+  // se mueva ni se borre, no que haya uno más.
   return [
     escribePaso(compensada, { tipo: "cancelacion", terminosFoco: [abs] }, frase),
     { tipo: "hablar", texto: frase },

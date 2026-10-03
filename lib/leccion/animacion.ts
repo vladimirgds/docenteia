@@ -621,6 +621,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   // Un renglon, un tiempo: aqui se ESCRIBE la resta y nada mas.
   const soloEscritura = true;
   const llegaALaSolucion = false;
+
   // Con "x" a secas y sin constante —"-x = -9"— no hay cifra que recuadrar: el
   // gesto se marca sobre el propio término. Si no, esta línea se quedaría sin
   // foco, y una línea sin foco no se sincroniza con la voz.
@@ -1784,6 +1785,16 @@ export function guionDeLeccion(lineas: readonly (string | PasoSemantico)[]): Esc
     if (typeof paso !== "string" && paso.ambiente === 2) continue;
 
     const escena = escenaDeLinea(paso, `escena-${escenas.length}`);
+    // Y TAMPOCO LO QUE SE ENSEÑARÍA PARA QUITÁRSELO DESPUÉS.
+    //
+    // Una ecuación limpia del hilo se escribía encima la operación que iba a
+    // recibir —"2x + 6 − 6 = 16 − 6" sobre "2x + 6 = 16"— y luego la soltaba. El
+    // cliente lo fotografió: «elimina la ecuación limpia y la reemplaza por la
+    // versión tachada», y puso la regla: «solo agregar, nunca sobreescribir ni
+    // eliminar». Esa operación tiene su propio renglón —el que escribe el motor a
+    // continuación, con sus dos tiempos—, así que la línea limpia se queda limpia
+    // y fuera del guion: no es un paso, es el resultado del paso anterior.
+    if (elDestapadoEsPrestado(escena)) continue;
     // La prosa no entra en el guion. Una frase del tutor no tiene nada que
     // resaltar: como escena sólo repite lo que ya está en el subtítulo, y
     // además parte la lección en trozos —"línea 1 de 3"— que no corresponden a
@@ -1813,7 +1824,10 @@ export function identidadDeEscena(escena: Escena): string {
 
 /** ¿Esta línea se anima con focos, o es texto que sólo se lee? */
 export function esAnimable(paso: string | PasoSemantico): boolean {
-  return escenaDeLinea(typeof paso === "string" ? String(paso ?? "") : paso, "prueba").focos.length > 0;
+  const escena = escenaDeLinea(typeof paso === "string" ? String(paso ?? "") : paso, "prueba");
+  // Una línea que sólo enseñaría la operación que va a recibir, para soltarla
+  // después, no se anima: su operación tiene renglón propio (ver `guionDeLeccion`).
+  return escena.focos.length > 0 && !elDestapadoEsPrestado(escena);
 }
 
 /**
