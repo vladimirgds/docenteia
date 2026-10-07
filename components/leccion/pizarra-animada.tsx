@@ -743,15 +743,24 @@ function Resaltado({
       if (g.x + g.ancho / 2 < centroX) tope.izquierda = Math.max(tope.izquierda, g.x + g.ancho);
       else tope.derecha = Math.min(tope.derecha, g.x);
     }
-    const izquierda = foco.final ? Math.max(caja.x - aire, tope.izquierda + 4) : caja.x - 3;
-    const derecha = foco.final ? Math.min(caja.x + caja.ancho + aire, tope.derecha - 4) : caja.x + caja.ancho + 3;
+    // Y LA CÁPSULA NUNCA MUERDE LO QUE ENMARCA.
+    //
+    // Ceder ante el vecino está bien hasta el borde de la respuesta; pasado ese
+    // borde, la cápsula deja de rodearla y le corta un trozo —se vio cortando el
+    // paréntesis de "x² - 9 = (x - 3)(x + 3)" cuando el renglón se compactó y el
+    // igual quedó a menos de 4 px—. Entre rozar al vecino y partir la respuesta,
+    // se roza al vecino: el aire es una cortesía, rodear el resultado no.
+    const izquierda = foco.final ? Math.min(caja.x, Math.max(caja.x - aire, tope.izquierda + 4)) : caja.x - 3;
+    const derecha = foco.final
+      ? Math.max(caja.x + caja.ancho, Math.min(caja.x + caja.ancho + aire, tope.derecha - 4))
+      : caja.x + caja.ancho + 3;
     for (const g of fuera) {
       if (enSuFranja.includes(g) || g.x >= derecha || g.x + g.ancho <= izquierda) continue;
       if (g.y + g.alto / 2 < centroY) tope.arriba = Math.max(tope.arriba, g.y + g.alto);
       else tope.abajo = Math.min(tope.abajo, g.y);
     }
-    const arriba = Math.max(caja.y - aire, tope.arriba + 4);
-    const abajo = Math.min(caja.y + caja.alto + aire, tope.abajo - 4);
+    const arriba = Math.min(caja.y, Math.max(caja.y - aire, tope.arriba + 4));
+    const abajo = Math.max(caja.y + caja.alto, Math.min(caja.y + caja.alto + aire, tope.abajo - 4));
     const primera = caja.y + caja.alto + Math.max(5, caja.alto * 0.09);
     const segunda = primera + Math.max(5, caja.alto * 0.1);
     // El visto, proporcionado al número y separado del marco por un hueco limpio.

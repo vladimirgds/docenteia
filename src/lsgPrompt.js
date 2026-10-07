@@ -177,7 +177,13 @@ function pasoNarrado(contenido, operacion, locuciones) {
 // con las que la pizarra, que sigue a la voz, reconoce el cierre y lo enmarca en ese momento.
 function cierreDelEjercicio(contenido, respuesta, dicho) {
   const texto = dicho || `¡Y listo! Resultado final: ${respuesta}.`;
-  return pasoNarrado(contenido, foco("resultado", [respuesta]), [texto]);
+  // CON SU RÓTULO ENCIMA, "Resultado:", como lo dibujó el cliente.
+  //
+  // «Primero se dice qué se hará textualmente, y una línea más abajo se muestra
+  // numéricamente.» La última línea de un ejercicio también es un renglón del
+  // hilo, así que también lleva el suyo, y lo lleva AQUÍ para que sea el mismo
+  // en los cuatro temas: lo escribe el cierre, no cada lección por su cuenta.
+  return [explicaEnPizarra("Resultado:"), ...pasoNarrado(contenido, foco("resultado", [respuesta]), [texto])];
 }
 
 // 1/2 → 3/6, contado en dos tiempos: el factor que multiplica arriba y abajo, y lo que queda.
@@ -741,17 +747,23 @@ function pasosDeFraccion(A, { explica = {} } = {}) {
     const mcm = pasoMCM(A.d1, A.d2, A.L);
     out.push(
       ...apoyo("mcm"),
+      // Sin comentario encima: este renglón ya trae el suyo dentro —"MCM(2, 3):
+      // 2 × 3 = 6"—, el rótulo en ámbar y la cuenta en blanco. Es el mismo orden
+      // que pidió el cliente, en una sola línea.
       { tipo: "pizarra", accion: "escribir", contenido: mcm.contenido },
       { tipo: "hablar", texto: `Buscamos el mínimo común denominador de ${A.d1} y ${A.d2}. ${mcm.dice}` },
       { ...PAUSA_LECTURA },
       ...apoyo("amplificacion"),
       { tipo: "hablar", texto: `Es ${A.L}. Convertimos cada fracción a denominador ${A.L} multiplicando arriba y abajo por lo mismo.` },
+      explicaEnPizarra(`La primera, a denominador ${A.L}:`),
       ...amplificaNarrada(A.n1, A.d1, A.a, A.L, "La primera"),
+      explicaEnPizarra(`La segunda, a denominador ${A.L}:`),
       ...amplificaNarrada(A.n2, A.d2, A.b, A.L, "La segunda"),
       ...apoyo("suma"),
+      explicaEnPizarra("Sumamos los numeradores:"),
       ...sumaNarrada(`${A.a}/${A.L} + ${A.b}/${A.L} = ${A.suma}/${A.L}`, A.a, A.b, A.L, `Ahora las dos tienen denominador ${A.L}.`),
     );
-    if (A.simp) out.push(...apoyo("simplificacion"), ...simplificaNarrada(A.suma, A.L, A.g, A.simp));
+    if (A.simp) out.push(...apoyo("simplificacion"), explicaEnPizarra("Simplificamos:"), ...simplificaNarrada(A.suma, A.L, A.g, A.simp));
     out.push(...cierreDelEjercicio(
       `${A.texto} = ${A.a}/${A.L} + ${A.b}/${A.L} = (${A.a} + ${A.b})/${A.L} = ${A.suma}/${A.L}${A.simp ? ` = ${A.simp}` : ""}`,
       A.final,
@@ -760,9 +772,10 @@ function pasosDeFraccion(A, { explica = {} } = {}) {
   }
   out.push(
     ...apoyo("suma"),
+    explicaEnPizarra("Sumamos los numeradores:"),
     ...sumaNarrada(`${A.texto} = (${A.n1} + ${A.n2})/${A.d} = ${A.suma}/${A.d}`, A.n1, A.n2, A.d, `Las dos tienen el mismo denominador, ${A.d}.`),
   );
-  if (A.simp) out.push(...apoyo("simplificacion"), ...simplificaNarrada(A.suma, A.d, A.g, A.simp));
+  if (A.simp) out.push(...apoyo("simplificacion"), explicaEnPizarra("Simplificamos:"), ...simplificaNarrada(A.suma, A.d, A.g, A.simp));
   // El cierre también aquí, aunque la suma ya diga cuánto da: es la línea que se enmarca, y la que
   // resume el ejercicio entero en una sola igualdad.
   out.push(...cierreDelEjercicio(`${A.texto} = ${A.suma}/${A.d}${A.simp ? ` = ${A.simp}` : ""}`, A.final));
@@ -1997,7 +2010,7 @@ export function lineaCompensada(texto) {
  * puesta y decir que se cancela. Se usan igual en la lección, en el desglose y
  * en el problema aplicado, para que la pizarra se comporte igual en los tres.
  */
-function tiempoDeCancelacion(linea, pausa) {
+function tiempoDeCancelacion(linea, pausa, laResta = "") {
   const compensada = lineaCompensada(linea);
   const frase = locucionCancelacion(linea);
   if (!compensada || !frase) return [];
@@ -2009,14 +2022,77 @@ function tiempoDeCancelacion(linea, pausa) {
   const termino = /^-?\d*[a-zA-Z]([+-]\d+)=/.exec(limpio)?.[1];
   if (!termino) return [];
   const abs = String(Math.abs(Number(termino)));
-  // SIN ESCRIBIR AQUÍ EL COMENTARIO "Se cancelan:". El motor ya lo emite como el
-  // `explica` de su paso en los ejercicios que lo tienen —"3(2x − 1) + 4 = 5x + 9"
-  // cancela dos veces—, y añadirlo también aquí dejaba el mismo rótulo dos veces
-  // en la misma pizarra. Lo que el cliente pidió es que el comentario emitido NO
-  // se mueva ni se borre, no que haya uno más.
+  // UN COMENTARIO POR RENGLÓN, Y EL RENGLÓN JUSTO DEBAJO.
+  //
+  // «Primero se dice qué se hará textualmente, y una línea más abajo se muestra
+  // numéricamente.» El cliente lo dibujó con los dos tiempos separados:
+  //
+  //   Restamos 6:
+  //   2x + 6 − 6 = 16 − 6          ← escrita y enmarcada, sin tachar
+  //   Se cancelan:
+  //   2x + 6̶ − 6̶ = 16 − 6          ← la misma línea, ya con las aspas
+  //
+  // El comentario "Restamos 6:" lo escribe el paso (es su `explica`); aquí van
+  // su renglón, el comentario del tachado y el renglón tachado. Son dos
+  // renglones distintos, así que al acabar los dos siguen a la vista: no se
+  // sobrescribe ninguno.
+  // COMENTARIO → RENGLÓN → VOZ, y otra vez lo mismo para el tachado.
+  //
+  // La voz va DETRÁS de su renglón porque las marcas son animaciones sobre algo
+  // ya escrito: el puntero del aula avanza foco a foco siguiendo lo que se dice,
+  // así que una frase dicha antes de escribir su línea deja ese foco sin su
+  // momento —y el siguiente se lo come—. El comentario de la resta lo escribe el
+  // paso (es su `explica`); aquí van su renglón, su voz, y los tres del tachado.
+  const seCancelan = String(frase).trim();
   return [
-    escribePaso(compensada, { tipo: "cancelacion", terminosFoco: [abs] }, frase),
-    { tipo: "hablar", texto: frase },
+    escribePaso(compensada, { tipo: "uniforme", terminosFoco: [abs] }, laResta),
+    ...(laResta ? [{ tipo: "hablar", texto: laResta }] : []),
+    ...(pausa ? [{ ...pausa }] : []),
+    explicaEnPizarra(seCancelan),
+    escribePaso(compensada, { tipo: "cancelacion", terminosFoco: [abs] }, seCancelan),
+    { tipo: "hablar", texto: seCancelan },
+    ...(pausa ? [{ ...pausa }] : []),
+  ];
+}
+
+/**
+ * ¿ESTA LÍNEA LLEVA YA LA OPERACIÓN ESCRITA EN LOS DOS MIEMBROS?
+ *
+ * Con la incógnita a los dos lados —"2x + 5 − 3x = 3x + 1 − 3x"— el motor no
+ * fabrica la línea compensada: la escribe como un paso más. Entonces el tachado
+ * no tiene que inventarse nada, sólo volver a escribir ESA línea con las aspas,
+ * y para saberlo basta contar el término: está el original, su opuesto y la
+ * compensación del otro miembro, tres veces en total. En la línea limpia
+ * —"2x + 6 = 16" con término "6"— aparece como mucho dos (el 6 y el 16).
+ */
+function llevaLaOperacionEscrita(texto, termino) {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  const t = String(termino ?? "").replace(/\s+/g, "");
+  if (!t) return false;
+  return limpio.split(t).length - 1 >= 3;
+}
+
+/**
+ * LOS RENGLONES DEL TACHADO, vengan de donde vengan.
+ *
+ * Dos formas de llegar al mismo dibujo: con una constante el motor fabrica aquí
+ * la línea compensada (`tiempoDeCancelacion`); con la incógnita a los dos lados
+ * esa línea ya está escrita arriba y sólo falta repetirla tachada.
+ *
+ * Devuelve [] si este paso no tacha nada: así quien lo llama sabe si tiene que
+ * encabezar el resultado con su propio comentario.
+ */
+function filasDeCancelacion(paso, anterior, pausa) {
+  if (paso?.accion?.tipo !== "cancelacion") return [];
+  const fabricadas = tiempoDeCancelacion(anterior, pausa, paso.explica);
+  if (fabricadas.length) return fabricadas;
+  const termino = paso.accion.terminosFoco?.[0];
+  if (!anterior || !llevaLaOperacionEscrita(anterior, termino)) return [];
+  // El comentario de este renglón ya lo escribió el paso: su `explica` ES
+  // "Se cancelan:". Aquí van su línea tachada y, detrás, la voz que la tacha.
+  return [
+    escribePaso(anterior, paso.accion, paso.explica),
+    { tipo: "hablar", texto: paso.explica },
     ...(pausa ? [{ ...pausa }] : []),
   ];
 }
@@ -2032,6 +2108,20 @@ function tiempoDeCancelacion(linea, pausa) {
 function directivasDePasosLineales(sol, { andamiaje = null, pasoEnDuda = -1 } = {}) {
   const dir = [];
   const gestoSobre = (k) => sol.steps[k]?.accion ?? null;
+  // LA LÍNEA QUE SE VA A TACHAR SE ESCRIBE PRIMERO LIMPIA.
+  //
+  // Con la incógnita a los dos lados, "2x + 5 − 3x = 3x + 1 − 3x" es un paso del
+  // motor y el paso siguiente la tacha. Escribirla ya tachada juntaba los dos
+  // tiempos en un renglón: se veía el tachado antes de que la voz dijera que se
+  // cancela, y el comentario "Se cancelan:" se quedaba sin renglón propio
+  // debajo. Así que aquí se enmarca (`uniforme`) y el tachado llega después, en
+  // su renglón, con su comentario encima.
+  const gestoDeEscritura = (k) => {
+    const gesto = gestoSobre(k + 1);
+    if (gesto?.tipo !== "cancelacion") return gesto;
+    if (!llevaLaOperacionEscrita(sol.steps[k]?.escribe, gesto.terminosFoco?.[0])) return gesto;
+    return { ...gesto, tipo: "uniforme" };
+  };
   const apoyoInicial = sol.steps[0]?.apoyo;
   const reparto = locucionesDistributiva(sol.original);
   const compases = repartoSincronizado(apoyoInicial, reparto, PAUSA_LECTURA);
@@ -2041,23 +2131,61 @@ function directivasDePasosLineales(sol, { andamiaje = null, pasoEnDuda = -1 } = 
     if (andamiaje && (pasoEnDuda < 0 || pasoEnDuda === k)) {
       dir.push({ tipo: "hablar", texto: andamiaje(s.explica) }, { ...PAUSA_LECTURA });
     }
-    if (s.explica) dir.push(explicaEnPizarra(s.explica));
-    if (!(k === 0 && reparto)) {
-      dir.push({ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA });
-    }
+    // Lo que este paso dice del renglón de ARRIBA, antes de abrir el suyo.
+    if (s.dicePrimero) dir.push({ tipo: "hablar", texto: s.dicePrimero }, { ...PAUSA_LECTURA });
+    const ultimo = k === sol.steps.length - 1;
+    // EL RENGLÓN DEL PASO QUE TACHA VA PEGADO A SU COMENTARIO, y su voz detrás:
+    // los dos tiempos —la resta escrita y la resta tachada— se componen aquí
+    // enteros, cada uno con su comentario encima y su frase debajo.
+    const tachado = filasDeCancelacion(s, k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA);
+    // El comentario del paso, encima del primer renglón que escribe.
+    //
+    // En el último paso ese renglón es el cierre, y su rótulo —"Resultado:"— lo
+    // escribe `cierreDelEjercicio`: repetirlo aquí dejaría dos comentarios
+    // seguidos. Salvo que el paso además tache: entonces su `explica` encabeza
+    // la resta escrita —"Restamos 5:"— y hace falta igual, como en "x + 5 = 12",
+    // donde cancelar es el único paso y es también el último.
+    if (s.explica && (!ultimo || tachado.length)) dir.push(explicaEnPizarra(s.explica));
+    dir.push(...tachado);
+    // LA VOZ DEL PASO VA DETRÁS DE SU RENGLÓN.
+    //
+    // Comentario → renglón → voz, el mismo orden en todos los pasos. Detrás
+    // porque las marcas son animaciones sobre lo ya escrito: el aula sigue la
+    // voz foco a foco, así que una frase dicha antes de escribir su línea deja
+    // ese foco sin momento y el puntero se lo come con el renglón siguiente.
+    // Era exactamente lo que pasaba con la división: «Dividimos entre 2:» sonaba
+    // con "2x = 10" delante, no con la fracción.
+    //
+    // EL ÚLTIMO PASO NO DICE SU ETIQUETA: la escribe y deja hablar al cierre.
+    //
+    // "Resultado:" es el rótulo con el que el cliente encabezó la última línea,
+    // y como frase no corresponde a ninguna marca de la pizarra. Dicha en voz
+    // alta, el puntero del aula —que avanza buscando el foco que nombra lo que
+    // se oye— no encontraba ninguno y se quedaba atrás: lo ya explicado volvía a
+    // figurar como pendiente y la pizarra parecía adelantar el final. El cierre
+    // sí trae su frase —"¡Y listo! Resultado final: x = 5."— y su renglón.
+    const voz =
+      ultimo || (k === 0 && reparto) || tachado.length
+        ? []
+        : [{ tipo: "hablar", texto: s.explica }, { ...PAUSA_LECTURA }];
     const cierraElReparto = k === 0 && reparto ? reparto[reparto.length - 1] : null;
     if (k === 0 && reparto) {
       if (compases) dir.push(...compases);
       else for (const frase of reparto.slice(0, -1)) dir.push({ tipo: "hablar", texto: frase }, { ...PAUSA_LECTURA });
     }
-    if (s.accion?.tipo === "cancelacion") {
-      dir.push(...tiempoDeCancelacion(k === 0 ? sol.original : sol.steps[k - 1]?.escribe, PAUSA_LECTURA));
-    }
     if (!(k === 0 && apoyoInicial)) dir.push(...tallerAuxiliar(s.apoyo));
-    if (k === sol.steps.length - 1) {
+    // EL RESULTADO TAMBIÉN LLEVA SU COMENTARIO ENCIMA.
+    //
+    // Cuando el paso tacha, su `explica` —"Restamos 6:"— ya encabeza el renglón
+    // de la resta, así que lo que queda debajo necesita el suyo. Son las dos
+    // palabras con las que el cliente lo rotuló: "Nos queda:" en mitad del
+    // desarrollo y "Resultado:" cuando ese renglón es el final.
+    if (tachado.length && !ultimo) dir.push(explicaEnPizarra("Nos queda:"));
+    if (ultimo) {
       dir.push(...cierreDelEjercicio(s.escribe, sol.answer, `¡Y listo! Resultado final: ${sol.varName} = ${sol.answer}.`));
     } else {
-      dir.push(escribePaso(s.escribe, gestoSobre(k + 1), sol.steps[k + 1]?.explica));
+      dir.push(escribePaso(s.escribe, gestoDeEscritura(k), sol.steps[k + 1]?.explica));
+      dir.push(...voz);
       if (cierraElReparto) dir.push({ tipo: "hablar", texto: cierraElReparto }, { ...PAUSA_LECTURA });
     }
   });
@@ -2214,6 +2342,9 @@ export function derivadaResueltaLSG(opts = {}) {
   const cierre = `¡Y listo! Resultado final: la derivada de ${ejemplo} es ${derE}.`;
   const potencia = focoDePotencia(pm);
   dir.push(
+    // Con su rótulo encima, como el resto del hilo: «primero se dice qué se hará
+    // textualmente, y una línea más abajo se muestra numéricamente».
+    explicaEnPizarra("Resultado:"),
     // La regla de la potencia, a la vista: se recuadran el coeficiente, el exponente que baja y el
     // coeficiente nuevo que sale de multiplicarlos, y DESPUÉS se enmarca el resultado (`final`): esta
     // línea es a la vez el paso y la respuesta. En un polinomio no hay un único exponente que bajar, así
@@ -2619,6 +2750,8 @@ export function factorizacionResueltaLSG(opts = {}) {
     { tipo: "pizarra", accion: "escribir", contenido: ejemplo },
     { tipo: "esperar", segundos: 1 },
     { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo) },
+    // Con su rótulo encima, como el resto del hilo.
+    explicaEnPizarra("Resultado:"),
     difCuadrados
       ? escribePaso(`${ejemplo} = ${facE}`, { ...difCuadrados, final: true }, explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo))
       : escribePaso(`${ejemplo} = ${facE}`, foco("resultado", [facE]), cierreF),

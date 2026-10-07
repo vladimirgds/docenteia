@@ -117,6 +117,10 @@ export interface Escena {
     | "columna"
     | "polinomio"
     | "despeje"
+    // El PRIMER tiempo de una cancelación: la operación escrita en los dos
+    // miembros, sin tachar. Es un gesto aparte de `despeje` porque comparte
+    // texto con el renglón tachado y la identidad de una escena es gesto+texto.
+    | "uniforme"
     | "simplificacion"
     | "amplificacion"
     | "suma-fracciones"
@@ -873,7 +877,78 @@ export function fraseDeCancelacionDeIncognita(
  */
 export function elDestapadoEsPrestado(escena: Escena | null | undefined): boolean {
   const focos = escena?.focos ?? [];
-  return focos.length > 0 && focos.every((f) => f.clase === "pz-uniforme");
+  if (focos.length === 0 || !focos.every((f) => f.clase === "pz-uniforme")) return false;
+  // Y ADEMAS LA OPERACION TIENE QUE ESTAR TAPADA. Lo prestado son las piezas
+  // `pz-rev-*`: la linea las destapa mientras dura su paso y las recoge al
+  // acabar. Un renglon que YA LLEVA la operacion escrita en su texto
+  // —"2x + 6 - 6 = 16 - 6", que el motor escribe aparte— tambien se enmarca con
+  // `pz-uniforme`, pero no esconde nada y no se recoge: ese renglon ES el paso.
+  // Sin esta segunda condicion se descartaba por prestado y la operacion no
+  // llegaba a escribirse nunca.
+  return /pz-rev-/.test(escena?.latex ?? "");
+}
+
+/**
+ * EL PRIMER TIEMPO, EN SU PROPIO RENGLON: "2x + 6 - 6 = 16 - 6", SIN TACHAR.
+ *
+ * El cliente dibujo el ambiente 1 con un comentario por renglon y el renglon
+ * justo debajo: «Restamos 6:» encabeza la resta escrita en los dos miembros, y
+ * «Se cancelan:» encabeza la MISMA linea con las aspas. Son dos renglones, y al
+ * terminar la explicacion los dos siguen a la vista.
+ *
+ * Esta escena es el primero: la misma linea que `escenaDeCancelacion`, con una
+ * caja por miembro sobre lo que se acaba de escribir —ninguna cruza el igual— y
+ * sin ninguna aspa. `null` si la linea no lleva ya la operacion en los dos
+ * miembros, que es lo que permite encadenarla con las demas.
+ */
+export function escenaDeOperacionUniforme(texto: string, id: string): Escena | null {
+  const limpio = String(texto ?? "").replace(/[−–—]/g, "-").replace(/\s+/g, "");
+  // ax + b - b = c - b  (o ax - b + b = c + b)
+  const m = limpio.match(/^(-?\d*)([a-zA-Z])([+-]\d+)([+-]\d+)=(-?\d+)([+-]\d+)$/);
+  if (!m) return null;
+
+  const [, coefCrudo, variable, terminoCrudo, opuestoCrudo, derechaCruda, compensaCruda] = m;
+  const coeficiente = coefCrudo === "" || coefCrudo === "+" ? 1 : coefCrudo === "-" ? -1 : Number(coefCrudo);
+  const b = Number(terminoCrudo);
+  const opuesto = Number(opuestoCrudo);
+  const c = Number(derechaCruda);
+  const compensa = Number(compensaCruda);
+  if (!Number.isFinite(coeficiente) || coeficiente === 0 || !b) return null;
+  // La misma exigencia que el tachado: un par de opuestos a la izquierda y la
+  // MISMA operacion al otro lado. Si no, esto no es una operacion uniforme.
+  if (opuesto !== -b || compensa !== -b) return null;
+
+  const signo = (n: number) => (n > 0 ? "+" : "-");
+  const coefLatex = coeficiente === 1 ? "" : coeficiente === -1 ? "-" : String(coeficiente);
+  // La caja encierra lo que se acaba de escribir —el "- 6"—, no el termino que
+  // ya estaba: eso es lo que el paso anade a cada miembro.
+  const izquierda =
+    `${coefLatex}${variable} ${signo(b)} ${Math.abs(b)} ` +
+    marcar("pz-uniforme pz-uniforme-izq", `${signo(opuesto)} ${Math.abs(opuesto)}`);
+  const derecha = `${c} ${marcar("pz-uniforme pz-uniforme-der", `${signo(compensa)} ${Math.abs(compensa)}`)}`;
+  const frase = `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)}:`;
+
+  return {
+    id,
+    texto,
+    latex: `${izquierda} = ${derecha}`,
+    narracion: frase,
+    // SU PROPIO GESTO, Y NO "despeje", PARA QUE SEA OTRO RENGLÓN.
+    //
+    // Los dos tiempos escriben la MISMA línea —"2x + 6 - 6 = 16 - 6"—, y la
+    // identidad de una escena es su gesto más su texto. Con el mismo gesto los
+    // dos renglones eran la misma escena y el guion se quedaba con uno: el
+    // tachado desaparecía, que es justo lo contrario de lo que se pedía.
+    clase: "uniforme",
+    focos: [
+      {
+        clase: "pz-uniforme",
+        piezas: ["pz-uniforme-izq", "pz-uniforme-der"],
+        tipo: "caja",
+        narracion: frase,
+      },
+    ],
+  };
 }
 
 export function escenaDeDivisionEnFraccion(texto: string, id: string): Escena | null {
@@ -1665,6 +1740,13 @@ const COMPOSITOR: Record<
     escenaDeDespeje(t, id) ??
     escenaDeRestaDeIncognita(t, id) ??
     escenaDeSimplificacion(t, id),
+  // El PRIMER tiempo de la cancelacion: la operacion escrita en los dos
+  // miembros, enmarcada y sin tachar. El tachado es el gesto `cancelacion`, y va
+  // en el renglon de debajo.
+  uniforme: (t, id) =>
+    escenaDeOperacionUniforme(t, id) ??
+    escenaDeRestaDeIncognita(t, id) ??
+    escenaDeDespeje(t, id),
   amplificacion: (t, id) => escenaDeAmplificacion(t, id),
   "suma-fracciones": (t, id) => escenaDeSumaDeFracciones(t, id),
   distributiva: (t, id) => escenaDeDistributiva(t, id),
