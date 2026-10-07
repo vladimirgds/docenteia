@@ -4596,3 +4596,102 @@ anotados para que decida.
 De la lista anterior han salido cuatro: **OBS-05** (la letra de los comentarios,
 10 fallos por corrida sobre una pizarra correcta), **OBS-12**, **OBS-14** y
 **R4-01**.
+
+## «Eliminar el "Por qué"» y «incrementar el tamaño de la letra»
+
+Dos peticiones cortas, con tres capturas: la pizarra completa, la tarjeta de la
+regla y el dibujo de concepto.
+
+### El «Por qué»
+
+Los encabezados del taller preguntaban. Ahora nombran:
+
+| Antes | Ahora |
+|---|---|
+| Por qué se cancela el 6: | **Se cancela el 6:** |
+| Por qué se cancelan los 3x: | **Se cancelan los 3x:** |
+| Por qué dividimos entre 2: | **Dividimos entre 2:** |
+
+### La letra
+
+Estaba toda a 1 rem —16 px—, en pantalla y proyectada. Bajó hasta ahí ronda a
+ronda persiguiendo que el ejercicio entero cupiera, y se pasó de frenada. La
+escala a la que vuelve no es inventada: es la que usted mismo fijó cuando pidió
+compactarla —«reduzcamos la escala base de KaTeX a un tamaño compacto (text-xl /
+1.25rem)»— y la que llevaban exigiendo tres reglas de la batería desde entonces.
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| las ecuaciones del hilo, en pantalla y proyectadas | 16 px | **20 px** |
+| «Ejercicio:» y el enunciado | 16 px | **20 px** |
+| los comentarios del hilo | 14 px / 14 px | **16 px / 20 px** |
+| lo que el tutor cuenta bajo cada paso | 16 px | **20 px** |
+| las notas del taller | 16 px | **24 px** (mínimo de aula) |
+| la cuenta de una nota | 16 px | **26 px**, un escalón sobre su rótulo |
+| los rótulos de los resaltados | 16 px | **24 px** |
+| la tarjeta de la regla y su nombre | 16 px | **24 px** |
+| el dibujo de concepto | 24 rem de ancho | **36 rem** en pantalla, **52 rem** proyectado |
+
+El dibujo no tiene un tamaño por rótulo: todo él son unidades de su lienzo, así
+que ensancharlo sube la letra con él. Era lo que se veía en su tercera captura:
+un dibujo pequeño en una pizarra casi vacía.
+
+Y lo que no quepa no paga la letra: cada renglón se encoge por su cuenta cuando
+se queda sin ancho, y eso sigue igual. Comprobado renglón a renglón, nada se
+sale ni por la derecha ni por abajo.
+
+### Lo que esto cierra
+
+Las tres reglas que llevaban rojas desde las rondas #78–#82 medían exactamente
+esto, y se apagan solas:
+
+| Regla | Qué pedía | Antes | Ahora |
+|---|---|---|---|
+| SUB-PRJ-03 | fórmulas ≥ 20 px · notas y rótulos ≥ 24 px | 129 fallos | **0** |
+| OBS-06 | «Ejercicio:» ≥ 20 px proyectando | 71 fallos | **0** |
+| R2-04 | la tarjeta de regla, no por debajo de la escala compacta | 5 fallos | **0** |
+| `qa/navegador.mjs` | tres tamaños proyectando | 3 fallos | **0** (87/87) |
+
+No se tocaron las reglas para que pasaran: se subió la letra, que es lo que
+pedían ellas y lo que pedía usted.
+
+### Lo que la letra grande destapó
+
+Tres cosas que con 16 px no se notaban:
+
+**El marco de la respuesta asomaba por el borde.** La cápsula verde, su aire y
+su trazo se dibujan FUERA de la fórmula, y el visto va además a su derecha: entre
+todo se llevan unos 35 px, que a esta escala ya no sobran. Ahora el renglón
+reserva ese sitio al ajustarse, y el visto se acerca a la cápsula antes que
+salirse. Medido: 0 px fuera de la columna, en las ocho clases.
+
+**El dibujo de concepto era lo más pequeño de la pantalla.** No tiene un tamaño
+por rótulo: todo él son unidades de su lienzo, así que se ensanchó el lienzo y la
+letra subió con él.
+
+**«9/» con la barra de consola.** Dividir entre un coeficiente −1 escribe
+`-9/-1`, y el compositor no sabía pasar a fracción un denominador negativo: la
+barra se quedaba tal cual en la columna de apoyo. Es justo lo que usted mandó
+quitar hace rondas —«ni "/" ni "*"»—, escondido en el único caso que no sabía
+componer. Ahora lo compone, y el signo del numerador se queda fuera de la raya
+para no confundir una resta con una fracción.
+
+Con eso, **la batería de observación se queda sin un solo fallo**: 0 en las ocho
+clases, contra los 206 con los que empezó esta ronda.
+
+### Las baterías
+
+| Batería | Resultado |
+|---|---|
+| `qa/hito2.mjs` | 841 · **0** |
+| `qa/rigor.mjs` | 34.195 afirmaciones · **0** incorrectas |
+| `qa/leccion.mjs` | 832 · **0** |
+| `qa/qa.mjs` | 1.465 · **0** |
+| `qa/aceptacion.mjs` | **24/24** |
+| `qa/mandos.mjs` | 19 · **0** |
+| `qa/voz.mjs` | 13 · **0** |
+| `qa/navegador.mjs` | 87 · **0** |
+| `qa/barrido.mjs` | 200 sesiones · 1.800 turnos · **0** |
+| `qa/observaciones.mjs` | **41 reglas, las 41 verdes** · 0 fallos |
+
+Es la primera entrega del Hito 2 en la que no queda nada en rojo.

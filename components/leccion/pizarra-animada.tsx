@@ -646,6 +646,7 @@ export function PizarraAnimada({
                   // El rótulo (× 2) sólo con el foco activo y YA empezada la
                   // explicación —nunca en la entrada (Alex.pdf §2).
                   conEtiqueta={j === 0 && estado === "activa" && i === foco && foco >= 0}
+                  limites={medidas.limites ?? undefined}
                   rotulo={rotulo}
                 />,
               ];
@@ -678,6 +679,7 @@ function Resaltado({
   ancla,
   glifos,
   conEtiqueta = true,
+  limites,
   rotulo,
 }: {
   foco: Foco;
@@ -686,6 +688,8 @@ function Resaltado({
   ancla?: Caja;
   glifos: readonly Caja[];
   conEtiqueta?: boolean;
+  /** Hasta dónde llega el ancho del paso en su columna, para no desbordarla. */
+  limites?: { x0: number; x1: number };
   rotulo: (texto: string, caja: Caja, preferidos?: ("arriba" | "abajo" | "derecha" | "izquierda")[]) => RectDeRotulo;
 }) {
   const etiqueta = foco.etiqueta && conEtiqueta ? foco.etiqueta : null;
@@ -750,10 +754,20 @@ function Resaltado({
     // paréntesis de "x² - 9 = (x - 3)(x + 3)" cuando el renglón se compactó y el
     // igual quedó a menos de 4 px—. Entre rozar al vecino y partir la respuesta,
     // se roza al vecino: el aire es una cortesía, rodear el resultado no.
+    // NI SE SALE DE LA COLUMNA. El aire de la cápsula y su trazo caen FUERA de
+    // la fórmula, así que una respuesta que llega al borde del ambiente los
+    // sacaba de él: 1,1 px asomando en "x² − 36 = (x − 6)(x + 6)", que a esta
+    // escala ocupa el ancho entero. Se recorta hasta el borde, con sitio para el
+    // medio trazo, y sin llegar nunca a morder la respuesta.
+    const borde = limites ? limites.x1 - 3 : Infinity;
+    // Lo que NO se puede morder es el último glifo, no el colchón que la medida
+    // le añade alrededor: ceder esos 4 px de holgura deja la cápsula dentro de
+    // la columna sin tocar ni una cifra.
+    const topeGlifo = caja.x + caja.ancho - HOLGURA;
     const izquierda = foco.final ? Math.min(caja.x, Math.max(caja.x - aire, tope.izquierda + 4)) : caja.x - 3;
     const derecha = foco.final
-      ? Math.max(caja.x + caja.ancho, Math.min(caja.x + caja.ancho + aire, tope.derecha - 4))
-      : caja.x + caja.ancho + 3;
+      ? Math.max(topeGlifo, Math.min(caja.x + caja.ancho + aire, tope.derecha - 4, borde))
+      : Math.min(caja.x + caja.ancho + 3, Math.max(topeGlifo, borde));
     for (const g of fuera) {
       if (enSuFranja.includes(g) || g.x >= derecha || g.x + g.ancho <= izquierda) continue;
       if (g.y + g.alto / 2 < centroY) tope.arriba = Math.max(tope.arriba, g.y + g.alto);
@@ -764,8 +778,14 @@ function Resaltado({
     const primera = caja.y + caja.alto + Math.max(5, caja.alto * 0.09);
     const segunda = primera + Math.max(5, caja.alto * 0.1);
     // El visto, proporcionado al número y separado del marco por un hueco limpio.
+    //
+    // Y DENTRO DE LA COLUMNA. Va a la derecha de la cápsula, con su hueco: entre
+    // los dos se llevan unos 35 px más allá de la fórmula, y con la letra a
+    // text-xl esa holgura se acaba. Si no cabe a la derecha, se acerca —nunca
+    // por debajo de un hueco mínimo—, que es mejor que asomar por el borde.
     const tam = Math.min(64, Math.max(12, caja.alto * 0.45));
-    const x0 = derecha + Math.max(10, caja.alto * 0.12);
+    const hueco = Math.max(10, caja.alto * 0.12);
+    const x0 = Math.min(derecha + hueco, Math.max(derecha + 4, borde - tam));
     const y0 = caja.y + caja.alto / 2;
     return (
       <g className="pz-resaltado" data-tipo={foco.tipo} data-final={foco.final ? "si" : undefined}>
