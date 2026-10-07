@@ -515,9 +515,21 @@ async function unitTests() {
         const r = correrBoton({ query: "otro ejemplo", seguimiento: "continuacion", contexto: abrir, currentTopic: abrir, cursores });
         if (!r) break;
         const pz = (r.pizarras || []).map((c) => String(c));
-        // Ninguna línea de pizarra puede repetirse dentro de la MISMA lección.
-        const limpias = pz.map((c) => c.replace(/\s/g, ""));
-        if (limpias.some((c, k) => limpias.indexOf(c) !== k)) duplicados++;
+        // Ninguna línea de pizarra puede repetirse dentro de la MISMA lección
+        // CON EL MISMO PAPEL. Lo que se prohíbe aquí es escribir dos veces lo
+        // mismo —"se duplica el contenido de la información"—, no los dos
+        // tiempos de una cancelación: "2x + 5 - 5 = 15 - 5" se escribe limpia
+        // bajo «Restamos 5:» y otra vez tachada bajo «Se cancelan:», que es
+        // como lo dibujó el cliente y lo que exige su regla de sólo agregar.
+        // Se distinguen por el gesto que las etiqueta, no por el texto.
+        // Los COMENTARIOS quedan fuera: son rótulos, y un ejercicio que cancela
+        // dos veces escribe «Se cancelan:» dos veces, cada una encima de SU
+        // renglón. Que ninguno se quede suelto ni sobre otro comentario lo
+        // comprueba la regla de "un comentario, un renglón" (qa/hito2.mjs).
+        const conGesto = (r.flat || [])
+          .filter((d) => d.tipo === "pizarra" && d.papel !== "explicacion")
+          .map((d) => `${String(d.contenido ?? "").replace(/\s/g, "")}|${d.operacion?.tipo ?? ""}`);
+        if (conGesto.some((c, k) => conGesto.indexOf(c) !== k)) duplicados++;
         const ej = pz.find((c) => !c.includes(":") && /\d|x/.test(c)) || "";
         const mq = (r.q?.texto || "").match(/de (.+?)\?|en (.+?)\?/);
         const pr = mq ? (mq[1] || mq[2]) : "";

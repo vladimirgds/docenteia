@@ -4379,3 +4379,220 @@ despliegue.
 
 Los mismos siete de la tabla anterior, verificados otra vez apartando los
 cambios: entraron con las rondas #78-#82 y siguen esperando turno.
+
+## El ambiente 1, como lo dibujó el cliente
+
+> «Te adjunto de cómo debe visualizarse el "ambiente 1" de la pizarra: primero
+> se dice qué se hará textualmente, y una línea más abajo se muestra
+> numéricamente. NO SE BORRA, NI SE SUBE NADA.»
+
+Con su captura delante, renglón a renglón:
+
+```
+Ejercicio: 2(x + 3) = 16
+
+  2(x + 3) = 16
+  Por propiedad distributiva:
+  2x + 6 = 16
+  Restamos 6:
+  2x + 6 − 6 = 16 − 6
+  Se cancelan:
+  2x + 6̶ − 6̶ = 16 − 6
+  Nos queda:
+  2x = 10
+  Dividimos entre 2:
+  2x        10
+  ──   =   ──
+   2        2
+  Resultado:
+  x = 5
+```
+
+La pizarra escribía esas mismas cuentas, pero emparejadas de otra manera. Lo que
+faltaba, medido sobre el hilo que emitía el motor:
+
+| Renglón | Antes | Ahora |
+|---|---|---|
+| `2x + 6 − 6 = 16 − 6` | «Restamos 6:» ✔ | «Restamos 6:» |
+| la misma, tachada | no existía: el tachado caía sobre el renglón de arriba | «Se cancelan:» y su renglón propio |
+| `2x = 10` | sin comentario | «Nos queda:» |
+| `2x/2 = 10/2` | «La x está multiplicada por 2:» | «Dividimos entre 2:» |
+| `x = 5` | «Dividimos entre 2:», **debajo** de la fracción | «Resultado:» |
+
+Es decir: los rótulos iban un renglón corridos —cada frase contaba la línea de
+ARRIBA— y dos líneas se quedaban sin ninguno. Ahora cada comentario encabeza la
+línea que viene debajo, que es la regla que puso el cliente.
+
+### Los dos tiempos, en dos renglones
+
+El cambio de fondo está en la cancelación. Antes era un solo renglón que primero
+se escribía y después se tachaba. En la captura del cliente son dos: la resta
+escrita y, debajo de «Se cancelan:», la misma resta con las aspas. Las dos se
+quedan a la vista al terminar, que es lo que pide la regla de sólo agregar.
+
+Para eso hay ahora dos gestos donde había uno: `uniforme` escribe la operación en
+los dos miembros y la enmarca —una caja por miembro, ninguna cruza el igual— y
+`cancelacion` vuelve a escribir esa misma línea con el tachado. Comparten texto,
+así que cada uno tiene su propio gesto: la identidad de una escena es gesto más
+texto, y con el mismo gesto el guion se quedaba con una sola y el tachado
+desaparecía.
+
+### El orden: comentario, renglón, voz
+
+Mover un rótulo de sitio movía también su frase, y eso desordenaba las marcas: el
+aula sigue a la voz foco a foco, así que una frase dicha ANTES de escribir su
+línea deja ese foco sin su momento y el puntero se lo come con el renglón
+siguiente. Se vio en la división —«Dividimos entre 2:» sonaba con "2x = 10"
+delante, no con la fracción— y en los pendientes: lo ya explicado volvía a
+figurar como futuro.
+
+Así que el orden es el mismo en todos los pasos: **comentario → renglón → voz**.
+Y dos frases siguen dichas donde estaban porque son las que encienden una marca
+del renglón de arriba: «La x está multiplicada por 2.», que enmarca el
+coeficiente de "2x = 10", y el cierre. «Resultado:» no se dice: es un rótulo
+escrito, y dicho en voz alta no correspondía a ninguna marca —el puntero se
+quedaba atrás y la pizarra parecía adelantar el final—.
+
+### Y en los demás temas
+
+La regla es del ambiente 1, no de las ecuaciones, así que los otros tres temas
+llevan ahora los suyos:
+
+| Tema | Renglón | Comentario |
+|---|---|---|
+| fracciones | `1/2 = 3/6` | «La primera, a denominador 6:» |
+| fracciones | `1/3 = 2/6` | «La segunda, a denominador 6:» |
+| fracciones | `3/6 + 2/6 = 5/6` | «Sumamos los numeradores:» |
+| fracciones | la simplificación | «Simplificamos:» |
+| derivadas | `x² → 2x` | «El término x²:» |
+| factorización | `x² − 1 = (x)² − (1)²` | «Los dos cuadrados:» |
+| los cuatro | la última línea | «Resultado:» |
+
+El rótulo del cierre lo escribe el propio cierre, una sola vez y para los cuatro
+temas: así no hay cuatro sitios donde se pueda escribir distinto.
+
+Dos cosas se quedan como estaban, y a propósito:
+
+* **Los renglones que ya traen su rótulo dentro**: «MCM(2, 3): 2 × 3 = 6» y
+  «Resultado: 41» bajo una suma en columna. El rótulo va en ámbar y la cifra en
+  blanco: es el mismo orden —primero lo que es, después el número—, en una sola
+  línea, y es como se entregó desde el PMV 1.
+* **Las cuentas sueltas de enteros**, como «2 · 1 = 2». Son el cálculo mismo, no
+  un paso del desarrollo.
+
+Si los quiere también en dos renglones, es un cambio pequeño y se hace.
+
+### Las reglas que lo vigilan
+
+**R9-01 — un comentario, un renglón.** Sobre la pizarra de verdad: cada texto del
+hilo tiene su ecuación justo debajo, en su misma columna, y ninguna ecuación del
+desarrollo se queda sin el comentario de encima. No vale con que haya
+comentarios: tienen que emparejarse. Quedan fuera los dos casos de arriba —el
+renglón con su rótulo dentro y la cuenta suelta de enteros—, y eso está escrito
+en la regla, no escondido.
+
+**R9-02 — «ni se sube nada».** Sigue cada renglón por su posición dentro de su
+columna y canta si alguno se desplaza hacia arriba.
+
+R9-01 falla sobre la versión anterior y pasa sobre ésta, que es la única forma de
+saber que mide algo.
+
+Sobre R9-02 conviene ser exacto: lo que vigila es que nada se vaya POR ARRIBA de
+su columna, es decir, fuera de la pantalla. Que un renglón cambie de altura no es
+eso —la pizarra encoge la escala y el aire entre renglones para que todo siga
+cabiendo, que es justo lo que usted pidió al cronometrar el vídeo: «la
+acumulación de pasos empuja el contenido hacia arriba, provocando que el
+encabezado desaparezca del área visible»—, y al encoger, lo de debajo sube un
+poco y sigue a la vista. Que ningún renglón cambie ni desaparezca es R8-01, que
+los sigue uno por uno.
+
+En el motor, además, el hilo de `2(x + 3) = 16` se compara **renglón a renglón con
+la captura del informe**, palabra por palabra.
+
+### Y una comprobación mía que pasaba por casualidad
+
+La del mando «Avanzar». Pausaba la clase a los 2,5 segundos y exigía que, al
+pulsar, cambiara algo. Pero «Avanzar» mueve el puntero por lo que hay DIBUJADO, y
+hay instantes —los de la pausa de lectura, con el tutor recién callado sobre el
+último renglón escrito— en los que la pizarra ya está en el último paso de lo
+dibujado: ahí no tiene adónde ir. Que pasara o fallara dependía de dónde cayera
+la pausa, y al cambiar el reparto de los renglones cayó en otro sitio.
+
+Ahora lee el contador que la propia pizarra enseña —«Paso 2 de 2 · línea 1 de
+2»—, y si no queda paso por delante deja correr la clase un poco y lo vuelve a
+intentar, hasta tres veces. Si queda paso por delante, el mando TIENE que mover
+la clase. Comprobado: lo mueve.
+
+### Tres comprobaciones que medían la pizarra anterior
+
+Al partir la cancelación en dos renglones, tres reglas mías se quedaron
+midiendo una pizarra que ya no existe. No se han silenciado: se han vuelto a
+escribir diciendo lo que ahora es cierto.
+
+**R4-02 — el tachado llega con su frase.** Exigía que el aspa roja existiera
+SÓLO mientras sonaba su frase. Eso contradice la regla de sólo agregar: el
+renglón tachado es un renglón más del cuaderno y sigue tachado al acabar la
+clase. Ahora comprueba el ORDEN —que el aspa no aparezca ANTES de que el tutor
+diga que se cancela—, que es lo que de verdad importaba.
+
+**R4-01 — la pizarra no adelanta el ejercicio.** Admitía una línea por delante
+de la voz: la que el tutor está produciendo. La cancelación son ahora dos
+renglones que el motor escribe seguidos, así que el compás son dos. Tres sigue
+siendo adelantar, y eso es lo que mide.
+
+**OBS-12 — el hilo conserva el procedimiento.** Contaba los renglones de la
+PRIMERA columna. Cuando el hilo la llena, la de al lado pasa a continuarlo —lo
+fijó usted— y la primera puede quedarse con pocos sin que falte nada. Ahora
+cuenta el hilo entero, que es lo que no puede perderse.
+
+Y una de verdad, que estaba mal desde hacía rondas: **OBS-05** daba por mala la
+letra de los comentarios. Pedía Inter o Segoe UI, pero la sans-serif base de la
+interfaz es Montserrat, y es la que usa el comentario —que es justo lo que usted
+pidió: «la misma familia sans-serif, la sans-serif base de la interfaz»—. Eran
+10 fallos por corrida sobre una pizarra correcta. Ya no.
+
+### Y un marco que mordía la respuesta
+
+Al añadir el «Resultado:» de la factorización, el renglón se compactó y la
+cápsula verde de `x² − 9 = (x − 3)(x + 3)` acabó cortando el primer paréntesis.
+La cápsula cede sitio a lo que tenga al lado —4 px de aire—, pero cedía sin
+límite: pasado el borde de la respuesta, dejaba de rodearla. Ahora el aire es
+una cortesía y rodear el resultado no: entre rozar al vecino y partir la
+respuesta, roza al vecino.
+
+### Las baterías
+
+| Batería | Resultado |
+|---|---|
+| `qa/hito2.mjs` | 841 · **0** |
+| `qa/rigor.mjs` | 34.195 afirmaciones · **0** incorrectas |
+| `qa/leccion.mjs` | 832 · **0** |
+| `qa/qa.mjs` | 1.465 · **0** |
+| `qa/aceptacion.mjs` | **24/24** |
+| `qa/mandos.mjs` | 19 · **0** |
+| `qa/voz.mjs` | 13 · **0** |
+| `qa/barrido.mjs` | 200 sesiones · 1.800 turnos · **0** violaciones |
+| `qa/observaciones.mjs` · **R9-01** | 1.995 · **verde** (roja sobre la versión anterior) |
+| `qa/observaciones.mjs` · **R9-02** | 1.995 · **verde** |
+| `qa/observaciones.mjs` · **R8-01** (sólo agregar) | 1.995 · **verde** |
+| `qa/observaciones.mjs` · **R7-01** (sin agujeros) | 6.371 · **verde** |
+| `qa/observaciones.mjs` · **SUB-PIZ-02** | 28.871 · **verde** |
+
+### Lo que sigue en rojo, y no es de esta ronda
+
+| Regla | Qué mide | Fallos |
+|---|---|---|
+| SUB-PRJ-03 | tamaños proyectando | 129 |
+| OBS-06 | «Ejercicio:» ≥ 20 px proyectando | 71 |
+| R2-04 | la tarjeta de regla, no por debajo de la escala compacta | 5 |
+| OBS-13 | ni «/» ni «*» en el texto visible | 1 |
+| `qa/navegador.mjs` | tres tamaños proyectando | 3 |
+
+Son los mismos de las rondas #78–#82, verificados otra vez apartando los cambios.
+Todos son de TAMAÑO AL PROYECTAR, y conviene mirarlos juntos: se arreglan con una
+sola decisión sobre la escala de proyección, no con siete parches. Quedan
+anotados para que decida.
+
+De la lista anterior han salido cuatro: **OBS-05** (la letra de los comentarios,
+10 fallos por corrida sobre una pizarra correcta), **OBS-12**, **OBS-14** y
+**R4-01**.

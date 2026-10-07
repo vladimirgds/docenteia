@@ -45,7 +45,7 @@ import {
   reglasDeRevelado,
   situacionParaNarracion,
 } from "../lib/leccion/animacion.ts";
-import { PSELight } from "../public/pseLight.js";
+import { PSELight, flattenLSG } from "../public/pseLight.js";
 import { cuentaDeArrayLatex, marcasDeColumna, leerSumaOResta } from "../lib/leccion/columna.ts";
 import { cierreDelDesarrollo } from "../lib/leccion/cierre.ts";
 import {
@@ -1988,6 +1988,90 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
       })(),
       ev.filter((e) => e.d.tipo === "pizarra" && e.d.accion === "escribir" && e.d.ambiente !== 2 && e.d.papel !== "explicacion").map((e) => e.d.contenido).join(" · "),
     );
+    // ── UN COMENTARIO, UN RENGLÓN (el "ambiente 1" que dibujó el cliente) ─────
+    //
+    // «Te adjunto cómo debe visualizarse el ambiente 1 de la pizarra: primero se
+    // dice qué se hará textualmente, y una línea más abajo se muestra
+    // numéricamente. NO SE BORRA, NI SE SUBE NADA.»
+    //
+    // Su dibujo, renglón a renglón:
+    //
+    //   Por propiedad distributiva:   2x + 6 = 16
+    //   Restamos 6:                   2x + 6 - 6 = 16 - 6
+    //   Se cancelan:                  2x + 6̶ - 6̶ = 16 - 6
+    //   Nos queda:                    2x = 10
+    //   Dividimos entre 2:            2x/2 = 10/2
+    //   Resultado:                    x = 5
+    //
+    // Así que la regla no es "que haya comentarios", es que se EMPAREJEN: cada
+    // comentario con el renglón de debajo, y ningún renglón sin el suyo encima.
+    // Dos comentarios seguidos dejan uno sin línea; dos ecuaciones seguidas
+    // dejan una sin rótulo. Se comprueba sobre el hilo —ambiente 1— de varias
+    // formas de ecuación, no sólo de la que mandó el cliente.
+    for (const ejercicio of [
+      "2(x + 3) = 16",
+      "2x + 5 = 15",
+      "x + 5 = 12",
+      "5x - 7 = 2x + 5",
+      "3(2x - 1) + 4 = 5x + 9",
+    ]) {
+      const hilo = flattenLSG(desgloseDelEjercicioLSG({ ejercicio, tema: "lineal" }))
+        .filter((d) => d.tipo === "pizarra" && d.ambiente !== 2)
+        .map((d) => ({
+          texto: String(d.contenido ?? "").trim(),
+          comentario: d.papel === "explicacion",
+        }))
+        .filter((l) => l.texto);
+      // El primer renglón es el enunciado: lo encabeza el rótulo "Ejercicio:" de
+      // la propia pizarra, que no viaja como directiva.
+      const cuerpo = hilo.slice(1);
+      const sueltos = cuerpo.filter(
+        (l, i) => l.comentario && !(cuerpo[i + 1] && !cuerpo[i + 1].comentario),
+      );
+      check(
+        `[${ejercicio}] cada comentario tiene su renglón justo debajo`,
+        sueltos.length === 0,
+        sueltos.map((l) => l.texto).join(" · "),
+      );
+      const sinRotulo = cuerpo.filter((l, i) => !l.comentario && !(i > 0 && cuerpo[i - 1].comentario));
+      check(
+        `[${ejercicio}] y cada renglón su comentario justo encima`,
+        sinRotulo.length === 0,
+        sinRotulo.map((l) => l.texto).join(" · "),
+      );
+    }
+    // Y EL EMPAREJADO EXACTO QUE DIBUJÓ EL CLIENTE, palabra por palabra.
+    check(
+      "el ambiente 1 de 2(x + 3) = 16 es, renglón a renglón, el del informe",
+      (() => {
+        const hilo = flattenLSG(desgloseDelEjercicioLSG({ ejercicio: "2(x + 3) = 16", tema: "lineal" }))
+          .filter((d) => d.tipo === "pizarra" && d.ambiente !== 2)
+          .map((d) => String(d.contenido ?? "").trim().replace(/\s+/g, " "))
+          .filter(Boolean);
+        return (
+          JSON.stringify(hilo) ===
+          JSON.stringify([
+            "2(x + 3) = 16",
+            "Por propiedad distributiva:",
+            "2x + 6 = 16",
+            "Restamos 6:",
+            "2x + 6 - 6 = 16 - 6",
+            "Se cancelan:",
+            "2x + 6 - 6 = 16 - 6",
+            "Nos queda:",
+            "2x = 10",
+            "Dividimos entre 2:",
+            "2x/2 = 10/2",
+            "Resultado:",
+            "x = 5",
+          ])
+        );
+      })(),
+      flattenLSG(desgloseDelEjercicioLSG({ ejercicio: "2(x + 3) = 16", tema: "lineal" }))
+        .filter((d) => d.tipo === "pizarra" && d.ambiente !== 2)
+        .map((d) => String(d.contenido ?? "").trim())
+        .join(" · "),
+    );
     check(
       "la frase que tacha es la MISMA en el motor y en la pizarra: si no, se tacharía a destiempo",
       locucionCancelacion("2x + 6 = 16") ===
@@ -3025,10 +3109,14 @@ titulo("A00a1e. El motor entrega el paso etiquetado, y la pizarra lo usa");
     ["división", () => divisionResueltaLSG({ concepto: true }), 3],
     ["fracciones", () => fraccionResueltaLSG({ concepto: true, nivel: "normal" }), 2],
     ["fracciones con denominadores distintos", () => fraccionResueltaLSG({ concepto: true, nivel: "dificil" }), 4],
-    // Cinco: la resta escrita, la resta tachada, la división escrita, su
-    // resultado y el cierre. Todo lo que el tutor nombra queda etiquetado, que
-    // es lo que permite a la pizarra seguirlo frase a frase.
-    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 5],
+    // Seis: el enunciado, la resta escrita LIMPIA, la misma resta TACHADA, la
+    // división escrita, su resultado y el cierre. Todo lo que el tutor nombra
+    // queda etiquetado, que es lo que permite a la pizarra seguirlo frase a
+    // frase. Eran cinco mientras los dos tiempos de la cancelación compartían
+    // renglón; desde que el cliente pidió un comentario por renglón —«Restamos
+    // 6:» encima de la resta, «Se cancelan:» encima de la tachada— son dos
+    // renglones distintos y los dos llevan su etiqueta.
+    ["ecuaciones lineales", () => linealResueltaLSG({ concepto: true }), 6],
     ["derivadas", () => derivadaResueltaLSG({ concepto: true }), 1],
     ["factorización", () => factorizacionResueltaLSG({ concepto: true }), 1],
   ];
@@ -6015,9 +6103,30 @@ titulo("A55. Alex.pdf: el reparto sub-paso a sub-paso, sin hueco y sin recortar"
       )?.[0] ?? "",
     ),
   );
+  // El comentario encabeza SU renglón. Dos comentarios seguidos significan que
+  // uno se ha quedado sin línea debajo —y el cliente lo pidió al revés: «primero
+  // se dice qué se hará textualmente, y una línea más abajo se muestra
+  // numéricamente»—. Se mira el hilo emitido, no el código que lo emite.
   check(
-    "el comentario se escribe justo antes de contarlo, no un paso antes",
-    /if \(s.explica\) dir.push\(explicaEnPizarra\(s.explica\)\);/.test(motor),
+    "el comentario se escribe justo antes de su renglón: nunca dos comentarios seguidos",
+    (() => {
+      for (const [ejercicio, tema] of [
+        ["2(x + 3) = 16", "lineal"],
+        ["x + 5 = 12", "lineal"],
+        ["5x - 7 = 2x + 5", "lineal"],
+        ["3(2x - 1) + 4 = 5x + 9", "lineal"],
+        ["1/2 + 1/3 = ?", "fraccion"],
+        ["3/5 + 1/5 = ?", "fraccion"],
+      ]) {
+        const hilo = flattenLSG(desgloseDelEjercicioLSG({ ejercicio, tema })).filter(
+          (d) => d.tipo === "pizarra" && d.ambiente !== 2,
+        );
+        for (let i = 1; i < hilo.length; i++) {
+          if (hilo[i].papel === "explicacion" && hilo[i - 1].papel === "explicacion") return false;
+        }
+      }
+      return true;
+    })(),
   );
 }
 

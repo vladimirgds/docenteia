@@ -116,17 +116,36 @@ function instalarMirador() {
   window.__mirar = () => {
     const activo = document.querySelector('.pz-elemento[data-estado="activa"]');
     const pie = activo?.querySelector(".pz-pie");
+    // EL TEXTO DEL RENGLÓN, SIN LAS REGLAS QUE LO DESTAPAN. Cada paso animado
+    // lleva dentro un <style> con las reglas `pz-rev-*`, y `textContent` las
+    // devolvía primero: los 60 caracteres que miraba este mirador eran CSS, el
+    // mismo para todos los renglones, así que la línea activa parecía no
+    // cambiar nunca y «Avanzar» no se notaba aunque la clase avanzara.
+    const limpio = activo ? activo.cloneNode(true) : null;
+    limpio?.querySelectorAll("style, .katex-mathml").forEach((n) => n.remove());
     return {
       dicho: window.__dicho ?? [],
       avatar: document.querySelector("svg[data-estado]")?.getAttribute("data-estado") ?? "",
       rotulo: (document.querySelector("svg[data-estado]")?.parentElement?.textContent ?? "").trim().slice(0, 40),
       // Por dónde va la pizarra: qué línea está activa y qué dice su pie.
-      lineaActiva: (activo?.textContent ?? "").replace(/\s+/g, "").slice(0, 60),
+      //
+      // CON SU GESTO. Los dos tiempos de una cancelación escriben la MISMA
+      // ecuación en dos renglones —"2x + 6 - 6 = 16 - 6" limpia bajo «Restamos
+      // 6:» y tachada bajo «Se cancelan:»—, así que por su texto no se
+      // distinguen: «Avanzar» pasaba del uno al otro y el mirador leía lo mismo.
+      lineaActiva:
+        (limpio?.textContent ?? "").replace(/\s+/g, "").slice(0, 60) +
+        "|" +
+        (activo?.querySelector("[data-gesto]")?.getAttribute("data-gesto") ?? ""),
       // La frase del tutor: bajo el avatar en la pizarra de clase, bajo el paso
       // al proyectar. Se mira donde esté, que es lo que hace que «Avanzar» se
       // note aunque no cambie ninguna marca.
       pie: (pie?.textContent || document.querySelector(".pz-subtitulo")?.textContent || "").trim(),
-      marcas: document.querySelectorAll(".pz-resaltado").length,
+      // Y CON SU TIPO: dos cajas y dos aspas son dos marcas en los dos casos.
+      marcas: [...document.querySelectorAll(".pz-resaltado")]
+        .map((r) => r.getAttribute("data-tipo") ?? "")
+        .sort()
+        .join(",") || String(document.querySelectorAll(".pz-resaltado").length),
       lineas: document.querySelectorAll(".pz-elemento").length,
       pregunta: Boolean(document.querySelector(".pz-pregunta")),
       veredicto: (document.querySelector(".pz-veredicto")?.textContent ?? "").trim(),
@@ -249,18 +268,62 @@ check(
 );
 
 // ── 2. AVANZAR: adelanta un paso sin esperar a la voz ────────────────────────
+//
+// SE PRUEBA EL MANDO, NO EL INSTANTE EN QUE SE PAUSÓ.
+//
+// «Avanzar» mueve el puntero del aula por lo que hay DIBUJADO. La clase se para
+// donde se para, y hay instantes —los de la pausa de lectura, con el tutor
+// recién callado sobre el último renglón escrito— en los que la pizarra ya está
+// en el último paso de lo dibujado: ahí el mando no tiene adónde ir, y eso no
+// dice nada de él. Antes esto pasaba o fallaba según dónde cayera la pausa.
+//
+// Así que se mira el contador que la propia pizarra enseña —"Paso 2 de 2 ·
+// línea 1 de 3"—: si queda paso por delante, «Avanzar» TIENE que moverla; si no
+// queda, se dice y no se exige nada imposible.
 console.log("\n── Avanzar ──");
-const antesDeAvanzar = await mirar(p);
+const igual = (a, b) =>
+  a.pie === b.pie && a.lineaActiva === b.lineaActiva && a.marcas === b.marcas && a.lineas === b.lineas;
+const contador = () =>
+  p.evaluate(() => {
+    const texto =
+      [...document.querySelectorAll("*")]
+        .map((e) => (e.childElementCount === 0 ? (e.textContent ?? "") : ""))
+        .find((t) => /^\s*Paso \d+ de \d+/.test(t)) ?? "";
+    const paso = texto.match(/Paso (\d+) de (\d+)/);
+    const linea = texto.match(/línea (\d+) de (\d+)/);
+    return {
+      texto: texto.trim(),
+      quedaPorDelante: Boolean(
+        (paso && Number(paso[1]) < Number(paso[2])) || (linea && Number(linea[1]) < Number(linea[2])),
+      ),
+    };
+  });
+// Y SE BUSCA UN MOMENTO EN EL QUE SÍ QUEDE PASO POR DELANTE: se deja correr la
+// clase un poco y se vuelve a parar, hasta cuatro veces. Así el mando se ejerce
+// de verdad en la mayoría de las corridas, en vez de darse por bueno siempre.
+let antesDeAvanzar = await mirar(p);
+let dondeEstaba = await contador();
+for (let intento = 0; intento < 3 && !dondeEstaba.quedaPorDelante; intento++) {
+  await pulsar(p, /^Reanudar$/);
+  await p.waitForTimeout(1300);
+  await pulsar(p, /^Pausa$/);
+  await p.waitForTimeout(500);
+  antesDeAvanzar = await mirar(p);
+  dondeEstaba = await contador();
+}
 const avanzo = await pulsarEnLaPizarra(p, "Avanzar");
 check("el mando «Avanzar» existe y se puede pulsar", avanzo);
 await p.waitForTimeout(900);
 const trasAvanzar = await anotar();
+console.log(
+  dondeEstaba.quedaPorDelante
+    ? `    (quedaba paso por delante: «${dondeEstaba.texto}»)`
+    : `    (la pizarra estaba en el último paso de lo dibujado: «${dondeEstaba.texto}»)`,
+);
 check(
-  "«Avanzar» mueve la clase un paso: cambia lo resaltado o la línea activa",
-  trasAvanzar.pie !== antesDeAvanzar.pie ||
-    trasAvanzar.lineaActiva !== antesDeAvanzar.lineaActiva ||
-    trasAvanzar.marcas !== antesDeAvanzar.marcas,
-  `pie «${antesDeAvanzar.pie.slice(0, 30)}» → «${trasAvanzar.pie.slice(0, 30)}» · marcas ${antesDeAvanzar.marcas} → ${trasAvanzar.marcas}`,
+  "«Avanzar» mueve la clase un paso cuando queda paso por delante",
+  !dondeEstaba.quedaPorDelante || !igual(antesDeAvanzar, trasAvanzar),
+  `«${dondeEstaba.texto}» · marcas ${antesDeAvanzar.marcas} → ${trasAvanzar.marcas} · línea «${antesDeAvanzar.lineaActiva.slice(0, 36)}» → «${trasAvanzar.lineaActiva.slice(0, 36)}» · renglones ${antesDeAvanzar.lineas} → ${trasAvanzar.lineas}`,
 );
 
 // ── 3. REPETIR PASO: vuelve a decir lo mismo ─────────────────────────────────

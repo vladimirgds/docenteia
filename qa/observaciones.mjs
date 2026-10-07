@@ -68,6 +68,13 @@
 //   R8-01  La pizarra SÓLO AÑADE (append-only): ningún renglón ya escrito cambia
 //          de texto ni desaparece. «Ninguna ecuación canónica intermedia puede
 //          desaparecer de la pantalla» (alex.pdf).
+//   R9-01  Un comentario, un renglón: en el Ambiente 1 cada texto lleva su
+//          ecuación justo debajo, y ninguna ecuación se queda sin el comentario
+//          de encima. «Primero se dice qué se hará textualmente, y una línea más
+//          abajo se muestra numéricamente.»
+//   R9-02  «Ni se sube nada»: ningún renglón ya escrito acaba por encima del
+//          borde de su columna, es decir, fuera de la pantalla. Que no cambie ni
+//          desaparezca es R8-01.
 //   R7-01  Ninguna ecuación con un agujero: lo que aún no se ha destapado no
 //          reserva sitio («2x + 6 ␣␣ = 16», alex.pdf).
 //   R7-02  Y el marco de la respuesta no separa el igual del número: lo dibuja
@@ -324,11 +331,20 @@ function instalarMedidor() {
       // "2x + 6 − 6 = 16 − 6" tachada— enseñan lo mismo siendo renglones
       // distintos, y los dos tienen que quedarse (el cliente lo pidió así).
       pasos: [...document.querySelectorAll(".pz-elemento")].map((e) => {
+        // CON SU GESTO. Los dos tiempos de una cancelación escriben la MISMA
+        // ecuación en dos renglones —limpia bajo «Restamos 6:» y tachada bajo
+        // «Se cancelan:»—, que es como lo dibujó el cliente. Sin el gesto, ese
+        // par se leía como un paso escrito dos veces.
+        // Los COMENTARIOS no cuentan como pasos escritos: son rótulos, y un
+        // ejercicio que cancela dos veces escribe «Se cancelan:» dos veces, una
+        // encima de cada renglón. Que ninguno quede suelto lo mira R9-01.
+        if (e.getAttribute("data-papel") === "comentario") return "";
+        const gesto = e.querySelector("[data-gesto]")?.getAttribute("data-gesto") ?? "";
         const dePanel = e.querySelector("[data-texto]")?.getAttribute("data-texto");
-        if (dePanel) return dePanel.replace(/\s+/g, "");
+        if (dePanel) return `${dePanel.replace(/\s+/g, "")}|${gesto}`;
         const c = e.cloneNode(true);
         c.querySelectorAll(".katex-mathml, .pz-pie, style").forEach((n) => n.remove());
-        return (c.textContent ?? "").replace(/\s+/g, "");
+        return `${(c.textContent ?? "").replace(/\s+/g, "")}|${gesto}`;
       }),
       resaltados: document.querySelectorAll(".pz-resaltado").length,
       textoProyeccion: proy ? textoVisible(document.querySelector(".modo-proyeccion")) : null,
@@ -360,6 +376,11 @@ function instalarMedidor() {
       // R4-01: lo que la pizarra pinta sin haberlo explicado todavía. El cliente
       // fotografió el Ambiente 2 con las tres ecuaciones del ejercicio a la vez.
       pendientes: [...document.querySelectorAll('.pz-elemento[data-estado="pendiente"]')].filter(visible).length,
+      // Y CUÁLES: un recuento a secas no dice si la pizarra adelanta el final o
+      // si el puntero se ha quedado atrás y lo ya contado figura como futuro.
+      pendientesTexto: [...document.querySelectorAll('.pz-elemento[data-estado="pendiente"]')]
+        .filter(visible)
+        .map((e) => (e.textContent ?? "").replace(/\s+/g, "").slice(0, 20)),
       terminada: Boolean(document.querySelector("[data-terminada='si']")),
       // R4-02: si hay tachado en la pizarra, con qué frase se está diciendo.
       tachados: [...document.querySelectorAll('.pz-elemento[data-estado="activa"] .pz-resaltado[data-tipo="tachado"]')].filter(visible).length,
@@ -379,17 +400,26 @@ function instalarMedidor() {
       verdesIntermedios: [],
       repartoFueraDeSitio: null,
       agujeros: [],
-      // R8-01: el texto de cada renglón del hilo, para seguir que no cambie.
+      // R8-01 / R9-01 / R9-02: cada renglon del HILO con lo que dice, si es
+      // comentario y donde esta dentro de su columna. Con eso se sigue que no
+      // cambie (R8-01), que cada comentario tenga su ecuacion justo debajo
+      // (R9-01) y que ningun renglon suba de sitio (R9-02).
       hilo: [...document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .pz-elemento')]
         .filter(visible)
         .map((e) => {
           const c = e.cloneNode(true);
           c.querySelectorAll('.katex-mathml, style, .pz-pie, .pz-etiqueta, svg').forEach((n) => n.remove());
-          return (c.textContent ?? "")
-            .normalize("NFKD")
-            .replace(/[\u200b-\u200d\ufeff]/g, "")
-            .replace(/[\u2212\u2013\u2014]/g, "-")
-            .replace(/\s+/g, "");
+          const columna = e.closest(".pz-ambiente");
+          return {
+            t: (c.textContent ?? "")
+              .normalize("NFKD")
+              .replace(/[\u200b-\u200d\ufeff]/g, "")
+              .replace(/[\u2212\u2013\u2014]/g, "-")
+              .replace(/\s+/g, ""),
+            pap: e.getAttribute("data-papel") ?? "",
+            col: columna ? [...document.querySelectorAll(".pz-ambiente")].indexOf(columna) : -1,
+            y: Math.round(e.getBoundingClientRect().top - (columna?.getBoundingClientRect().top ?? 0)),
+          };
         }),
       // R5-04 / R5-05: el orden dentro de cada bloque y la tipografía del comentario.
       ordenInvertido: [],
@@ -621,7 +651,12 @@ function instalarMedidor() {
         const esperada = enFormula
           ? /KaTeX/
           : esComentario
-            ? /sans-serif|Inter|Segoe UI|system-ui/i
+            // La sans-serif BASE de la interfaz es Montserrat (app/layout.tsx);
+            // Inter es la del diálogo del tutor. La lista no la nombraba y daba
+            // por mala la letra correcta: el comentario sale en la base, que es
+            // lo que pidió el cliente —«la misma familia sans-serif, la
+            // sans-serif base de la interfaz»—.
+            ? /Montserrat|sans-serif|Inter|Segoe UI|system-ui/i
             : rol === "TUTOR_DIALOG"
               ? /^"?(Inter|Segoe UI)/
               : rol === "BOARD_LABEL" || el.closest(".pz-palabra")
@@ -1092,6 +1127,9 @@ const pulsar = async (p, nombre) => {
 };
 
 /** Las comprobaciones que valen en CUALQUIER instante de la clase. */
+/** R4-02: en qué clases el tutor ya ha dicho que se cancela (el aspa se queda). */
+const seCancelo = new Set();
+
 function comprobarSiempre(m, clase) {
   verificar("OBS-13", "ni «/» ni «*» en el texto visible", m.barras.length === 0, m.barras.join(" · "));
   verificar("OBS-05", "todo texto de la pizarra lleva su rol semántico", m.sinRol.length === 0, m.sinRol.slice(0, 4).join(" · "));
@@ -1228,27 +1266,40 @@ function comprobarSiempre(m, clase) {
     verificar("R3-04", "el MCM se queda en el borrador, que es donde van los cálculos de apoyo", m.mcm.ambiente === "2", JSON.stringify(m.mcm));
   }
 
-  // R4-01: LA PIZARRA NO ADELANTA NADA. Mientras la clase no ha terminado, no
-  // puede haber en la pizarra una línea que el tutor todavía no ha explicado:
-  // eso es lo que llenaba el Ambiente 2 de ecuaciones y lo llenaba de barras.
+  // R4-01: LA PIZARRA NO ADELANTA EL EJERCICIO. Mientras la clase no ha
+  // terminado, no puede estar pintado lo que el tutor no ha explicado: eso es lo
+  // que el cliente fotografió, el Ambiente 2 con las tres ecuaciones a la vez.
+  //
+  // Lo que sí puede estar escrito es el COMPÁS que el tutor está produciendo. La
+  // pizarra va una línea por delante de la voz a propósito —si no, la ecuación
+  // que se acaba de decir se esconde y deja un hueco—, y desde que la
+  // cancelación son dos renglones —la resta escrita y la resta tachada, que el
+  // motor escribe seguidos con un solo respiro entre ellos— ese compás son dos.
+  // Tres ya sería adelantar.
   verificar(
     "R4-01",
     "no hay pasos futuros pintados en la pizarra: sólo lo ya explicado",
-    m.terminada || m.pendientes === 0,
-    `${m.pendientes} pendientes a la vista (${clase})`,
+    m.terminada || m.pendientes <= 2,
+    `${m.pendientes} pendientes a la vista: ${(m.pendientesTexto ?? []).join(" · ")} — se decía «${(m.pieActivo ?? "").slice(0, 40)}» (${clase})`,
   );
 
-  // R4-02: EL TACHADO LLEGA CON SU FRASE. En la línea que se está explicando no
-  // puede haber un aspa roja mientras la voz aún no ha dicho que se cancela: el
-  // paso se cuenta en dos tiempos —se escribe la resta, y después se tacha—.
+  // R4-02: EL TACHADO LLEGA CON SU FRASE, NO ANTES. El paso se cuenta en dos
+  // tiempos —se escribe la resta y después se tacha—, así que no puede haber un
+  // aspa roja mientras la voz aún no ha dicho que se cancela.
+  //
+  // Y DESPUÉS SE QUEDA. Antes se exigía que el aspa sólo existiera MIENTRAS sonaba
+  // su frase, y eso ya no vale: «solo agregar, nunca sobreescribir ni eliminar».
+  // El renglón tachado es un renglón más del cuaderno y sigue tachado al acabar
+  // la clase. Lo que se comprueba es el orden: que la frase haya sonado ya.
   if (m.tachados > 0) {
     verificar(
       "R4-02",
-      "el tachado rojo sólo aparece cuando el tutor está diciendo que se cancela",
-      /cancel/i.test(m.pieActivo ?? ""),
+      "el tachado rojo no aparece antes de que el tutor diga que se cancela",
+      seCancelo.has(clase) || /cancel/i.test(m.pieActivo ?? ""),
       `«${(m.pieActivo ?? "").slice(0, 70)}» (${clase})`,
     );
   }
+  if (/cancel/i.test(m.pieActivo ?? "")) seCancelo.add(clase);
 
   // R5-01: NINGUNA ECUACIÓN SE PARTE EN DOS RENGLONES.
   //
@@ -1673,14 +1724,84 @@ async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reinicia
         // porque se AÑADEN encima y no cambian lo escrito.
         const ahora = m.hilo ?? [];
         const mutados = [];
+        const subidos = [];
         for (let i = 0; i < Math.min(escrito.length, ahora.length); i++) {
-          if (escrito[i] !== ahora[i]) mutados.push(`[${i}] «${escrito[i].slice(0, 22)}» → «${ahora[i].slice(0, 22)}»`);
+          const antes = escrito[i];
+          const hoy = ahora[i];
+          if (antes.t !== hoy.t) mutados.push(`[${i}] «${antes.t.slice(0, 22)}» → «${hoy.t.slice(0, 22)}»`);
+          // «NI SE SUBE NADA»: lo escrito no se va por arriba. Que un renglón
+          // cambie de altura NO es eso: la pizarra encoge la escala y el aire
+          // entre renglones para que todo siga cabiendo —lo pidió el cliente
+          // cronometrando el vídeo, «la acumulación de pasos empuja el contenido
+          // hacia arriba, provocando que el encabezado desaparezca del área
+          // visible»—, y al encoger, lo de debajo sube un poco y SIGUE A LA
+          // VISTA. Lo que no puede pasar es que acabe por encima del borde de su
+          // columna, que es irse de la pantalla. Que no cambie ni desaparezca lo
+          // vigila R8-01, renglón por renglón.
+          else if (hoy.y < -1) {
+            subidos.push(`[${i}] «${hoy.t.slice(0, 18)}» a ${hoy.y}px del borde de su columna`);
+          }
         }
         verificar(
           "R8-01",
           "la pizarra sólo añade: ningún renglón ya escrito cambia de texto",
           mutados.length === 0,
           `${mutados.slice(0, 2).join(" · ")} (${clase})`,
+        );
+        verificar(
+          "R9-02",
+          "«ni se sube nada»: ningún renglón escrito se va por encima de su columna",
+          subidos.length === 0,
+          `${subidos.slice(0, 2).join(" · ")} (${clase})`,
+        );
+        // R9-01: UN COMENTARIO, UN RENGLÓN. «Primero se dice qué se hará
+        // textualmente, y una línea más abajo se muestra numéricamente.» En el
+        // hilo, todo comentario tiene su ecuación justo debajo —en su misma
+        // columna— y ninguna ecuación se queda sin el comentario de encima.
+        // El primero de cada columna puede ser una ecuación: el enunciado lleva
+        // su propio rótulo ("Ejercicio: …") y un relevo de columna parte el
+        // bloque por la mitad.
+        const esPaso = (l) => l && (l.pap === "paso" || l.pap === "cierre");
+        const esComentario = (l) => l?.pap === "comentario";
+        const sueltos = [];
+        for (let i = 0; i < ahora.length; i++) {
+          const l = ahora[i];
+          const sig = ahora[i + 1];
+          const prev = ahora[i - 1];
+          // Un comentario sin su ecuación debajo, en la misma columna.
+          // Mientras el comentario es el ÚLTIMO renglón escrito, su ecuación
+          // viene en camino: se escribe el texto y a continuación la línea. Lo
+          // que no puede pasar es que detrás venga otra cosa.
+          if (esComentario(l) && sig && !(sig.col === l.col && !esComentario(sig))) {
+            sueltos.push(`sin renglón: «${l.t.slice(0, 24)}» → ${sig.pap}`);
+          }
+          // Un paso del desarrollo sin su comentario encima. El planteamiento no
+          // cuenta —lo encabeza el rótulo "Ejercicio:" de la propia pizarra— ni
+          // el primero de una columna, que es la continuación de la anterior.
+          // Un renglón que trae su propio rótulo —"Resultado: 41" bajo una suma
+          // en columna— ya dice primero qué es y después el número: es el
+          // mismo orden, en una sola línea. La pizarra lo compone así desde el
+          // PMV 1, con el rótulo en ámbar y la cifra en blanco.
+          const traeRotulo = /^[^:]{1,30}:/.test(l.t);
+          // Y UNA CUENTA SUELTA TAMPOCO NECESITA COMENTARIO: "2 · 1 = 2" ya es
+          // lo que dice que es. Lo que el cliente dibujó —y lo que aquí se
+          // exige— es el desarrollo ALGEBRAICO: las líneas que llevan la
+          // incógnita o las fracciones del ejercicio. Una igualdad de enteros
+          // sueltos es el cálculo mismo, como «MCM(2, 3): 2 × 3 = 6» o
+          // «Resultado: 41», y la pizarra la escribe así desde el PMV 1.
+          const esCuentaSuelta = /^[\d\s+−⋅×*=().,-]+$/.test(l.t);
+          if (esPaso(l) && !traeRotulo && !esCuentaSuelta && i > 0 && prev.col === l.col && !esComentario(prev)) {
+            sueltos.push(`sin comentario: ${l.pap} «${l.t.slice(0, 30)}» tras ${prev.pap} «${prev.t.slice(0, 20)}»`);
+          }
+        }
+        if (sueltos.length && process.env.QA_HILO) {
+          console.log("    HILO: " + ahora.map((l) => `${l.pap}:${l.t.slice(0, 22)}`).join(" | "));
+        }
+        verificar(
+          "R9-01",
+          "un comentario, un renglón: cada texto lleva su ecuación justo debajo",
+          sueltos.length === 0,
+          `${sueltos.slice(0, 2).join(" · ")} (${clase})`,
         );
         if (ahora.length >= escrito.length) escrito = ahora;
       } else {
@@ -1818,7 +1939,13 @@ await darClase({
       // limpiarse o refrescarse para dar paso al siguiente cálculo auxiliar»—
       // lo que tiene que quedar entero al final es el HILO: planteamiento,
       // ecuaciones resultantes y la respuesta definitiva.
-      verificar("OBS-12", "al terminar, el hilo conductor conserva el procedimiento entero", (a.ambientes[0]?.elementos ?? 0) >= 2, `${a.ambientes.map((x) => x.elementos).join(" / ")}`);
+      // SE CUENTA EL HILO, NO LA PRIMERA COLUMNA DE LA PRIMERA PIZARRA MONTADA.
+      // Cuando el hilo llena el Ambiente 1, el de al lado pasa a continuarlo —lo
+      // fijó el cliente—, y entonces la primera columna puede quedarse con pocos
+      // renglones sin que falte ninguno. Lo que no puede perderse es el
+      // procedimiento, y eso es la suma de las columnas que hacen de hilo.
+      const delHilo = a.ambientes.filter((x) => x.papel !== "borrador").reduce((t, x) => t + x.elementos, 0);
+      verificar("OBS-12", "al terminar, el hilo conductor conserva el procedimiento entero", delHilo >= 2, `${a.ambientes.map((x) => x.elementos).join(" / ")}`);
     }],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
@@ -1916,7 +2043,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01", "R8-01"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01", "R8-01", "R9-01", "R9-02"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

@@ -31,6 +31,12 @@ import type { Escena, Foco, TipoFoco } from "./animacion.ts";
  * las que nombró el cliente —columna, factor, cancelación—; las otras tres son
  * gestos compuestos que tienen su propio dibujo.
  *
+ * `uniforme` y `cancelacion` son los DOS TIEMPOS de una misma operacion, y cada
+ * uno tiene su renglon: `uniforme` escribe la resta en los dos miembros y la
+ * enmarca —«Restamos 6:» → 2x + 6 - 6 = 16 - 6—; `cancelacion` vuelve a
+ * escribir esa misma linea con las aspas —«Se cancelan:»—. El cliente lo dibujo
+ * asi: un comentario por renglon, y los dos renglones a la vista al terminar.
+ *
  * `resultado` es el CIERRE del ejercicio: la respuesta final, enmarcada. Lo
  * pidió el cliente sin matices —"ningún ejercicio puede quedar inconcluso; el
  * último paso debe mostrar siempre el resultado final enmarcado"—, y es el
@@ -41,6 +47,7 @@ export type TipoOperacion =
   | "columna"
   | "factor"
   | "cancelacion"
+  | "uniforme"
   | "amplificacion"
   | "suma-fracciones"
   | "distributiva"
@@ -57,6 +64,7 @@ export const TIPOS_OPERACION: readonly TipoOperacion[] = [
   "columna",
   "factor",
   "cancelacion",
+  "uniforme",
   "amplificacion",
   "suma-fracciones",
   "distributiva",
@@ -108,6 +116,7 @@ const TRAZO: Record<TipoOperacion, TipoFoco> = {
   columna: "caja",
   factor: "caja",
   cancelacion: "tachado",
+  uniforme: "caja",
   amplificacion: "caja",
   "suma-fracciones": "caja",
   distributiva: "caja",
@@ -119,6 +128,7 @@ const NARRACION: Record<TipoOperacion, (terminos: string[]) => string> = {
   columna: (t) => `Operamos ${t.join(" y ") || "esta columna"}.`,
   factor: (t) => `Fíjate en ${t.join(" y ")}.`,
   cancelacion: (t) => `Se cancela ${t.join(" con ")}.`,
+  uniforme: (t) => `Lo mismo a los dos lados: ${t.join(" y ")}.`,
   amplificacion: (t) => `Multiplicamos arriba y abajo por el mismo número: ${t.join(" es ")}.`,
   "suma-fracciones": (t) => `Operamos los numeradores: ${t.join(" y ")}.`,
   distributiva: (t) => `Repartimos entre ${t.join(" y ")}.`,

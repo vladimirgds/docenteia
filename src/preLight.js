@@ -672,6 +672,14 @@ export function fraseCancelacionIncognita(_izquierdo, _derecho, _v) {
  * DOS denominadores. Tienen que ser la misma frase —qa/hito2.mjs lo comprueba—
  * porque el panel sigue a la voz comparando lo dicho con el pie de cada foco.
  */
+export function fraseCoeficienteDeLaIncognita(coeficiente, variable) {
+  // Gemela de la narración del foco `pz-coef-despeje` (lib/leccion/animacion.ts):
+  // la caja que enseña, sobre "2x = 10", la multiplicación que hay que deshacer.
+  // Tienen que ser la misma frase —qa/hito2.mjs lo comprueba— porque el aula
+  // sigue a la voz comparando lo dicho con el pie de cada foco.
+  return `La ${variable} está multiplicada por ${coeficiente}.`;
+}
+
 export function fraseDivisionEnDosLados(divisor) {
   // Forma: «Dividimos entre 2:» — sin «ambos miembros» (tachado por el cliente).
   return `Dividimos entre ${divisor}:`;
@@ -964,10 +972,29 @@ export function solveLinearSteps(text) {
     // escribe la división en los dos lados y en el renglón siguiente su
     // resultado, igual que con la multiplicación y con la resta.
     steps.push({
-      // CADA FRASE CUENTA LA LÍNEA QUE ESTÁ A LA VISTA, NO LA SIGUIENTE.
-      // Sobre "2x = 10" se nombra el coeficiente; el «Dividimos entre 2:»
-      // va con la fracción ya escrita.
-      explica: `La ${v} está multiplicada por ${fmt(Math.abs(coef))}:`,
+      // CADA FRASE ENCABEZA EL RENGLÓN QUE VIENE DEBAJO.
+      //
+      // «Primero se dice qué se hará textualmente, y una línea más abajo se
+      // muestra numéricamente.» El cliente lo dibujó así: «Dividimos entre 2:»
+      // y debajo la fracción. Antes esta frase nombraba el coeficiente de la
+      // línea de arriba —"La x está multiplicada por 2:"— y el «Dividimos entre
+      // 2:» caía DEBAJO de la fracción, rotulando el renglón equivocado.
+      // CON EL DIVISOR QUE SE ESCRIBE, signo incluido. "-x = -4" se divide entre
+      // -1 y el renglón de debajo lo escribe así —"-x/-1 = -4/-1"—, pero la
+      // frase decía "Dividimos entre 1:". Mientras caía debajo de la fracción
+      // era una incoherencia escondida; encabezándola, rotula el renglón con un
+      // número que no está en él. La escena de la pizarra ya nombraba el divisor
+      // escrito, así que además las dos frases vuelven a ser la misma.
+      explica: fraseDivisionEnDosLados(fmt(coef)),
+      // Y ANTES, LA FRASE QUE SEÑALA EL RENGLÓN DE ARRIBA.
+      //
+      // Sobre "2x = 10" hay una caja en el coeficiente —la multiplicación que
+      // hay que deshacer—, y se enciende cuando el tutor la nombra. Esa frase
+      // era el `explica` de este paso hasta que el cliente pidió que el
+      // comentario escrito encabezara el renglón de DEBAJO; al cambiarla, la
+      // caja se quedaba sin su momento. Así que se dice igual, aquí, con el
+      // renglón de arriba todavía a la vista, y el comentario viene después.
+      dicePrimero: fraseCoeficienteDeLaIncognita(fmt(coef), v),
       // COMO SE ESCRIBE EN CLASE: en fracción, no con el signo de dividir. Lo
       // pidió el cliente como regla general —"2x/2 = 10/2"—, y es además la
       // forma en que se ve la simplificación del coeficiente.
@@ -982,8 +1009,10 @@ export function solveLinearSteps(text) {
       },
     });
     steps.push({
-      // Forma: «Dividimos entre 2:». Misma frase que el panel.
-      explica: fraseDivisionEnDosLados(Math.abs(coef)),
+      // Y EL ÚLTIMO RENGLÓN SE ROTULA COMO LO ROTULÓ EL CLIENTE: «Resultado:».
+      // La frase de cierre —"¡Y listo! Resultado final: x = 5."— la dice el
+      // tutor a continuación; ésta es la etiqueta escrita, encima de su línea.
+      explica: "Resultado:",
       escribe: `${v} = ${answerStr}`,
       // El gesto sobre la línea ANTERIOR —la división escrita—: se señala el
       // número entre el que se divide, que ahí sí está escrito en los dos
@@ -993,7 +1022,7 @@ export function solveLinearSteps(text) {
       // REGLA GENERAL (no sólo el primer ejercicio): la cuenta de la división
       // también va al taller —igual que la cancelación y la distributiva—.
       apoyo: {
-        textoAuxiliar: `Por qué dividimos entre ${fmt(Math.abs(coef))}:`,
+        textoAuxiliar: `Por qué dividimos entre ${fmt(coef)}:`,
         calculoKaTeX: [
           `${xc(coef)}${v}/${fmt(coef)} = ${v}`,
           `${fmt(c - konst)}/${fmt(coef)} = ${answerStr}`,
@@ -1283,13 +1312,20 @@ function derivadaPasos(expr) {
   for (const term of terms) {
     const mm = term.match(/^([+-]?)(\d+(?:\.\d+)?)?[*·]?x(?:\^(-?\d+))?$/);
     if (!mm) {
-      pasos.push({ escribe: `${bonito(term)}  →  0`, explica: `El término ${bonito(term)} es una constante: no cambia, así que su derivada es 0.` });
+      pasos.push({
+        // El rótulo que encabeza su renglón: «primero se dice qué se hará
+        // textualmente, y una línea más abajo se muestra numéricamente».
+        rotulo: `El término ${bonito(term)}:`,
+        escribe: `${bonito(term)}  →  0`,
+        explica: `El término ${bonito(term)} es una constante: no cambia, así que su derivada es 0.`,
+      });
       continue;
     }
     const a = (mm[1] === "-" ? -1 : 1) * (mm[2] != null ? Number(mm[2]) : 1);
     const n = mm[3] != null ? Number(mm[3]) : 1;
     const d = computeDerivative("derivada de " + term) || "0";
     pasos.push({
+      rotulo: `El término ${bonito(term)}:`,
       escribe: `${bonito(term)}  →  ${d}`,
       explica: n === 1
         ? `En ${bonito(term)} la x está elevada a 1: el exponente baja a multiplicar y el nuevo exponente es 0, así que queda ${d}.`
@@ -1340,7 +1376,15 @@ function metodoDe(ejercicio, tema = "") {
 // Cada paso se escribe ANTES de contarlo y se sostiene con una pausa de lectura, como en las lecciones.
 // La última línea —la respuesta— va etiquetada como `resultado`: la pizarra la enmarca y la anuncia.
 const LECTURA = { tipo: "esperar", segundos: 1, lectura: true };
+/** El texto que encabeza un renglón del hilo (ver `explicaEnPizarra` en lsgPrompt.js). */
+const comentario = (texto) => ({
+  tipo: "pizarra",
+  accion: "escribir",
+  contenido: String(texto ?? "").trim(),
+  papel: "explicacion",
+});
 const lineaDeCierre = (contenido, respuesta, dicho) => [
+  comentario("Resultado:"),
   { tipo: "pizarra", accion: "escribir", contenido, operacion: { tipo: "resultado", terminosFoco: [String(respuesta)] }, narracion: dicho },
   { tipo: "hablar", texto: dicho },
   { ...LECTURA },
@@ -1376,6 +1420,7 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResulta
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: der.expr });
     directivas.push({ tipo: "hablar", texto: "Derivamos con la regla de la potencia: el exponente baja a multiplicar al coeficiente y al exponente le restamos 1. Si hay varios términos, se hace uno a uno." });
     for (const paso of der.pasos) {
+      if (paso.rotulo) directivas.push(comentario(paso.rotulo));
       directivas.push({ tipo: "pizarra", accion: "escribir", contenido: paso.escribe });
       directivas.push({ tipo: "hablar", texto: paso.explica }, { ...LECTURA });
     }
@@ -1390,6 +1435,7 @@ export function buildStepByStepLSG(ejercicio, respuesta, tema = "", { conResulta
   if (fac) {
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: fac.expr });
     directivas.push({ tipo: "hablar", texto: `Primero identificamos los dos cuadrados: ${fac.izq} y ${fac.der}.` });
+    directivas.push(comentario("Los dos cuadrados:"));
     directivas.push({ tipo: "pizarra", accion: "escribir", contenido: fac.reescrito });
     directivas.push({ tipo: "hablar", texto: "La regla de la diferencia de cuadrados dice que a² - b² se escribe como (a - b)(a + b)." }, { ...LECTURA });
     directivas.push(...lineaDeCierre(`${fac.expr} = ${fac.factor}`, fac.factor, `Resultado final: ${fac.expr} = ${fac.factor}.`));
@@ -1743,7 +1789,7 @@ function normalizeDirectivas(arr, counter, warnings, pasos, context) {
 // aquí porque este módulo es JavaScript de servidor y no importa la interfaz.
 // qa/hito2.mjs comprueba que las dos digan lo mismo.
 // `resultado` es el cierre del ejercicio: la respuesta final, que la pizarra enmarca con su visto.
-export const TIPOS_OPERACION = ["columna", "factor", "cancelacion", "amplificacion", "suma-fracciones", "distributiva", "resultado"];
+export const TIPOS_OPERACION = ["columna", "factor", "cancelacion", "uniforme", "amplificacion", "suma-fracciones", "distributiva", "resultado"];
 
 // ¿Está `termino` escrito en `texto` como término, y no como trozo de otro?
 // Misma regla que el marcador de la pizarra: el "5" no está en "15", ni el "1" en
