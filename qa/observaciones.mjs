@@ -65,6 +65,9 @@
 //          largo que sea el desarrollo (lo midió entre 0:49 y 0:58).
 //   R6-04  El puntero guía señala un solo sitio, y es el que la voz nombra.
 //   R6-05  El verde es de la respuesta: ningún resultado intermedio en verde.
+//   R8-01  La pizarra SÓLO AÑADE (append-only): ningún renglón ya escrito cambia
+//          de texto ni desaparece. «Ninguna ecuación canónica intermedia puede
+//          desaparecer de la pantalla» (alex.pdf).
 //   R7-01  Ninguna ecuación con un agujero: lo que aún no se ha destapado no
 //          reserva sitio («2x + 6 ␣␣ = 16», alex.pdf).
 //   R7-02  Y el marco de la respuesta no separa el igual del número: lo dibuja
@@ -376,6 +379,18 @@ function instalarMedidor() {
       verdesIntermedios: [],
       repartoFueraDeSitio: null,
       agujeros: [],
+      // R8-01: el texto de cada renglón del hilo, para seguir que no cambie.
+      hilo: [...document.querySelectorAll('.pz-ambiente[data-ambiente="1"] .pz-elemento')]
+        .filter(visible)
+        .map((e) => {
+          const c = e.cloneNode(true);
+          c.querySelectorAll('.katex-mathml, style, .pz-pie, .pz-etiqueta, svg').forEach((n) => n.remove());
+          return (c.textContent ?? "")
+            .normalize("NFKD")
+            .replace(/[\u200b-\u200d\ufeff]/g, "")
+            .replace(/[\u2212\u2013\u2014]/g, "-")
+            .replace(/\s+/g, "");
+        }),
       // R5-04 / R5-05: el orden dentro de cada bloque y la tipografía del comentario.
       ordenInvertido: [],
       comentarioSuelto: 0,
@@ -1625,6 +1640,8 @@ async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reinicia
   const hechos = new Set();
   let ejercicio = "";
   let ambiente1 = 0;
+  /** R8-01: lo que decía cada renglón del hilo la primera vez que se vio. */
+  let escrito = [];
   let muestras = 0;
 
   const correr = async (ms, ronda) => {
@@ -1647,9 +1664,29 @@ async function darClase({ clase, etapa, curso, tema, nivel, masDificil, reinicia
       if (enunciado && enunciado === ejercicio) {
         verificar("OBS-12", "el hilo conductor no se borra: lo escrito se queda escrito", n1 >= ambiente1, `${ambiente1} → ${n1} en «${enunciado}»`);
         ambiente1 = Math.max(ambiente1, n1);
+
+        // R8-01: APPEND-ONLY. «La pizarra funciona bajo el principio de sólo
+        // agregar, nunca sobreescribir ni eliminar». El cliente lo fotografió: la
+        // ecuación limpia "2x + 6 − 6 = 16 − 6" se borraba y la reemplazaba la
+        // versión tachada. Se sigue cada renglón por su posición y se compara con
+        // lo que decía la primera vez; los rótulos de las marcas no cuentan,
+        // porque se AÑADEN encima y no cambian lo escrito.
+        const ahora = m.hilo ?? [];
+        const mutados = [];
+        for (let i = 0; i < Math.min(escrito.length, ahora.length); i++) {
+          if (escrito[i] !== ahora[i]) mutados.push(`[${i}] «${escrito[i].slice(0, 22)}» → «${ahora[i].slice(0, 22)}»`);
+        }
+        verificar(
+          "R8-01",
+          "la pizarra sólo añade: ningún renglón ya escrito cambia de texto",
+          mutados.length === 0,
+          `${mutados.slice(0, 2).join(" · ")} (${clase})`,
+        );
+        if (ahora.length >= escrito.length) escrito = ahora;
       } else {
         ejercicio = enunciado;
         ambiente1 = n1;
+        escrito = m.hilo ?? [];
       }
 
       for (const [nombre, cond, alDisparar] of disparadores) {
@@ -1879,7 +1916,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01", "R8-01"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

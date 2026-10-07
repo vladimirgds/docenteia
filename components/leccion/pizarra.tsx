@@ -26,7 +26,7 @@ import {
   CLASE_EXPONENTE,
   lineaResaltada,
 } from "@/lib/leccion/destacar";
-import { escenaDeLinea, identidadDeEscena, type Escena } from "@/lib/leccion/animacion";
+import { elDestapadoEsPrestado, escenaDeLinea, identidadDeEscena, type Escena } from "@/lib/leccion/animacion";
 import { esCalculoAuxiliar, esGestoDeBorrador, repartirEnAmbientes, type PapelDelPaso } from "@/lib/leccion/ambientes";
 import { partirLaMasLarga } from "@/lib/leccion/ajuste";
 import { ROL, rol } from "@/lib/leccion/roles";
@@ -291,7 +291,19 @@ export function Pizarra({
       // cuanto la voz pasaba de ese punto, el filtro de lo ya explicado la
       // consideraba pendiente y la quitaba. El apoyo se escribe cuando el tutor
       // lo narra y se queda: no se sincroniza con nada, porque no es un paso.
-      const animable = escena != null && escena.focos.length > 0 && linea.ambiente !== 2;
+      // Y UNA LÍNEA NO ANIMA LO QUE VA A SOLTAR DESPUÉS (append-only).
+      //
+      // La ecuación limpia del hilo se escribía encima la operación que iba a
+      // recibir y luego se la quitaba: el cliente lo fotografió —«elimina la
+      // ecuación limpia y la reemplaza por la versión tachada»— y puso la regla,
+      // «solo agregar, nunca sobreescribir». Esa operación tiene su propio
+      // renglón, escrito a continuación y para quedarse; aquí la línea se pinta
+      // como lo que es, el resultado del paso anterior, y no se toca más.
+      const animable =
+        escena != null &&
+        escena.focos.length > 0 &&
+        linea.ambiente !== 2 &&
+        !elDestapadoEsPrestado(escena);
       let indiceGuion = -1;
       if (animable) {
         const candidato = indicePorIdentidad.get(identidadDeEscena(escena));
@@ -1181,6 +1193,11 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
  */
 function latexDeLaSubrutina(linea: LineaPizarra): string | null {
   const escena = escenaDeLinea(pasoDeLinea(linea), "pizarra");
+  // Y NO SE COMPONE LO QUE NO SE VA A ENSEÑAR. Una ecuación limpia del hilo ya no
+  // anima la operación que va a recibir —tiene renglón propio—, así que componerla
+  // con esa operación dentro, sólo que invisible, le dejaba el hueco reservado en
+  // medio: "2x + 6 ␣␣ = 16". Se compone como lo que es, la ecuación y nada más.
+  if (elDestapadoEsPrestado(escena)) return null;
   return escena.focos.length > 0 ? escena.latex : null;
 }
 

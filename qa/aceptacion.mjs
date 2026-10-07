@@ -47,6 +47,24 @@ const esLimpia = (s) => s && !/[a-z]{2,}/i.test(s) && !/(^|\s)[yoeu](\s|$)/i.tes
 function igualdades(texto) { const out = []; const cand = texto.match(/[0-9A-Za-z().²³⁴⁵⁶⁷⁸⁹^/*·×÷+\- ]*=[0-9A-Za-z().²³⁴⁵⁶⁷⁸⁹^/*·×÷+\-= ]*/g) || []; for (const c of cand) { const segs = c.split("=").map((s) => s.trim()).filter(Boolean); if (segs.length < 2 || !segs.every(esLimpia)) continue; for (let i = 0; i < segs.length - 1; i++) out.push([segs[i], segs[i + 1]]); if (segs.length >= 3) out.push([segs[0], segs[segs.length - 1]]); } return out; }
 const mismoValor = (a, b) => { const na = evalArith(a), nb = evalArith(b); return (na !== null && nb !== null) ? Math.abs(na - nb) < 1e-9 : canon(a) === canon(b); };
 
+// Una igualdad que se cumple PARA CUALQUIER x es una IDENTIDAD, no la afirmacion de un valor:
+// "2x/2 = x" dice como se SIMPLIFICA el lado izquierdo, igual que "5 - 5 = 0" o "10/2 = 5".
+// La leccion escribe las dos cosas sobre la misma expresion y las dos son ciertas: en el hilo
+// "2x/2 = 10/2" (la operacion aplicada a los dos lados) y en la tarjeta del taller "2x/2 = x"
+// (por que se puede dividir). El criterio (3) busca UNA EXPRESION CON DOS VALORES DISTINTOS,
+// y aqui no hay dos valores: hay un valor y una simplificacion. Sin distinguirlas, el
+// verificador daba por incoherente una pizarra correcta en las tres consultas cuyo ejercicio
+// se divide ("2x + 5 = 15"). Se comprueba de forma independiente: si los dos lados valen lo
+// mismo para x = 1, 2 y 3, la igualdad no depende de x y por tanto no asigna ningun valor.
+function esIdentidad(L, R) {
+  for (const x of [1, 2, 3]) {
+    const a = evalLinSide(L, x), b = evalLinSide(R, x);
+    if (a === null || b === null) return false;
+    if (Math.abs(a - b) > 1e-9) return false;
+  }
+  return true;
+}
+
 // ---------- réplica mínima de la clasificación del frontend (public/app.js) ----------
 const norm = (q) => q.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 const esSaludo = (q) => /^(hola|gracias|ok)\b/.test(norm(q));
@@ -101,7 +119,7 @@ function verificar(tema, r) {
   if (correcta === null) p.push(`respuesta no verificable ("${qt.slice(0, 40)}")`);
   // (3) pizarra ↔ voz
   const mapa = new Map();
-  for (const d of r.flat) { const src = d.tipo === "pizarra" ? "pizarra" : d.tipo === "hablar" ? "voz" : null; if (!src) continue; for (const [L, R] of igualdades(d.contenido || d.texto || "")) { const k = canon(L); if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push({ R, src }); } }
+  for (const d of r.flat) { const src = d.tipo === "pizarra" ? "pizarra" : d.tipo === "hablar" ? "voz" : null; if (!src) continue; for (const [L, R] of igualdades(d.contenido || d.texto || "")) { if (esIdentidad(L, R)) continue; const k = canon(L); if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push({ R, src }); } }
   for (const [L, arr] of mapa) for (let i = 1; i < arr.length; i++) if (!mismoValor(arr[0].R, arr[i].R)) { p.push(`PIZARRA≠VOZ: ${L}=${arr[0].R} vs ${arr[i].R}`); break; }
   // (4) práctica ≠ ejemplo resuelto
   if (ej && canon(r.boards[0] || "") === canon(ej)) p.push(`práctica IGUAL al ejemplo (${ej})`);

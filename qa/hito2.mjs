@@ -1939,14 +1939,31 @@ titulo("A00a1i. Revisión daa127d (2ª): fracción formal, cierre enmarcado, eje
     // tutor dice "restamos 6 en ambos lados" la pizarra ESCRIBE la resta (sin
     // tachar), y sólo al decir "a la izquierda se cancela +6 con -6" aparece el
     // tachado rojo. Dos frases, dos tiempos, en ese orden.
+    //
+    // Y SE ESCRIBE EN SU PROPIO RENGLÓN, QUE SE QUEDA. Antes la resta se dibujaba
+    // encima de la ecuación limpia de arriba y se le quitaba al tachar; el cliente
+    // lo fotografió —«elimina la ecuación limpia y la reemplaza por la versión
+    // tachada»— y puso la regla de sólo agregar. El orden de los dos tiempos es el
+    // mismo; lo que cambia es que ocurren sobre un renglón propio y permanente.
     const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 6:/.test(e.d.texto));
-    const enResta = ev[iResta];
-    const focoResta = enResta?.escenas[enResta.escena]?.focos[enResta.foco];
+    const iTachaFrase = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
+    const iEscribeResta = ev.findIndex(
+      (e, i) => i > iResta && e.d.tipo === "pizarra" && /^2x \+ 6 - 6 = 16 - 6$/.test(String(e.d.contenido ?? "").trim()),
+    );
+    const tachadoEn = (i) => {
+      const e = ev[i];
+      return e?.escenas?.[e.escena]?.focos?.[e.foco]?.tipo === "tachado";
+    };
     check(
       "cuando el tutor dice «Restamos 6:», la pizarra ESCRIBE la resta y NO tacha nada",
-      enResta?.escenas[enResta.escena]?.texto === "2x + 6 = 16" && focoResta?.tipo === "caja" &&
-        focoResta?.clase === "pz-uniforme",
-      `${enResta?.escenas[enResta.escena]?.texto} foco ${enResta?.foco} (${focoResta?.tipo}/${focoResta?.clase})`,
+      iResta >= 0 && iEscribeResta > iResta && iEscribeResta < iTachaFrase && !tachadoEn(iResta),
+      `resta=${iResta} escribe=${iEscribeResta} tacha=${iTachaFrase}`,
+    );
+    check(
+      "…y el tachado llega con «Se cancelan:», sobre ese mismo renglón",
+      iTachaFrase > 0 && tachadoEn(iTachaFrase) &&
+        ev[iTachaFrase]?.escenas?.[ev[iTachaFrase].escena]?.texto === "2x + 6 - 6 = 16 - 6",
+      `${ev[iTachaFrase]?.escenas?.[ev[iTachaFrase]?.escena]?.texto} (${ev[iTachaFrase]?.escenas?.[ev[iTachaFrase]?.escena]?.focos?.[ev[iTachaFrase]?.foco]?.tipo})`,
     );
     const iCancela = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
     const enCancela = ev[iCancela];
@@ -3192,7 +3209,7 @@ titulo("A00a1c. Una sola subrutina compone las dos pizarras");
   );
   check(
     "la pizarra clásica compone con la misma subrutina que anima",
-    /import \{ escenaDeLinea, identidadDeEscena, type Escena \} from "@\/lib\/leccion\/animacion"/.test(pizarraTsx) &&
+    /import \{ elDestapadoEsPrestado, escenaDeLinea, identidadDeEscena, type Escena \} from "@\/lib\/leccion\/animacion"/.test(pizarraTsx) &&
       // Salvo en el ENUNCIADO de la tarjeta, que se compone tal cual está
       // escrito: la escena lleva dentro lo que la animación destapa al final.
       /\?\? \(soloEnunciado \? null : latexDeLaSubrutina\(linea\)\)/.test(pizarraTsx),
@@ -4210,7 +4227,12 @@ function locutorFalso({ modo = "ok" } = {}) {
   };
 }
 
-const GUION = guionDeLeccion(["24 + 17", "3x + 5 = 20"]);
+// DOS ESCENAS ANIMABLES. La segunda era "3x + 5 = 20", una ecuación limpia del
+// hilo: desde que la pizarra sólo añade, esa línea ya no se anima —no enseña la
+// resta que va a recibir para soltarla luego; esa operación tiene su propio
+// renglón—, así que el guion se quedaba con una sola y no había a dónde saltar.
+// Se usa el renglón de la cancelación, que sí es un paso.
+const GUION = guionDeLeccion(["24 + 17", "3x + 5 - 5 = 20 - 5"]);
 const SEGMENTOS = GUION.reduce((total, e) => total + e.focos.length + 1, 0);
 
 {
@@ -5594,12 +5616,16 @@ if (!vivo) {
       const iResta = ev.findIndex((e) => e.d.tipo === "hablar" && /^Restamos 3x:/.test(e.d.texto));
       const iTacha = ev.findIndex((e) => e.d.tipo === "hablar" && /^Se cancelan:/.test(e.d.texto));
       const focoEn = (i) => ev[i]?.escenas?.[ev[i]?.escena]?.focos?.[ev[i]?.foco];
+      // La resta se ESCRIBE en su propio renglón entre las dos frases, y el tachado
+      // llega con la segunda, sobre ese mismo renglón: sólo se añade (append-only).
+      const iEscribe = ev.findIndex(
+        (e, i) => i > iResta && e.d.tipo === "pizarra" && / - 3x = /.test(String(e.d.contenido ?? "")),
+      );
       check(
         "cuando dice «Restamos 3x:» la pizarra lo ESCRIBE, y tacha al decir «Se cancelan:»",
-        iResta >= 0 && iTacha > iResta &&
-          focoEn(iResta)?.tipo === "caja" && focoEn(iResta)?.clase === "pz-uniforme" &&
-          focoEn(iTacha)?.tipo === "tachado",
-        `escribir: ${focoEn(iResta)?.tipo}/${focoEn(iResta)?.clase} · tachar: ${focoEn(iTacha)?.tipo}`,
+        iResta >= 0 && iTacha > iResta && iEscribe > iResta && iEscribe < iTacha &&
+          focoEn(iResta)?.tipo !== "tachado" && focoEn(iTacha)?.tipo === "tachado",
+        `resta=${iResta} escribe=${iEscribe} tacha=${iTacha} (${focoEn(iTacha)?.tipo})`,
       );
     }
   }
