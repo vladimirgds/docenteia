@@ -1038,6 +1038,9 @@ function medidaDeAjuste(el: HTMLElement): { disponible: number; ancho: number } 
  * partir—, se encoge lo justo, y nunca por debajo del 80 %: una tarjeta un poco
  * más pequeña se lee; una tarjeta cortada, no.
  */
+/** Lo que se le quita al hueco útil para que quepa el marco de la respuesta. */
+const RESERVA_CAPSULA = 6;
+
 function FormulaQueCabe({
   latex,
   className,
@@ -1064,8 +1067,15 @@ function FormulaQueCabe({
   const revisar = useCallback(() => {
     const el = caja.current;
     if (!el) return;
+    // SE RESERVA EL SITIO DE LA CÁPSULA. El marco verde de la respuesta, su aire
+    // y su trazo se dibujan FUERA de la fórmula, así que un renglón que llega
+    // justo al borde del ambiente los deja asomando —1,1 px medidos en
+    // "x² − 36 = (x − 6)(x + 6)", que con la letra a text-xl ocupa el ancho
+    // entero—. Seis píxeles menos de hueco útil no se notan al leer y dejan a la
+    // cápsula dónde dibujarse.
     const { disponible, ancho } = medidaDeAjuste(el);
-    if (disponible <= 0 || ancho <= disponible) return;
+    const util = disponible - RESERVA_CAPSULA;
+    if (util <= 0 || ancho <= util) return;
 
     const siguiente = partirLaMasLarga(estado.current.filas);
     if (siguiente) {
@@ -1078,7 +1088,11 @@ function FormulaQueCabe({
     // «el número 10 se corta al final de la línea» es peor que una tarjeta un
     // punto más pequeña, y el informe lo pide expresamente para esos recuadros.
     const suelo = el.closest(".pz-tarjeta-regla") ? 0.6 : 0.8;
-    const propuesta = Math.max(suelo, estado.current.escala * (disponible / ancho));
+    // Y SE DEJA UN PÍXEL. Encogiendo a la medida EXACTA del hueco, el redondeo
+    // de la composición devolvía un pelo de sobra —1,1 px en la factorización,
+    // con la letra ya a text-xl— y eso es una fórmula asomando por el borde.
+    // Un píxel de margen no se ve y no deja que el redondeo decida.
+    const propuesta = Math.max(suelo, (estado.current.escala * util) / ancho);
     if (propuesta < estado.current.escala - 0.01) {
       estado.current = { ...estado.current, escala: propuesta };
       setEscala(propuesta);

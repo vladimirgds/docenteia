@@ -130,7 +130,7 @@ function CurvaYTangente() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="pz-diagrama h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-xl"
       role="img"
       aria-label="La parábola y = x al cuadrado con su recta tangente en el punto x = 1: la pendiente de esa recta, que vale 2, es la derivada en ese punto."
     >
@@ -202,7 +202,7 @@ function JuntarCantidades() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="pz-diagrama h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-xl"
       role="img"
       aria-label="Tres fichas y dos fichas se juntan para formar cinco."
     >
@@ -301,7 +301,7 @@ function PartesDeUnTodo({
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="pz-diagrama h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-xl"
       role="img"
       aria-label={`Una pizza dividida en ${f.partes} porciones iguales, con ${f.tomadas} sombreada${f.tomadas === 1 ? "" : "s"}.`}
     >
@@ -379,7 +379,7 @@ function BalanzaEnEquilibrio() {
   return (
     <svg
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
-      className="pz-diagrama h-auto w-full max-w-sm"
+      className="pz-diagrama h-auto w-full max-w-xl"
       role="img"
       aria-label="Una balanza equilibrada: lo que se hace a un lado hay que hacerlo al otro."
     >

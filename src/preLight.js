@@ -874,7 +874,7 @@ export function solveLinearSteps(text) {
       // derecha, con la cuenta hecha al margen. El encabezado nombra SU término
       // para que dos cancelaciones del mismo ejercicio no escriban lo mismo.
       apoyo: {
-        textoAuxiliar: `Por qué se cancelan los ${xc(coefR)}${v}:`,
+        textoAuxiliar: `Se cancelan los ${xc(coefR)}${v}:`,
         calculoKaTeX: `${xc(coefR)}${v} - ${xc(coefR)}${v} = 0`,
         conclusion: `${xc(coefL)}${v} ${coefR > 0 ? "-" : "+"} ${xc(Math.abs(coefR))}${v} = ${xc(coef)}${v}`,
       },
@@ -956,8 +956,12 @@ export function solveLinearSteps(text) {
       accion: { tipo: "cancelacion", terminosFoco: [fmt(Math.abs(konst))] },
       // «Justificación de cancelaciones: por ejemplo, debajo de un separador
       // visual: −8 + 8 = 0». Literalmente su ejemplo.
+      //
+      // SIN EL «POR QUÉ» DELANTE: lo pidió el cliente tal cual, «eliminar el
+      // "Por qué"». El encabezado nombra la operación que desglosa —«Se cancela
+      // el 6:»— y la cuenta va debajo; la pregunta sobraba.
       apoyo: {
-        textoAuxiliar: `Por qué se cancela el ${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))}:`,
+        textoAuxiliar: `Se cancela el ${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))}:`,
         calculoKaTeX: `${konst > 0 ? "" : "-"}${fmt(Math.abs(konst))} ${konst > 0 ? "-" : "+"} ${fmt(Math.abs(konst))} = 0`,
         // Forma: conclusión en una línea, como KaTeX corto.
         conclusion: `${fmt(c)} ${konst > 0 ? "-" : "+"} ${fmt(Math.abs(konst))} = ${fmt(c - konst)}`,
@@ -1022,7 +1026,7 @@ export function solveLinearSteps(text) {
       // REGLA GENERAL (no sólo el primer ejercicio): la cuenta de la división
       // también va al taller —igual que la cancelación y la distributiva—.
       apoyo: {
-        textoAuxiliar: `Por qué dividimos entre ${fmt(coef)}:`,
+        textoAuxiliar: `Dividimos entre ${fmt(coef)}:`,
         calculoKaTeX: [
           `${xc(coef)}${v}/${fmt(coef)} = ${v}`,
           `${fmt(c - konst)}/${fmt(coef)} = ${answerStr}`,

@@ -515,13 +515,29 @@ function instalarMedidor() {
         .map(R)
         .filter((b) => b.w > 0 && b.h > 0);
       out.ambientes.at(-1).sobresaleDerecha = Math.max(0, ...piezas.map((b) => b.x + b.w - (caja.x + caja.w)));
+      // Cuánto le sobra a la FÓRMULA más ancha dentro de la columna: si es poco,
+      // lo que asoma es el trazo de una marca, no la ecuación.
+      {
+        const formulas = [...amb.querySelectorAll(".pz-animada-formula, .katex-html")].filter(visible).map(R);
+        out.ambientes.at(-1).holguraFormula = formulas.length
+          ? Math.min(...formulas.map((b) => caja.x + caja.w - (b.x + b.w)))
+          : null;
+      }
       // Qué línea se sale, para poder arreglarla sin adivinar: se busca por las
       // CIFRAS que sobresalen, porque la caja del paso está recortada al ambiente.
       out.ambientes.at(-1).sobresaleTexto = [
         ...new Set(
-          [...amb.querySelectorAll(".katex-html *, .pz-nota-trozo, .pz-resaltado")]
-            .filter((el) => visible(el) && el.childElementCount === 0 && R(el).x + R(el).w > caja.x + caja.w + 1)
-            .map((el) => textoVisible(el.closest(".pz-elemento") ?? el).slice(0, 70)),
+          // El MISMO conjunto que mide el desbordamiento: si no, se mide una
+          // pieza y se nombra otra, y el aviso sale con el texto vacío.
+          [...amb.querySelectorAll(".katex-html *, .pz-nota-trozo, .pz-resaltado, .pz-pie")]
+            .filter(
+              (el) =>
+                visible(el) &&
+                (el.childElementCount === 0 || el.matches(".pz-nota-trozo, .pz-resaltado, .pz-pie")) &&
+                R(el).x + R(el).w > caja.x + caja.w + 1,
+            )
+            // Con su clase: una marca SVG no tiene texto, y «» no dice cuál es.
+            .map((el) => `${el.getAttribute("class") || el.tagName}:${textoVisible(el.closest(".pz-elemento") ?? el).slice(0, 50)}`),
         ),
       ].join(" · ");
       out.ambientes.at(-1).sobresaleAbajo = marco ? Math.max(0, ...piezas.map((b) => b.y + b.h - (R(marco).y + R(marco).h))) : 0;
@@ -616,7 +632,10 @@ function instalarMedidor() {
     for (let n = recorrido.nextNode(); n; n = recorrido.nextNode()) {
       const el = n.parentElement;
       if (!el || el.closest(".katex-mathml, script, style, noscript")) continue;
-      if (/[/*]/.test(n.textContent ?? "") && visible(el)) out.barras.push((n.textContent ?? "").trim().slice(0, 60));
+      if (/[/*]/.test(n.textContent ?? "") && visible(el)) {
+        const donde = el.closest("[class]")?.getAttribute("class")?.slice(0, 40) ?? el.tagName;
+        out.barras.push(`${donde}: «${(n.textContent ?? "").trim().slice(0, 40)}»`);
+      }
     }
 
     // OBS-05: el rol y la fuente de cada texto del contenido.
@@ -1190,7 +1209,7 @@ function comprobarSiempre(m, clase) {
     verificar("SUB-PIZ-02", "ningún paso se escribe dos veces (tampoco al reanudar tras una pausa)", repetidos.length === 0, `${repetidos.slice(0, 2).join(" · ")} (${clase})`);
   }
   for (const a of m.ambientes) {
-    verificar("SUB-PIZ-02", `Ambiente ${a.n}: nada se sale por la derecha`, a.sobresaleDerecha <= 1, `${a.sobresaleDerecha.toFixed(1)} px en «${a.sobresaleTexto ?? ""}» (${clase}${m.proy ? ", proyección" : ""})`);
+    verificar("SUB-PIZ-02", `Ambiente ${a.n}: nada se sale por la derecha`, a.sobresaleDerecha <= 1, `${a.sobresaleDerecha.toFixed(1)} px en «${a.sobresaleTexto ?? ""}» · la fórmula deja ${a.holguraFormula == null ? "?" : a.holguraFormula.toFixed(1)} px (${clase}${m.proy ? ", proyección" : ""})`);
     // En pantalla la pizarra tiene su propio desplazamiento; proyectada, todo en una sola pantalla.
     if (m.proy) verificar("SUB-PIZ-02", `Ambiente ${a.n}: proyectado, todo cabe en una sola pantalla`, a.sobresaleAbajo <= 1, `${a.sobresaleAbajo.toFixed(1)} px (${clase})`);
   }
