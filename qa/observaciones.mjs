@@ -75,6 +75,8 @@
 //   R9-02  «Ni se sube nada»: ningún renglón ya escrito acaba por encima del
 //          borde de su columna, es decir, fuera de la pantalla. Que no cambie ni
 //          desaparezca es R8-01.
+//   R9-03  Ningún rótulo pegado a una marca repite el comentario que ya
+//          encabeza su renglón. «Duplicas la palabra "Se cancelan"».
 //   R7-01  Ninguna ecuación con un agujero: lo que aún no se ha destapado no
 //          reserva sitio («2x + 6 ␣␣ = 16», alex.pdf).
 //   R7-02  Y el marco de la respuesta no separa el igual del número: lo dibuja
@@ -373,6 +375,9 @@ function instalarMedidor() {
         gesto: e.querySelector("[data-gesto]")?.getAttribute("data-gesto") ?? "",
       })),
       cancelaciones: [],
+      // R9-03: null mientras ningún rótulo repite el comentario de su renglón;
+      // si alguno lo hace, aquí queda el texto que se duplicó.
+      rotuloDuplicaComentario: null,
       // R4-01: lo que la pizarra pinta sin haberlo explicado todavía. El cliente
       // fotografió el Ambiente 2 con las tres ecuaciones del ejercicio a la vez.
       pendientes: [...document.querySelectorAll('.pz-elemento[data-estado="pendiente"]')].filter(visible).length,
@@ -558,6 +563,30 @@ function instalarMedidor() {
         const cerca = cifras.reduce((m, g) => Math.min(m, separacion(b, g.b)), Infinity);
         const rayas = gl.filter((g) => g.raya).reduce((m, g) => Math.min(m, separacion(b, g.b)), Infinity);
         out.etiquetas.push({ texto: t.getAttribute("data-etiqueta"), sep: cerca, sepRaya: rayas, b });
+        // R9-03: EL RÓTULO DE LA MARCA NO REPITE EL COMENTARIO DE SU RENGLÓN.
+        //
+        // «Duplicas la palabra "Se cancelan"»: el renglón lleva su comentario
+        // escrito encima («Se cancelan:»), y el tachado llevaba ADEMÁS el mismo
+        // rótulo pegado a la marca —la misma palabra, dos veces, a la vista a
+        // la vez—. Se compara el texto del rótulo con el del comentario que
+        // encabeza el renglón de este paso, el `.pz-comentario` más cercano por
+        // encima en su misma columna.
+        {
+          const renglon = t.closest(".pz-elemento");
+          const columna = renglon?.closest(".pz-ambiente");
+          const normal = (x) => (x ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[:\s]+/g, " ").trim();
+          const comentarios = columna ? [...columna.querySelectorAll('.pz-elemento[data-papel="comentario"]')] : [];
+          const previo = renglon
+            ? comentarios.filter((c) => c.compareDocumentPosition(renglon) & Node.DOCUMENT_POSITION_FOLLOWING).pop()
+            : null;
+          if (previo) {
+            const texComentario = normal(textoVisible(previo));
+            const texRotulo = normal(t.getAttribute("data-etiqueta"));
+            if (texRotulo && texComentario && texComentario === texRotulo) {
+              out.rotuloDuplicaComentario = `«${t.getAttribute("data-etiqueta")}» repite «${textoVisible(previo)}»`;
+            }
+          }
+        }
         if (/^llevo|^reagrupo/.test(t.getAttribute("data-etiqueta") ?? "")) {
           // La llevada que acaba de escribirse: la visible más a la derecha
           // de las que están bajo el rótulo.
@@ -1320,6 +1349,21 @@ function comprobarSiempre(m, clase) {
   }
   if (/cancel/i.test(m.pieActivo ?? "")) seCancelo.add(clase);
 
+  // R9-03: NINGÚN RÓTULO DE LA MARCA REPITE EL COMENTARIO DE SU RENGLÓN.
+  //
+  // El cliente lo marcó tal cual, sobre la captura: «duplicas la palabra "Se
+  // cancelan"». El renglón ya lleva su comentario escrito encima —el que
+  // Ambiente 1 exige (R9-01)—; el rótulo que la marca dibuja pegado al tachado
+  // era necesario cuando ÉSA era la única forma de decir qué pasaba ahí, y se
+  // quedó puesto después de que el comentario empezara a decirlo también: la
+  // misma palabra, dos veces, a la vista a la vez.
+  verificar(
+    "R9-03",
+    "ningún rótulo de la marca repite el comentario de su renglón",
+    !m.rotuloDuplicaComentario,
+    `${m.rotuloDuplicaComentario ?? ""} (${clase})`,
+  );
+
   // R5-01: NINGUNA ECUACIÓN SE PARTE EN DOS RENGLONES.
   //
   // «Al escribir pasos con varios términos, como 2x + 8 - 3x = 3x - 1 - 3x, la
@@ -2062,7 +2106,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01", "R8-01", "R9-01", "R9-02"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04", "R5-01", "R5-03", "R5-04", "R5-05", "R6-01", "R6-02", "R6-03", "R6-04", "R6-05", "R6-06", "R7-01", "R8-01", "R9-01", "R9-02", "R9-03"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 

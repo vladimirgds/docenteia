@@ -72,7 +72,7 @@ import {
   nivelDelMotor,
   MAX_DEBILIDADES,
 } from "../lib/perfil/contexto.ts";
-import { bancoDeEjercicios, leccionBotonLSG } from "../src/lsgPrompt.js";
+import { bancoDeEjercicios, desgloseDelEjercicioLSG, leccionBotonLSG } from "../src/lsgPrompt.js";
 import { MODELOS_DEL_PLIEGO } from "../src/geminiClient.js";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
@@ -367,6 +367,56 @@ if (catalogo) {
   // Lo esencial del defecto: NO deben aparecer las demás.
   for (const ausente of ["Regla del cociente", "Regla de la cadena", "Regla del producto"]) {
     check(`no se activa «${ausente}» mientras se explica la potencia`, activa?.nombre !== ausente);
+  }
+
+  // ── «Duplicas la palabra "Se cancelan"»… no: «el segundo ejercicio ya se
+  //    equivoca de regla» ───────────────────────────────────────────────────
+  //
+  // El cliente lo fotografió: pide «Explícame esto» sobre el paso del
+  // paréntesis de un SEGUNDO ejercicio, y el tutor responde «La regla que
+  // estamos utilizando es la propiedad uniforme de la suma…», que es la regla
+  // del PRIMER paso de la lección, no la de este. «El primer ejercicio está
+  // bien, pero el segundo ya se equivoca.»
+  //
+  // La causa: el catálogo llamaba a esta regla «Reparto del paréntesis», pero
+  // el motor —en la pizarra y en la voz— siempre dice «propiedad
+  // distributiva», nunca «reparto del paréntesis». `identificarRegla` busca el
+  // NOMBRE del catálogo dentro del texto; como esa cadena no aparece NUNCA, la
+  // regla del paréntesis no se detectaba JAMÁS, en ningún ejercicio, y la
+  // detección se quedaba pegada a la última que sí coincidía por texto —la
+  // propiedad uniforme, que el motor nombra una vez al principio de la
+  // lección—. Daba igual que el alumno llevara tres ejercicios con paréntesis:
+  // seguía señalando el primero.
+  console.log("\n · La regla del paréntesis se detecta con el texto REAL del motor");
+  {
+    const lineales = catalogo.filter((r) => r.tema === "ECUACIONES_LINEALES");
+    const distributiva = lineales.find((r) => /distributiv/i.test(r.nombre));
+    check(
+      "el catálogo nombra esta regla como el motor la dice (\"propiedad distributiva\", no \"reparto del paréntesis\")",
+      distributiva?.nombre === "Propiedad distributiva",
+      `obtenido: ${distributiva?.nombre ?? "null"}`,
+    );
+
+    // El texto REAL del motor en un ejercicio CUALQUIERA con paréntesis —no
+    // importa si es el primero o el segundo de la lección—, hasta justo
+    // después de repartir el paréntesis.
+    const flat = flattenLSG(desgloseDelEjercicioLSG({ ejercicio: "3(x + 1) = 15", tema: "lineal" }));
+    const lineasHastaElReparto = [];
+    for (const d of flat) {
+      if (d.tipo === "hablar") lineasHastaElReparto.push(d.texto);
+      if (d.tipo === "pizarra") lineasHastaElReparto.push(d.contenido ?? "");
+      if (/distributiv/i.test(d.texto ?? d.contenido ?? "")) break;
+    }
+    const activaTrasElReparto = reglaActiva(lineasHastaElReparto, lineales);
+    check(
+      "justo tras repartir el paréntesis de un SEGUNDO ejercicio, la regla activa es la distributiva",
+      activaTrasElReparto?.nombre === "Propiedad distributiva",
+      `obtenido: ${activaTrasElReparto?.nombre ?? "null"}`,
+    );
+    check(
+      "…y NO la propiedad uniforme del primer paso de la lección",
+      activaTrasElReparto?.nombre !== "Propiedad uniforme de la suma",
+    );
   }
 
   // Guarda sobre el propio fichero. El defecto no estaba en la lógica sino en
