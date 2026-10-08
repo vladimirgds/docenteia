@@ -146,7 +146,7 @@
     "clave": "lin-distributiva",
     "tema": "ecuaciones_lineales",
     "orden": 3,
-    "nombre": "Reparto del paréntesis",
+    "nombre": "Propiedad distributiva",
     "enunciado": "a(b + c) = a\\,b + a\\,c",
     "descripcion": "Antes de despejar conviene deshacer los paréntesis multiplicando el factor por cada término de dentro.",
     "ejemplo": "2(x + 3) = 10 \\;\\Longrightarrow\\; 2x + 6 = 10",

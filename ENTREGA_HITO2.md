@@ -4695,3 +4695,64 @@ clases, contra los 206 con los que empezó esta ronda.
 | `qa/observaciones.mjs` | **41 reglas, las 41 verdes** · 0 fallos |
 
 Es la primera entrega del Hito 2 en la que no queda nada en rojo.
+
+## Dos defectos del hito anterior
+
+El cliente los marcó sobre la pizarra de verdad: «duplicas la palabra "Se
+cancelan"» con una captura, y en otra lección, el tutor atribuyendo un paso del
+paréntesis a la regla equivocada.
+
+### «Duplicas la palabra "Se cancelan"»
+
+Causa: el renglón de la cancelación lleva su comentario escrito encima desde la
+ronda anterior («Se cancelan:», Ambiente 1), pero la marca del tachado llevaba
+TAMBIÉN su propio rótulo pegado al lado de las aspas, con la misma palabra. Era
+necesario cuando el rótulo de la marca era la ÚNICA forma de decir qué estaba
+pasando; desde que el comentario lo dice primero, el rótulo quedó repitiéndolo,
+a la vista a la vez.
+
+Se quitó el rótulo de la marca en los dos sitios donde se dibuja —la cancelación
+de una constante y la cancelación de la incógnita en los dos lados—; la voz que
+lo sincroniza (`narracion: "Se cancelan:"`) se queda igual, sólo se retira el
+texto que se dibujaba sobre la pizarra.
+
+**R9-03** (nueva): ningún rótulo pegado a una marca repite el comentario que ya
+encabeza su renglón. Falla sobre la versión anterior y pasa sobre ésta.
+
+### La regla equivocada en el segundo ejercicio
+
+> «dice: "La regla que estamos utilizando es la propiedad uniforme de la
+> suma....". Pero, la propiedad es la Distributiva. El primer ejercicio está
+> bien, pero el segundo ya se equivoca»
+
+Causa, verificada con el texto real del motor: el catálogo llamaba a esta regla
+**«Reparto del paréntesis»**, pero el motor —en la pizarra y en la voz— siempre
+dice **«propiedad distributiva»**, nunca «reparto del paréntesis». La detección
+de qué regla se está explicando busca el NOMBRE del catálogo dentro de lo dicho
+y lo escrito; como esa cadena nunca aparece, la regla del paréntesis no se
+detectaba JAMÁS, en ningún ejercicio. La detección se quedaba pegada a la última
+que sí coincidía por texto —la propiedad uniforme, que el motor nombra una vez
+al principio de la lección—, y daba igual cuántos ejercicios con paréntesis
+llevara el alumno: seguía señalando el primero.
+
+Se renombró la regla a **«Propiedad distributiva»**, igual que ya se llama en
+aritmética. El catálogo vive en la base de datos y se resiembra solo en cada
+despliegue (`vercel-build` corre `prisma/seed.ts`, que hace *upsert* por clave:
+sin duplicados, sin pisar nada más), así que el cambio llega con el próximo
+despliegue sin ningún paso manual.
+
+Verificado con el texto REAL que emite el motor para un SEGUNDO ejercicio con
+paréntesis, hasta justo después de repartirlo: antes del cambio, la regla
+detectada era `null` (nunca coincidía); después, «Propiedad distributiva» —y
+nunca «Propiedad uniforme de la suma», la del primer paso de la lección—.
+
+### Las baterías
+
+| Batería | Resultado |
+|---|---|
+| `qa/hito2.mjs` | 841 · **0** |
+| `qa/rigor.mjs` | 34.195 afirmaciones · **0** incorrectas |
+| `qa/leccion.mjs` | 835 · **0** (3 comprobaciones nuevas sobre este defecto) |
+| `qa/qa.mjs` | 1.465 · **0** |
+| `qa/aceptacion.mjs` | **24/24** |
+| `qa/observaciones.mjs` | **42 reglas, las 42 verdes** (R9-03 nueva) |

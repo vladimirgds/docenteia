@@ -3790,7 +3790,11 @@ titulo("A2. Polinomios, despejes y prosa");
 
   // El tachado es el renglón siguiente, con la resta ya escrita.
   const tachado = escenaDeCancelacion("3x + 5 - 5 = 20 - 5", "e");
-  check("el renglón siguiente tacha, y se rotula como tal", tachado.focos[0].tipo === "tachado" && tachado.focos[0].etiqueta === "se cancelan");
+  // SIN RÓTULO EN LA MARCA: «Se cancelan:» ya lo dice el comentario de su propio
+  // renglón, escrito encima. Ponerlo también en la marca —como antes de que ese
+  // renglón existiera— repetía la misma palabra dos veces a la vista a la vez.
+  // El cliente lo marcó así: «duplicas la palabra "Se cancelan"».
+  check("el renglón siguiente tacha, sin rótulo que repita el comentario de encima", tachado.focos[0].tipo === "tachado" && !tachado.focos[0].etiqueta);
   check(
     "el término se tacha con su par, cada uno con su marca",
     marcada(tachado.latex, "pz-cancela-termino") && marcada(tachado.latex, "pz-cancela-opuesto"),

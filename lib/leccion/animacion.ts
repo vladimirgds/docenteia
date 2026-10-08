@@ -826,7 +826,11 @@ export function escenaDeCancelacion(texto: string, id: string): Escena | null {
         piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
         tipo: "tachado",
         narracion: "Se cancelan:",
-        etiqueta: "se cancelan",
+        // SIN RÓTULO EN LA MARCA. Lo llevaba cuando era la ÚNICA forma de
+        // decir qué pasaba aquí; desde que «Se cancelan:» tiene su propio
+        // renglón encima (Ambiente 1), el rótulo sobre el tachado repetía la
+        // misma palabra dos veces en la misma pizarra, a la vista a la vez.
+        // El cliente lo marcó tal cual: «duplicas la palabra "Se cancelan"».
       },
     ],
   };
@@ -1100,7 +1104,8 @@ export function escenaDeCancelacionDeIncognita(texto: string, id: string): Escen
         piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
         tipo: "tachado",
         narracion: fraseDeCancelacionDeIncognita(a, c, variable),
-        etiqueta: "se cancelan",
+        // SIN RÓTULO EN LA MARCA, por la misma razón que en `escenaDeCancelacion`:
+        // la palabra ya la lleva el renglón del comentario, encima.
       },
     ],
   };
