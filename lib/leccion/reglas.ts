@@ -1,4 +1,10 @@
 import { TEMAS, temaAEnum, type TemaEnum } from "../diagnostico/banco.ts";
+import { solveLinearSteps } from "../../src/preLight.js";
+import {
+  escenaDeCancelacion,
+  escenaDeCancelacionDeIncognita,
+  escenaDeDivisionEnFraccion,
+} from "./animacion.ts";
 
 /**
  * Catálogo formal de reglas y propiedades.
@@ -150,6 +156,77 @@ export function reglaActiva<T extends { nombre: string }>(
     if (encontrada) return encontrada;
   }
   return null;
+}
+
+/**
+ * QUÉ REGLA SE APLICA EN ESTE EJERCICIO, LEÍDA DE SU ESTRUCTURA.
+ *
+ * «El sistema tiene hardcodeada la propiedad distributiva como explicación
+ * universal para cualquier ejercicio de ecuaciones lineales»: el cliente lo
+ * fotografió con "x/3 + 7 = 12" —sin paréntesis, sin factor distributivo— y el
+ * botón «Explicar regla» respondiendo igual que si lo hubiera.
+ *
+ * La causa no era un texto fijo: era `reglaActiva()`, que busca el NOMBRE del
+ * catálogo dentro de lo último dicho o escrito EN TODA LA LECCIÓN. Si el
+ * ejercicio en curso no vuelve a nombrar ninguna regla por su nombre exacto
+ * —y "Multiplicamos por 3:" no lo hace—, la búsqueda sigue hacia atrás y
+ * encuentra la del ejercicio ANTERIOR. Daba igual qué ejercicio tuviera
+ * delante el alumno: la pizarra seguía señalando la regla de otro.
+ *
+ * Esta función no busca texto: analiza el ejercicio ACTIVO con el mismo
+ * `solveLinearSteps` que decide sus pasos (una sola fuente de verdad, no una
+ * copia que se desincronice), así que la regla que devuelve es siempre la de
+ * ESTE ejercicio, nunca la de uno anterior.
+ *
+ *   1. `paso` trae la línea exacta que el alumno tenía delante (si la hay) y
+ *      ESA línea, por su forma, ya dice qué operación se le ha hecho:
+ *        · "ax + b − b = c − b"   → se sumó o restó lo mismo a los dos lados
+ *          (propiedad uniforme de la suma).
+ *        · "ax/n = c/n"           → se dividió entre lo mismo en los dos lados
+ *          (propiedad uniforme del producto).
+ *   2. Sin ese dato —la pregunta genérica, «explícame la regla que se
+ *      aplica»— se mira el ejercicio entero: si trae paréntesis, hace falta la
+ *      distributiva ANTES que ninguna otra; si no trae paréntesis pero sí una
+ *      fracción o un decimal que despejar, hace falta multiplicar los dos
+ *      lados por el mismo número (uniforme del producto) para quitarlo; si no
+ *      trae ninguna de las dos, el primer paso es siempre sumar o restar lo
+ *      mismo a los dos lados (uniforme de la suma).
+ *
+ * `null` si el texto no es una ecuación lineal reconocible, o si el catálogo
+ * no tiene la clave que correspondería (currículo incompleto): mejor no
+ * etiquetar que etiquetar con una regla que no está.
+ */
+export function reglaDeEcuacionLineal<T extends { clave: string }>(
+  ejercicio: string,
+  paso: string | null | undefined,
+  reglas: readonly T[],
+): T | null {
+  const sol = solveLinearSteps(String(ejercicio ?? ""));
+  if (!sol) return null;
+  const porClave = (clave: string) => reglas.find((r) => r.clave === clave) ?? null;
+
+  // EL PASO, RECONOCIDO CON LOS MISMOS OJOS CON LOS QUE LO ANIMA LA PIZARRA.
+  //
+  // No se reescribe el patrón: se le pregunta a la MISMA función que decide si
+  // ese renglón se tacha por una constante o por la incógnita en los dos
+  // lados (`escenaDeCancelacion` / `escenaDeCancelacionDeIncognita`) o se
+  // divide en fracción (`escenaDeDivisionEnFraccion`). Si alguna lo reconoce,
+  // es la MISMA operación que dibuja el tachado o la fracción, y por tanto la
+  // MISMA regla.
+  if (paso) {
+    if (escenaDeCancelacion(paso, "r") || escenaDeCancelacionDeIncognita(paso, "r")) {
+      return porClave("lin-uniforme-suma");
+    }
+    if (escenaDeDivisionEnFraccion(paso, "r")) {
+      return porClave("lin-uniforme-producto");
+    }
+  }
+
+  // Sin un paso que lo diga por su forma, se juzga el ejercicio entero: lo
+  // primero que haría falta para empezar a despejarlo.
+  if (sol.tieneParentesis) return porClave("lin-distributiva");
+  if (sol.escala !== 1) return porClave("lin-uniforme-producto");
+  return porClave("lin-uniforme-suma");
 }
 
 export function adaptarCatalogo(oficial: ReglaOficial[]): ReglaAdaptada[] {

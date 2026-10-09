@@ -47,7 +47,7 @@ import {
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
 import { esFaseDeEjemplo, esFaseDePractica, esFaseDeReglas } from "@/lib/leccion/fases";
-import { reglaActiva } from "@/lib/leccion/reglas";
+import { reglaActiva, reglaDeEcuacionLineal } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
   enunciadosParaResolver,
@@ -187,6 +187,14 @@ export function Aula({
   // regla" cuando ya está en Práctica, y lo que hay que explicarle es la regla
   // que le enseñaron, no ninguna de la fase en la que está.
   const reglaEnCursoRef = useRef<{ nombre: string; enunciado: string; descripcion?: string } | null>(null);
+  /**
+   * Espejo de `reglasDelTema` (más abajo), para leerlo sin esperar al render.
+   *
+   * Lo necesita `pedirLeccion`: en ecuaciones lineales, la regla de la
+   * aclaración no se busca por texto —ver `reglaDeEcuacionLineal`—, y para
+   * eso hace falta el catálogo completo del tema, no sólo la última detectada.
+   */
+  const reglasDelTemaRef = useRef<ReglaVista[]>([]);
 
   /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
   const narrado = useRef<string[]>([]);
@@ -930,24 +938,46 @@ export function Aula({
         const cuerpo = construirPeticion(consulta, conversacion.current, opciones);
         if (opciones.soloExplicacion) {
           cuerpo.explicacionDinamica = true;
+          // EL EJERCICIO DE LA TARJETA, no el "activo" de la conversación. El
+          // activo es la última línea escrita de la lección —el enunciado de
+          // la práctica—, así que en el ejemplo se desglosaba un ejercicio que
+          // el alumno todavía no había visto. Sin tarjeta (Concepto, Reglas)
+          // no hay ejercicio: se explica la idea con otras palabras.
+          const ejercicioDeLaAclaracion = faseConEjercicio()
+            ? (enTarjeta ?? conversacion.current.ejercicio)
+            : "";
+          // El paso EXACTO que tenía delante: el que enseña la pizarra animada
+          // o, si no anima nada, la última línea escrita.
+          const pasoDeLaAclaracion = pasoEnPantalla.current ?? escrito.current[escrito.current.length - 1] ?? "";
+
           // Qué regla se está explicando y sobre qué término. Es la diferencia
           // entre "explícame la regla de la potencia sobre 5x²" y "háblame de
           // derivadas", que es lo que el modelo entendía sin este contexto.
-          const activa = reglaEnCursoRef.current;
+          //
+          // EN ECUACIONES LINEALES, LA REGLA SE LEE DE LA ESTRUCTURA DEL
+          // EJERCICIO, NO DE LO ÚLTIMO DICHO EN TODA LA LECCIÓN. «El sistema
+          // tiene hardcodeada la propiedad distributiva como explicación
+          // universal»: con "x/3 + 7 = 12" —sin paréntesis— `reglaEnCursoRef`
+          // seguía señalando la distributiva del ejercicio ANTERIOR, porque
+          // nada en éste vuelve a nombrar ninguna regla por su nombre exacto.
+          // `reglaDeEcuacionLineal` no busca texto: analiza ESTE ejercicio con
+          // el mismo `solveLinearSteps` que decide sus pasos, así que no puede
+          // arrastrar la regla de uno distinto.
+          const activa =
+            conversacion.current.claveTema === "lineales"
+              ? reglaDeEcuacionLineal(
+                  ejercicioDeLaAclaracion || conversacion.current.ejercicio,
+                  pasoDeLaAclaracion,
+                  reglasDelTemaRef.current,
+                )
+              : reglaEnCursoRef.current;
           cuerpo.aclaracion = {
             regla: activa
               ? { nombre: activa.nombre, formula: activa.enunciado, descripcion: activa.descripcion }
               : null,
-            // EL EJERCICIO DE LA TARJETA, no el "activo" de la conversación. El
-            // activo es la última línea escrita de la lección —el enunciado de
-            // la práctica—, así que en el ejemplo se desglosaba un ejercicio que
-            // el alumno todavía no había visto. Sin tarjeta (Concepto, Reglas)
-            // no hay ejercicio: se explica la idea con otras palabras.
-            ejercicio: faseConEjercicio() ? (enTarjeta ?? conversacion.current.ejercicio) : "",
+            ejercicio: ejercicioDeLaAclaracion,
             tema: conversacion.current.temaActivo || conversacion.current.claveTema,
-            // El paso EXACTO que tenía delante: el que enseña la pizarra animada
-            // o, si no anima nada, la última línea escrita.
-            paso: pasoEnPantalla.current ?? escrito.current[escrito.current.length - 1] ?? "",
+            paso: pasoDeLaAclaracion,
             // Con la pregunta de la práctica sin contestar, sin resultado.
             conResultado: !tarjetaParaResolver || practicaResuelta.current,
             insistencia: insistencia.current,
@@ -1302,6 +1332,7 @@ export function Aula({
     () => (tema ? reglas.filter((r) => r.tema === tema.tema) : []),
     [reglas, tema],
   );
+  reglasDelTemaRef.current = reglasDelTema;
 
   /**
    * Las líneas que se le pasan a la pizarra animada.
