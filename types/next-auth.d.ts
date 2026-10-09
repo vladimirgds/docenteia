@@ -10,6 +10,9 @@ declare module "next-auth" {
       rol: Rol;
       perfilId: string | null;
       nivelActual: string | null;
+      /// A qué colegio pertenece (HITO 3). Sólo tiene sentido para DOCENTE y
+      /// DIRECTOR; en los demás roles viaja en `null`.
+      institucionId: string | null;
     } & DefaultSession["user"];
   }
 
@@ -17,6 +20,7 @@ declare module "next-auth" {
     rol: Rol;
     perfilId: string | null;
     nivelActual: string | null;
+    institucionId: string | null;
   }
 }
 
@@ -27,6 +31,7 @@ declare module "next-auth/adapters" {
     rol: Rol;
     perfilId: string | null;
     nivelActual: string | null;
+    institucionId: string | null;
   }
 }
 
@@ -39,6 +44,7 @@ declare module "@auth/core/jwt" {
     rol: Rol;
     perfilId: string | null;
     nivelActual: string | null;
+    institucionId: string | null;
   }
 }
 
@@ -48,6 +54,7 @@ declare module "next-auth/jwt" {
     rol: Rol;
     perfilId: string | null;
     nivelActual: string | null;
+    institucionId: string | null;
   }
 }
 

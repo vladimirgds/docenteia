@@ -71,6 +71,57 @@ export async function exigirDocente({ escritura = false } = {}): Promise<Resulta
   };
 }
 
+/**
+ * Exige DOCENTE o DIRECTOR (HITO 3), con un colegio asignado.
+ *
+ * `POST /api/docente/aulas` es la única ruta que la necesita: un aula
+ * pertenece a una institución, y esa institución es la del docente en
+ * sesión, nunca una que mande el cliente en el cuerpo —ver el comentario de
+ * `aulaSchema` en `lib/docente/aulas.ts`—.
+ */
+export async function exigirDocenteConInstitucion(): Promise<
+  | { ok: true; quien: Autorizacion & { institucionId: string } }
+  | { ok: false; respuesta: NextResponse }
+> {
+  const sesion = await auth();
+  const usuario = sesion?.user;
+
+  if (!usuario) {
+    return {
+      ok: false,
+      respuesta: NextResponse.json({ error: "No autenticado." }, { status: 401 }),
+    };
+  }
+  if (usuario.rol !== "DOCENTE" && usuario.rol !== "DIRECTOR" && usuario.rol !== "SUPERADMIN") {
+    return {
+      ok: false,
+      respuesta: NextResponse.json({ error: "Tu perfil no puede crear aulas." }, { status: 403 }),
+    };
+  }
+  if (!usuario.institucionId) {
+    return {
+      ok: false,
+      respuesta: NextResponse.json(
+        {
+          error:
+            "Tu cuenta todavía no está asignada a ningún colegio. Pide al administrador que te vincule a uno.",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    quien: {
+      usuarioId: usuario.id,
+      rol: usuario.rol,
+      nombre: usuario.name ?? "",
+      institucionId: usuario.institucionId,
+    },
+  };
+}
+
 type Cuerpo<T> = { ok: true; datos: T } | { ok: false; respuesta: NextResponse };
 
 /**

@@ -361,20 +361,37 @@ async function main() {
   }
 
   // 4. Usuarios que el registro público no crea
+  //
+  // HITO 3. El DIRECTOR y el DOCENTE de demostración pertenecen al MISMO
+  // colegio de ejemplo: así la cuenta docente puede crear un aula desde el
+  // primer minuto —sin esto, `POST /api/docente/aulas` respondería 409,
+  // "tu cuenta no está asignada a ningún colegio"— y el panel institucional
+  // del director tiene algo que resumir en cuanto se siembra.
+  const colegioDemo = await prisma.institucion.upsert({
+    where: { codigoModular: "DEMO-001" },
+    update: { nombre: "Colegio de demostración" },
+    create: { nombre: "Colegio de demostración", codigoModular: "DEMO-001" },
+  });
+  console.log(`  ✓ Institución de demostración: ${colegioDemo.nombre}`);
+
   for (const [rol, datosUsuario] of [
     ["SUPERADMIN", DEMO.admin],
     ["DIRECTOR", DEMO.director],
     ["DOCENTE", DEMO.docente],
   ] as const) {
     const passwordHash = await bcrypt.hash(datosUsuario.password, 10);
+    // El SUPERADMIN administra la plataforma entera, no un colegio: se queda
+    // sin institución a propósito.
+    const institucionId = rol === "SUPERADMIN" ? null : colegioDemo.id;
     await prisma.usuario.upsert({
       where: { email: datosUsuario.email },
-      update: { rol, nombre: datosUsuario.nombre },
+      update: { rol, nombre: datosUsuario.nombre, institucionId },
       create: {
         email: datosUsuario.email,
         nombre: datosUsuario.nombre,
         passwordHash,
         rol,
+        institucionId,
       },
     });
     console.log(`  ✓ Usuario ${rol}: ${datosUsuario.email}`);

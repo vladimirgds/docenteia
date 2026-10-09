@@ -189,8 +189,174 @@ model Usuario {
   reglasCreadas     ReglaMatematica[]  @relation("AutorDeLaRegla")
   ejerciciosCreados Ejercicio[]        @relation("AutorDelEjercicio")
 
+  // Multi-tenant (HITO 3). A qué colegio pertenece este DOCENTE o DIRECTOR —un
+  // ESTUDIANTE no pertenece a ninguno por esta vía: entra en las aulas de sus
+  // profesores por matrícula, no por institución directamente, porque un mismo
+  // alumno puede estar matriculado en aulas de colegios distintos (clases
+  // particulares, refuerzo). SetNull: si el colegio se borra, el docente no
+  // desaparece con él, sólo queda sin institución asignada.
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
+  aulasComoDocente Aula[]         @relation("DocenteDeAula")
+  matriculas       Matricula[]
+  tareasAsignadas  Tarea[]        @relation("DocenteDeTarea")
+  entregas         EntregaTarea[]
+
   @@index([rol])
+  @@index([institucionId])
   @@map("usuarios")
+}
+
+// ── Multi-tenant: colegios, aulas y tareas programadas (HITO 3) ─────────────
+//
+// El PMV 1 y el HITO 1 sirven a un alumno suelto: se registra, declara su
+// etapa y aprende por su cuenta. El HITO 3 abre la plataforma a COLEGIOS: un
+// docente organiza a sus alumnos en AULAS (un grado y una sección concretos),
+// los alumnos se matriculan con un código que el docente reparte, y el docente
+// les programa TAREAS con fecha de inicio, de vencimiento y un límite de
+// reintentos. El DIRECTOR del colegio supervisa el conjunto sin entrar en el
+// currículo de nadie —ve, no edita, igual que en `puedeEditarCurriculo`—.
+//
+// La jerarquía es la que pidió el cliente: Institución → Aula (grado/sección)
+// → Docente titular → Estudiantes (por matrícula). `NodoConocimiento` sigue
+// siendo "el tema": una tarea puede enlazar uno, pero no lo necesita, porque no
+// toda tarea nace de un tema del currículo formal.
+
+/// Un colegio o academia. El techo de la jerarquía multi-institucional.
+model Institucion {
+  id            String   @id @default(cuid())
+  nombre        String
+  /// Código oficial del colegio (p. ej. un código del ministerio de
+  /// educación). Optativo porque una academia privada puede no tener uno.
+  codigoModular String?  @unique
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  usuarios Usuario[]
+  aulas    Aula[]
+
+  @@map("instituciones")
+}
+
+/// Un salón: un grado y una sección concretos, con un docente titular.
+///
+/// «Un alumno no se matricula 2 veces en la misma aula» vive en `Matricula`,
+/// no aquí: esta tabla es el salón, no quién está dentro.
+model Aula {
+  id           String   @id @default(cuid())
+  nombre       String
+  /// Grado dentro de la etapa (p. ej. 3). La etapa misma no se repite aquí: ya
+  /// la declara el colegio al que pertenece el aula en su propio currículo.
+  grado        Int
+  /// Sección dentro del grado (p. ej. "B").
+  seccion      String
+  /// EL CÓDIGO CON EL QUE SE MATRICULA UN ALUMNO. Alfanumérico, legible en voz
+  /// alta y corto a propósito: un alumno lo copia de la pizarra del aula física
+  /// o lo recibe por enlace (`/estudiante/unirse?codigo=…`). Ver
+  /// `generarCodigoAcceso` en `lib/docente/aulas.ts`.
+  codigoAcceso String   @unique
+  /// Un aula inactiva no admite matrículas nuevas, pero conserva las que ya
+  /// tenía: cerrar el curso no puede borrar el historial de quien ya estaba.
+  activa       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  institucionId String
+  institucion   Institucion @relation(fields: [institucionId], references: [id], onDelete: Cascade)
+
+  docenteId String
+  docente   Usuario @relation("DocenteDeAula", fields: [docenteId], references: [id], onDelete: Cascade)
+
+  matriculas Matricula[]
+  tareas     Tarea[]
+
+  @@index([institucionId])
+  @@index([docenteId])
+  @@map("aulas")
+}
+
+/// Un alumno matriculado en un aula: el enlace entre `Usuario` y `Aula`.
+///
+/// No lleva más datos que la fecha: la matrícula no es donde vive el progreso
+/// del alumno —eso sigue en `RegistroProgreso`/`SesionAprendizaje`—, es sólo el
+/// hecho de pertenecer al aula, que es lo que decide qué tareas le llegan.
+model Matricula {
+  id       String   @id @default(cuid())
+  creadoEn DateTime @default(now())
+
+  aulaId String
+  aula   Aula   @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+
+  estudianteId String
+  estudiante   Usuario @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  // Un alumno no se matricula dos veces en la misma aula: es el 409 que
+  // devuelve POST /api/estudiante/unirse cuando ya pertenece a ella.
+  @@unique([aulaId, estudianteId])
+  @@index([estudianteId])
+  @@map("matriculas")
+}
+
+/// Una tarea que el docente programa para toda un aula, con su ventana de
+/// tiempo y cuánto se le permite reintentar.
+model Tarea {
+  id                 String            @id @default(cuid())
+  titulo             String
+  descripcion        String?
+  fechaInicio        DateTime          @default(now())
+  fechaVencimiento   DateTime
+  /// Cuántos ejercicios tiene que resolver el alumno para darla por completa.
+  cantidadEjercicios Int               @default(5)
+  /// Cuántas veces puede reintentar DESPUÉS del primer intento. 0 = sin límite
+  /// —"ilimitado" se dice con un número, no con null, para no tener que
+  /// distinguir "sin configurar" de "sin tope" en cada sitio que lo lee—.
+  limiteReintentos   Int               @default(3)
+  /// El tema del currículo del que trata, si lo hay: una tarea de refuerzo
+  /// libre no tiene por qué colgar de ningún nodo formal.
+  nodoId             String?
+  nodo               NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+  creadoEn           DateTime          @default(now())
+
+  aulaId String
+  aula   Aula   @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+
+  docenteId String
+  docente   Usuario @relation("DocenteDeTarea", fields: [docenteId], references: [id], onDelete: Cascade)
+
+  entregas EntregaTarea[]
+
+  @@index([aulaId])
+  @@index([docenteId])
+  @@index([fechaVencimiento])
+  @@map("tareas")
+}
+
+/// El intento (o los intentos) de un alumno sobre una tarea.
+///
+/// Una fila por alumno y tarea —`@@unique`—, no una por intento: lo que cuenta
+/// de cada reintento es que SUBE `intentosUsados` y puede mejorar `puntaje`,
+/// no un historial línea a línea. El historial fino de cada respuesta sigue
+/// viviendo en `RegistroProgreso`, que ya lo llevaba antes de que existiera
+/// la tarea programada.
+model EntregaTarea {
+  id             String    @id @default(cuid())
+  /// Nota o porcentaje de aciertos del último intento registrado.
+  puntaje        Float?
+  intentosUsados Int       @default(0)
+  completada     Boolean   @default(false)
+  fechaEntrega   DateTime?
+  creadoEn       DateTime  @default(now())
+  actualizadoEn  DateTime  @updatedAt
+
+  tareaId String
+  tarea   Tarea  @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+
+  estudianteId String
+  estudiante   Usuario @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  @@unique([tareaId, estudianteId])
+  @@index([estudianteId])
+  @@map("entregas_tarea")
 }
 
 // ── b) Perfil académico del estudiante ───────────────────────────────────────
@@ -373,6 +539,7 @@ model NodoConocimiento {
   reglas     ReglaMatematica[]
   progreso   RegistroProgreso[]
   errores    RegistroError[]
+  tareas     Tarea[]
 
   @@index([materiaId, orden])
   @@index([motor, nivel])

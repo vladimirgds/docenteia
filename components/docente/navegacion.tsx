@@ -17,6 +17,9 @@ const SECCIONES = [
   { href: "/docente/curriculo", titulo: "Currículo" },
   { href: "/docente/crear-tema", titulo: "Crear tema" },
   { href: "/docente/ejercicios", titulo: "Ejercicios" },
+  // HITO 3: arquitectura multi-tenant — aulas y tareas programadas.
+  { href: "/docente/aulas", titulo: "Aulas" },
+  { href: "/docente/asignar-tarea", titulo: "Asignar tarea" },
 ];
 
 export function NavegacionDocente() {

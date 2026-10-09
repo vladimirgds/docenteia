@@ -29,6 +29,9 @@ export const ZONAS: ReadonlyArray<{ prefijo: string; permite: readonly Rol[] }> 
   // panel, y lo que no puede hacer se lo impide `puedeEditarCurriculo`, no el
   // middleware. Cortarle la zona entera le dejaría sin nada que supervisar.
   { prefijo: "/docente", permite: ["DOCENTE", "DIRECTOR", "SUPERADMIN"] },
+  // HITO 3: el panel propio del director, con las cifras de SU colegio. No
+  // lleva a DOCENTE —el panel institucional no es suyo— ni a ESTUDIANTE.
+  { prefijo: "/director", permite: ["DIRECTOR", "SUPERADMIN"] },
   { prefijo: "/admin", permite: ["SUPERADMIN"] },
 ];
 
@@ -36,9 +39,8 @@ export const ZONAS: ReadonlyArray<{ prefijo: string; permite: readonly Rol[] }> 
 export const INICIO_POR_ROL: Record<Rol, string> = {
   ESTUDIANTE: "/estudiante",
   DOCENTE: "/docente",
-  // El panel propio del director llega en el HITO 3 (supervisión institucional).
-  // Hasta entonces aterriza en el panel docente, que es lo que puede supervisar.
-  DIRECTOR: "/docente",
+  // HITO 3: ya tiene panel propio.
+  DIRECTOR: "/director",
   SUPERADMIN: "/admin",
 };
 

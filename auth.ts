@@ -65,6 +65,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           rol: usuario.rol,
           perfilId: usuario.perfilEstudiante?.id ?? null,
           nivelActual: usuario.perfilEstudiante?.nivelActual ?? null,
+          // HITO 3: a qué colegio pertenece, si es DOCENTE o DIRECTOR. Viaja en
+          // la sesión por la misma razón que `perfilId` —las rutas de
+          // /api/docente/aulas y /api/director/resumen lo necesitan en cada
+          // petición, y leerlo de la base en cada una sería una consulta de
+          // más por petición que el token ya puede ahorrarse—.
+          institucionId: usuario.institucionId ?? null,
         };
       },
     }),
