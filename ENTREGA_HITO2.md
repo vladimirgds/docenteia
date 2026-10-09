@@ -4756,3 +4756,83 @@ nunca «Propiedad uniforme de la suma», la del primer paso de la lección—.
 | `qa/qa.mjs` | 1.465 · **0** |
 | `qa/aceptacion.mjs` | **24/24** |
 | `qa/observaciones.mjs` | **42 reglas, las 42 verdes** (R9-03 nueva) |
+
+## «El sistema tiene hardcodeada la propiedad distributiva como explicación universal»
+
+El cliente mandó un informe técnico completo —con árbol de decisión propio— tras
+revisar el flujo con distintos tipos de ejercicios. Su ejemplo: `x/3 + 7 = 12`,
+una ecuación fraccionaria/aditiva, **sin paréntesis ni factor distributivo**. Al
+pulsar «Explicar regla», el tutor decía: *"La regla que estamos aplicando es
+propiedad distributiva. Antes de despejar conviene deshacer los paréntesis…"*
+
+Tenía razón, y la causa de fondo era la misma de la ronda anterior, vista desde
+otro ángulo: `reglaActiva()` no analiza el ejercicio que el alumno tiene
+delante, busca el NOMBRE de una regla del catálogo dentro de **todo lo dicho y
+escrito en la lección entera**. Si el ejercicio en curso no vuelve a nombrar
+ninguna regla por su nombre exacto —y «Multiplicamos por 3:» no lo hace—, la
+búsqueda sigue hacia atrás y encuentra la del ejercicio ANTERIOR. Renombrar el
+catálogo (ronda pasada) hizo que la distributiva se pudiera detectar; no hizo
+que dejara de **heredarse** de un ejercicio a otro.
+
+### La solución: leer la regla de la estructura, no de la memoria
+
+`reglaDeEcuacionLineal` (`lib/leccion/reglas.ts`) no busca texto acumulado:
+analiza el ejercicio ACTIVO con el mismo `solveLinearSteps` que ya decide sus
+pasos —una sola fuente de verdad, no un segundo analizador que se
+desincronice—, así que la regla que devuelve es siempre la de ESTE ejercicio:
+
+1. **Con un paso concreto delante** («No entendí este paso»), se reconoce la
+   línea con los mismos ojos con los que la anima la pizarra —`escenaDeCancelacion`,
+   `escenaDeCancelacionDeIncognita`, `escenaDeDivisionEnFraccion`—: si se
+   sumó o restó lo mismo a los dos lados, uniforme de la suma; si se dividió
+   entre lo mismo, uniforme del producto.
+2. **Sin un paso concreto** («Explícame la regla que se aplica»), se juzga el
+   ejercicio entero: paréntesis → distributiva; si no, una fracción o un
+   decimal que despejar → uniforme del producto (multiplicar los dos lados
+   para quitarlo); si no hay ninguna de las dos, uniforme de la suma.
+
+`src/preLight.js` expone ahora `tieneParentesis` y `escala` en lo que devuelve
+`solveLinearSteps` —datos que ya calculaba, simplemente no los entregaba—, y
+`components/leccion/aula.tsx` consulta este evaluador en lugar de
+`reglaEnCursoRef` específicamente para ecuaciones lineales; el resto de temas
+(derivadas, factorización, fracciones) siguen con la detección por texto, que
+ahí no está señalada como defectuosa.
+
+### Verificado en un Chrome de verdad, no sólo en el motor
+
+El fallo vivía en el FRONTEND (`aula.tsx`), así que una prueba de servidor no
+lo habría visto. Se probó dando una clase real: abrir «Ecuaciones lineales»,
+escalar la dificultad, y pulsar «Explicar regla» / «No entendí este paso» en
+**40 interacciones reales**, interceptando lo que el navegador manda de verdad
+a `/api/query`:
+
+| Ejercicio (tal como lo generó el motor) | Regla devuelta |
+|---|---|
+| `2x + 5 = 15` | Propiedad uniforme de la suma |
+| `3x + 2 = -x + 10` | Propiedad uniforme de la suma |
+| `x/2 + 3 = 7` — el caso del informe | **Propiedad uniforme del producto** |
+| `x/5 + 4 = 11` | **Propiedad uniforme del producto** |
+| `2(x + 3) = 16` | Propiedad distributiva |
+| `3(2x − 1) + 4 = 5x + 9` | Propiedad distributiva |
+| `2(x + 4) = 3(x + 1)` | Propiedad distributiva |
+
+**0 incidencias**: ninguna ecuación sin paréntesis se explicó con la
+distributiva, en ningún momento de la prueba. Revirtiendo sólo el cambio de
+`aula.tsx` y repitiendo la misma prueba contra el código anterior, la
+respuesta deja de ser fiable —en esa corrida concreta, `null` para las 20
+interacciones, y en la simulación offline de la ronda pasada, pegada a la
+regla del ejercicio anterior—: la causa no estaba en el texto fijo, estaba en
+que la detección no tenía manera de saber que el ejercicio había cambiado.
+
+### Las baterías
+
+| Batería | Resultado |
+|---|---|
+| `qa/hito2.mjs` | 841 · **0** |
+| `qa/rigor.mjs` | 34.195 afirmaciones · **0** incorrectas |
+| `qa/leccion.mjs` | 845 · **0** (9 comprobaciones nuevas sobre `reglaDeEcuacionLineal`) |
+| `qa/qa.mjs` | 1.465 · **0** |
+| `qa/aceptacion.mjs` | **24/24** |
+| `qa/mandos.mjs` | 19 · **0** |
+| `qa/voz.mjs` | 13 · **0** |
+| Chrome real, 40 interacciones | **0** incidencias |

@@ -2493,8 +2493,10 @@ titulo("A00a1h. Revisión daa127d: lo que dice = lo que muestra, «No entendí»
     const aulaTsx = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
     check(
       "el aula manda el ejercicio de la TARJETA (no el último escrito de la lección) y el paso que se ve",
-      /ejercicio: faseConEjercicio\(\) \? \(enTarjeta \?\? conversacion\.current\.ejercicio\) : ""/.test(aulaTsx) &&
-        /paso: pasoEnPantalla\.current \?\?/.test(aulaTsx) &&
+      /const ejercicioDeLaAclaracion = faseConEjercicio\(\)\s*\?\s*\(enTarjeta \?\? conversacion\.current\.ejercicio\)\s*:\s*""/.test(aulaTsx) &&
+        /const pasoDeLaAclaracion = pasoEnPantalla\.current \?\?/.test(aulaTsx) &&
+        /ejercicio: ejercicioDeLaAclaracion/.test(aulaTsx) &&
+        /paso: pasoDeLaAclaracion/.test(aulaTsx) &&
         /conResultado: !tarjetaParaResolver \|\| practicaResuelta\.current/.test(aulaTsx),
     );
     check(

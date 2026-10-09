@@ -1053,7 +1053,13 @@ export function solveLinearSteps(text) {
       };
     }
   }
-  return { original, steps, answer: answerStr, varName: v };
+  // SE DEVUELVE TAMBIÉN QUÉ LE HACÍA FALTA A LA ECUACIÓN ANTES DE DESPEJAR
+  // —si traía paréntesis, si traía fracciones o decimales—, para que quien
+  // necesite saber QUÉ REGLA corresponde a este ejercicio concreto (el botón
+  // «Explicar regla») no tenga que adivinarlo analizando el texto ya narrado:
+  // lo lee aquí, de la MISMA fuente que decide los pasos. Ver
+  // `reglaDeEcuacionLineal` en lib/leccion/reglas.ts.
+  return { original, steps, answer: answerStr, varName: v, tieneParentesis, escala };
 }
 
 // ─── Validación matemática INTEGRAL de la lección ─────────────────────────────

@@ -82,7 +82,7 @@ import {
   sinPreguntas,
   recortarParaSeguimiento,
 } from "../lib/leccion/seguimiento-lsg.ts";
-import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
+import { adaptarCatalogo, identificarRegla, reglaActiva, reglaDeEcuacionLineal } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
@@ -416,6 +416,96 @@ if (catalogo) {
     check(
       "…y NO la propiedad uniforme del primer paso de la lección",
       activaTrasElReparto?.nombre !== "Propiedad uniforme de la suma",
+    );
+  }
+
+  // ── «El sistema tiene hardcodeada la propiedad distributiva como
+  //    explicación universal para cualquier ejercicio de ecuaciones
+  //    lineales» ──────────────────────────────────────────────────────────
+  //
+  // El renombrado de arriba («Reparto del paréntesis» → «Propiedad
+  // distributiva») arregló que la regla del paréntesis se pudiera detectar
+  // ALGUNA vez. No arregló que `reglaActiva()` siga buscando por texto en TODA
+  // la lección acumulada: sobre "x/3 + 7 = 12" —sin paréntesis— el alumno
+  // pulsaba «Explicar regla» y el tutor seguía contestando con la distributiva
+  // del ejercicio ANTERIOR, porque nada en éste vuelve a nombrar ninguna regla
+  // por su nombre exacto («Multiplicamos por 3:» no lo hace). El cliente lo
+  // fotografió palabra por palabra: *"La regla que estamos aplicando es
+  // propiedad distributiva. Antes de despejar conviene deshacer los
+  // paréntesis…"* sobre una ecuación que no tiene ninguno.
+  //
+  // `reglaDeEcuacionLineal` no hereda esa memoria: analiza el ejercicio ACTIVO
+  // con el mismo `solveLinearSteps` que decide sus pasos, así que la regla que
+  // devuelve es siempre la de ESTE ejercicio.
+  console.log("\n · La regla de un ejercicio lineal se lee de su estructura, no de la lección entera");
+  {
+    const lineales = catalogo.filter((r) => r.tema === "ECUACIONES_LINEALES");
+
+    // El caso EXACTO del informe: una ecuación fraccionaria/aditiva, sin
+    // paréntesis ni factor distributivo.
+    const sinParentesis = reglaDeEcuacionLineal("x/3 + 7 = 12", null, lineales);
+    check(
+      "\"x/3 + 7 = 12\" (sin paréntesis) NO se explica con la distributiva",
+      sinParentesis?.nombre !== "Propiedad distributiva",
+      `obtenido: ${sinParentesis?.nombre ?? "null"}`,
+    );
+    check(
+      "…se explica con la propiedad que de verdad usa: multiplicar los dos lados para quitar el denominador",
+      sinParentesis?.nombre === "Propiedad uniforme del producto",
+      `obtenido: ${sinParentesis?.nombre ?? "null"}`,
+    );
+
+    // El mismo evaluador, sobre tres formas DISTINTAS, en la MISMA
+    // comprobación: si estuviera hardcodeada ninguna regla, las tres
+    // devolverían lo mismo.
+    const casos = [
+      ["2(x + 3) = 16", "Propiedad distributiva"],
+      ["x/3 + 7 = 12", "Propiedad uniforme del producto"],
+      ["2x + 5 = 15", "Propiedad uniforme de la suma"],
+    ];
+    for (const [ejercicio, esperada] of casos) {
+      const r = reglaDeEcuacionLineal(ejercicio, null, lineales);
+      check(
+        `"${ejercicio}" → ${esperada}`,
+        r?.nombre === esperada,
+        `obtenido: ${r?.nombre ?? "null"}`,
+      );
+    }
+    check(
+      "las tres formas dan reglas DISTINTAS (no hay una fija para todas)",
+      new Set(casos.map((c) => c[1])).size === casos.length,
+    );
+
+    // Con un PASO concreto delante —"No entendí este paso"—, la regla es la
+    // de ESE renglón, reconocido con los mismos ojos con los que lo anima la
+    // pizarra (mismo patrón que `escenaDeCancelacion`/`escenaDeDivisionEnFraccion`).
+    const pasoSuma = reglaDeEcuacionLineal("x/3 + 7 = 12", "x + 21 - 21 = 36 - 21", lineales);
+    check(
+      "el paso que resta/suma lo mismo a los dos lados es la propiedad uniforme de la suma",
+      pasoSuma?.nombre === "Propiedad uniforme de la suma",
+      `obtenido: ${pasoSuma?.nombre ?? "null"}`,
+    );
+    const pasoProducto = reglaDeEcuacionLineal("2(x + 3) = 16", "2x/2 = 10/2", lineales);
+    check(
+      "el paso que divide los dos lados entre lo mismo es la propiedad uniforme del producto",
+      pasoProducto?.nombre === "Propiedad uniforme del producto",
+      `obtenido: ${pasoProducto?.nombre ?? "null"}`,
+    );
+
+    // Lo que NO es una ecuación lineal reconocible no se etiqueta a ciegas.
+    check(
+      "un texto que no es una ecuación no devuelve ninguna regla",
+      reglaDeEcuacionLineal("Vamos a resolver esto paso a paso.", null, lineales) === null,
+    );
+
+    // Guarda sobre el propio fichero: que `pedirLeccion` LLAME a este
+    // evaluador para "lineales" específicamente, y no sólo que la función
+    // exista sin usarse en ningún sitio.
+    const fuenteAula = readFileSync(new URL("../components/leccion/aula.tsx", import.meta.url), "utf8");
+    check(
+      "aula.tsx consulta reglaDeEcuacionLineal cuando el tema es lineales, no sólo reglaEnCursoRef",
+      /reglaDeEcuacionLineal\s*\(/.test(fuenteAula) &&
+        /claveTema\s*===\s*"lineales"/.test(fuenteAula),
     );
   }
 
