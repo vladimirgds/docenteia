@@ -122,8 +122,28 @@ console.log(" · A. Forma, validación y los cálculos que no tocan la base de d
     "…y el error señala el campo fechaVencimiento, no uno genérico",
     !rInvertida.success && rInvertida.error.issues[0]?.path.includes("fechaVencimiento"),
   );
-  const iguales = { ...base, fechaVencimiento: base.fechaInicio };
-  check("una tarea con las dos fechas IGUALES tampoco pasa (tiene que haber ventana)", !tareaSchema.safeParse(iguales).success);
+  // Tarea de un solo día ("tareas de clase / diarias", corrección QA tras el
+  // Hito 3): el formulario manda un `<input type="date">`, así que inicio y
+  // vencimiento llegan como el MISMO día sin hora. Antes el `.refine` exigía
+  // vencimiento > inicio con `>` estricto, y dos medianoches idénticas nunca
+  // lo cumplen: una tarea que empieza y vence hoy se rechazaba siempre, con
+  // el aviso de "fecha de vencimiento no puede ser anterior" sobre una fecha
+  // que no era anterior a nada.
+  const mismoDia = { ...base, fechaInicio: "2026-03-05", fechaVencimiento: "2026-03-05" };
+  const rMismoDia = tareaSchema.safeParse(mismoDia);
+  check("una tarea que empieza y vence el MISMO día sí pasa", rMismoDia.success);
+  check(
+    "…normalizada al primer instante del día (inicio) y al último (vencimiento)",
+    rMismoDia.success &&
+      rMismoDia.data.fechaInicio.toISOString() === "2026-03-05T00:00:00.000Z" &&
+      rMismoDia.data.fechaVencimiento.toISOString() === "2026-03-05T23:59:59.999Z",
+  );
+  // Vencida ANTES de empezar sigue sin pasar: "mismo día" no es "cualquier
+  // orden". La ventana puede durar cero días, nunca días negativos.
+  check(
+    "pero un día de vencimiento ANTERIOR al de inicio sigue sin pasar",
+    !tareaSchema.safeParse({ ...base, fechaInicio: "2026-03-05", fechaVencimiento: "2026-03-04" }).success,
+  );
   check(
     `cantidadEjercicios admite entre ${CANTIDAD_EJERCICIOS_MIN} y ${CANTIDAD_EJERCICIOS_MAX}`,
     tareaSchema.safeParse({ ...base, cantidadEjercicios: CANTIDAD_EJERCICIOS_MIN }).success &&
@@ -278,6 +298,49 @@ if (!salud) {
         headers: { "Content-Type": "application/json", cookie: alumno.sesion, ...(opciones.headers || {}) },
       });
 
+    // 3b. Las páginas de /estudiante/leccion exigen etapa y nivel asignados
+    //     —si no, redirigen a la configuración inicial, como le toca a un
+    //     alumno recién registrado—. Esta batería SÍ necesita entrar a esa
+    //     página (ver más abajo, "abrir una tarea… desde la lección"), así
+    //     que cada alumno de prueba completa el mismo onboarding que seguiría
+    //     uno de verdad: declarar su etapa y responder el diagnóstico. Las
+    //     respuestas no importan —no se evalúa su acierto aquí—, sólo que
+    //     quede un `nivelActual` asignado.
+    async function onboardear(sesionAlumno, email, password) {
+      const llamar = (ruta, opciones = {}) =>
+        fetch(`${BASE}${ruta}`, {
+          ...opciones,
+          headers: { "Content-Type": "application/json", cookie: sesionAlumno, ...(opciones.headers || {}) },
+        });
+      await llamar("/api/estudiante/nivel-educativo", {
+        method: "PUT",
+        body: JSON.stringify({ etapa: "SECUNDARIA", curso: 3 }),
+      });
+      const prueba = await (await llamar("/api/diagnostico")).json().catch(() => ({}));
+      if ((prueba?.preguntas ?? []).length > 0) {
+        await llamar("/api/diagnostico", {
+          method: "POST",
+          body: JSON.stringify({
+            respuestas: prueba.preguntas.map((p) => ({
+              preguntaId: p.id,
+              respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0",
+              tiempoMs: 1000,
+            })),
+          }),
+        });
+      }
+      // `nivelActual` viaja en el JWT, y el JWT sólo se rellena al iniciar
+      // sesión (`auth.config.ts`: `token.nivelActual = user.nivelActual`,
+      // sólo cuando `user` llega del `authorize()`). La interfaz real lo
+      // refresca con `session.update()` tras el diagnóstico —un trigger de
+      // NextAuth que esta batería, por HTTP plano, no puede invocar—, así que
+      // el equivalente aquí es simplemente volver a iniciar sesión: el nuevo
+      // JWT se arma leyendo la base de datos ya actualizada.
+      return iniciarSesion(BASE, email, password);
+    }
+    const emailAlumno = `qa.hito3.${sufijo}@mentoriamath.local`;
+    alumno.sesion = await onboardear(alumno.sesion, emailAlumno, "Alumno-2026");
+
     const rUnirse = await apiAlumno("/api/estudiante/unirse", {
       method: "POST",
       body: JSON.stringify({ codigoAcceso }),
@@ -309,6 +372,26 @@ if (!salud) {
       body: JSON.stringify({ aulaId, titulo: "Fecha mala", fechaInicio: ahoraIso, fechaVencimiento: ayerIso }),
     });
     check("una tarea con vencimiento anterior al inicio no se crea", rFechaMala.status === 400, `HTTP ${rFechaMala.status}`);
+
+    // 4b. Tareas de clase / diarias (corrección QA): empezar y vencer el MISMO
+    //     día tiene que crearse, no rechazarse — ver la prueba de
+    //     `tareaSchema` más arriba para la normalización; esto comprueba que
+    //     el mismo arreglo vale en el viaje real por HTTP.
+    const hoyIso = new Date().toISOString().slice(0, 10);
+    const rMismoDiaHttp = await api("/api/docente/tareas", {
+      method: "POST",
+      body: JSON.stringify({
+        aulaId,
+        titulo: `Tarea del día QA ${sufijo}`,
+        fechaInicio: hoyIso,
+        fechaVencimiento: hoyIso,
+      }),
+    });
+    check(
+      "una tarea que empieza y vence HOY se crea (tarea de un solo día)",
+      rMismoDiaHttp.status === 201,
+      `HTTP ${rMismoDiaHttp.status}`,
+    );
 
     // 5. Se programa una tarea de verdad, con dos reintentos.
     const rTarea = await api("/api/docente/tareas", {
@@ -352,6 +435,7 @@ if (!salud) {
       password: "Alumno-2026",
       nombre: "QA Ajeno",
     });
+    ajeno.sesion = await onboardear(ajeno.sesion, `qa.hito3.ajeno.${sufijo}@mentoriamath.local`, "Alumno-2026");
     const rAjeno = await fetch(`${BASE}/api/estudiante/tareas/${tareaId}/entregar`, {
       method: "POST",
       headers: { "Content-Type": "application/json", cookie: ajeno.sesion },
@@ -360,10 +444,16 @@ if (!salud) {
     check("un alumno NO matriculado no puede entregar esa tarea", rAjeno.status === 403, `HTTP ${rAjeno.status}`);
 
     // 9. Una tarea ya vencida se rechaza al entregar y se ve "vencida".
-    const haceUnaHora = new Date(Date.now() - 3_600_000).toISOString();
+    //
+    // El vencimiento se normaliza al ÚLTIMO instante de SU DÍA (ver la
+    // corrección QA de "tareas de un solo día" más arriba): una hora
+    // cualquiera de HOY ya no sirve para fabricar una tarea vencida —se
+    // normalizaría a hoy 23:59:59.999, que sigue siendo futuro—. Vencida de
+    // verdad es un DÍA entero en el pasado.
+    const anteayerIso = new Date(Date.now() - 2 * 86_400_000).toISOString();
     const rTareaVencida = await api("/api/docente/tareas", {
       method: "POST",
-      body: JSON.stringify({ aulaId, titulo: `Vencida QA ${sufijo}`, fechaInicio: ayerIso, fechaVencimiento: haceUnaHora }),
+      body: JSON.stringify({ aulaId, titulo: `Vencida QA ${sufijo}`, fechaInicio: anteayerIso, fechaVencimiento: ayerIso }),
     });
     const tareaVencida = await rTareaVencida.json().catch(() => ({}));
     const rEntregaVencida = await apiAlumno(`/api/estudiante/tareas/${tareaVencida?.tarea?.id}/entregar`, {
@@ -376,6 +466,33 @@ if (!salud) {
     const vistaVencida = (listaConVencida?.tareas ?? []).find((t) => t.id === tareaVencida?.tarea?.id);
     check("…y se etiqueta vencida en el listado del alumno", vistaVencida?.estado === "vencida", vistaVencida?.estado);
 
+    // 9b. El mismo bloqueo, visto desde la LECCIÓN y no sólo desde la API: "no
+    //     hay una regla para dejar PRACTICAR y otra para dejar ENTREGAR".
+    //     Abrir `/estudiante/leccion?tareaId=…` de una tarea vencida no debe
+    //     dejar entrar a practicar ejercicios que después no se van a poder
+    //     entregar.
+    const rLeccionVencida = await fetch(`${BASE}/estudiante/leccion?tareaId=${tareaVencida?.tarea?.id}`, {
+      headers: { cookie: alumno.sesion },
+    });
+    const textoLeccionVencida = await rLeccionVencida.text().catch(() => "");
+    check(
+      "abrir una tarea YA VENCIDA desde la lección avisa, no deja practicar",
+      rLeccionVencida.status === 200 && /venci/i.test(textoLeccionVencida),
+      `HTTP ${rLeccionVencida.status}`,
+    );
+
+    // 9c. Un alumno no matriculado en el aula de la tarea no debe poder
+    //     practicarla sólo por conocer su id —ni enterarse de si existe—.
+    const rLeccionAjena = await fetch(`${BASE}/estudiante/leccion?tareaId=${tareaId}`, {
+      headers: { cookie: ajeno.sesion },
+    });
+    const textoLeccionAjena = await rLeccionAjena.text().catch(() => "");
+    check(
+      "un alumno no matriculado que abre la tarea de otra aula ve 'no existe', no el ejercicio",
+      rLeccionAjena.status === 200 && /no existe/i.test(textoLeccionAjena),
+      `HTTP ${rLeccionAjena.status}`,
+    );
+
     // 10. El docente ve a sus alumnos desde la ficha del aula.
     const correoAlumno = `qa.hito3.${sufijo}@mentoriamath.local`;
     const rFicha = await api(`/api/docente/aulas/${aulaId}`);
@@ -384,6 +501,32 @@ if (!salud) {
       "la ficha del aula lista al alumno matriculado, con su nombre y correo",
       (ficha?.estudiantes ?? []).some((e) => e.email === correoAlumno && e.nombre === "QA Hito3"),
       JSON.stringify(ficha?.estudiantes?.map((e) => e.email)),
+    );
+
+    // 10b. "La tarea se asignó a un alumno pero no se visualiza": la ficha del
+    //      aula —lo que abre "Ver tarea asignada"— también trae la tarea, con
+    //      sus plazos y cuántos de los matriculados ya entregaron.
+    const filaTarea = (ficha?.tareas ?? []).find((t) => t.id === tareaId);
+    check(
+      "la ficha del aula también trae la tarea asignada, con cupo y reintentos",
+      Boolean(filaTarea) && filaTarea.cantidadEjercicios === 5 && filaTarea.limiteReintentos === 1,
+      JSON.stringify(filaTarea),
+    );
+    check(
+      "…con la entrega del único alumno matriculado ya contada (1 entregada, 0 pendientes)",
+      filaTarea?.entregadas === 1 && filaTarea?.pendientes === 0,
+      JSON.stringify(filaTarea),
+    );
+
+    // 10c. La pantalla "Mis tareas" del alumno —antes no existía ninguna, y
+    //      por eso el QA entraba directo a /estudiante/leccion sin ningún
+    //      rastro del cupo que le dejó el docente—.
+    const rPaginaTareas = await fetch(`${BASE}/estudiante/tareas`, { headers: { cookie: alumno.sesion } });
+    const textoPaginaTareas = await rPaginaTareas.text().catch(() => "");
+    check("la página /estudiante/tareas responde para el alumno", rPaginaTareas.status === 200, `HTTP ${rPaginaTareas.status}`);
+    check(
+      "…y en ella aparece el título de la tarea que le asignó el docente",
+      textoPaginaTareas.includes(`Práctica QA ${sufijo}`),
     );
 
     // 11. Un aula ajena sigue siendo ajena: un segundo docente no puede verla

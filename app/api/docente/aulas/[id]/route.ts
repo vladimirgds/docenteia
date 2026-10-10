@@ -27,6 +27,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           orderBy: { creadoEn: "asc" },
           include: { estudiante: { select: { id: true, nombre: true, email: true } } },
         },
+        // Lo que pidió el cliente tras el QA: desde la propia aula, sin ir a
+        // buscarla a otro sitio, el docente tiene que poder ver QUÉ tarea
+        // asignó, con qué plazos y quién de sus matriculados ya entregó.
+        tareas: {
+          orderBy: { creadoEn: "desc" },
+          include: { entregas: { select: { estudianteId: true, completada: true, puntaje: true } } },
+        },
       },
     });
 
@@ -48,6 +55,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         email: m.estudiante.email,
         matriculadoEn: m.creadoEn,
       })),
+      tareas: aula.tareas.map((t) => {
+        const entregadas = t.entregas.filter((e) => e.completada).length;
+        return {
+          id: t.id,
+          titulo: t.titulo,
+          fechaInicio: t.fechaInicio,
+          fechaVencimiento: t.fechaVencimiento,
+          cantidadEjercicios: t.cantidadEjercicios,
+          limiteReintentos: t.limiteReintentos,
+          entregadas,
+          // Pendientes se cuenta sobre los matriculados, no sobre las
+          // entregas: un alumno que todavía no entregó no tiene fila en
+          // `entregas`, así que restar es lo único que lo cuenta.
+          pendientes: Math.max(0, aula.matriculas.length - entregadas),
+        };
+      }),
     });
   } catch (e) {
     return fallo(e, "docente/aulas/[id]:leer");
