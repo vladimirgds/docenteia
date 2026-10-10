@@ -392,8 +392,10 @@ check("el docente puede editar el currículo", puedeEditarCurriculo("DOCENTE"));
 check("el director NO puede editar el currículo", !puedeEditarCurriculo("DIRECTOR"));
 check("un anónimo no puede editar el currículo", !puedeEditarCurriculo(undefined));
 check(
-  "las tres zonas siguen protegidas",
-  ZONAS.length === 3 && ZONAS.every((z) => z.permite.length > 0),
+  // HITO 3 añade /director (el panel propio del director institucional, ver
+  // qa/hito3.mjs): cuatro zonas, no tres.
+  "las zonas siguen protegidas",
+  ZONAS.length === 4 && ZONAS.every((z) => z.permite.length > 0),
 );
 
 // ── E. El ciclo completo por HTTP (necesita servidor y base de datos) ────────

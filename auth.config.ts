@@ -30,6 +30,7 @@ export const authConfig = {
         token.rol = user.rol;
         token.perfilId = user.perfilId;
         token.nivelActual = user.nivelActual;
+        token.institucionId = user.institucionId;
       }
       if (trigger === "update" && session?.nivelActual !== undefined) {
         token.nivelActual = session.nivelActual;
@@ -42,6 +43,7 @@ export const authConfig = {
         session.user.rol = token.rol;
         session.user.perfilId = token.perfilId;
         session.user.nivelActual = token.nivelActual;
+        session.user.institucionId = token.institucionId;
       }
       return session;
     },
