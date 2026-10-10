@@ -36,11 +36,6 @@ interface Props {
   aulaIdInicial?: string;
 }
 
-/** A las 23:59 del día elegido, en hora local: lo que un docente quiere decir con "vence el día X". */
-function finDelDia(fecha: string): string {
-  return fecha ? `${fecha}T23:59` : "";
-}
-
 /**
  * ASIGNAR TAREA (HITO 3) — programar una tarea para un aula entera.
  *
@@ -88,8 +83,16 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
           aulaId: datos.aulaId,
           titulo: datos.titulo.trim(),
           descripcion: datos.descripcion.trim() || null,
-          fechaInicio: new Date(finDelDia(datos.fechaInicio) || datos.fechaInicio).toISOString(),
-          fechaVencimiento: new Date(finDelDia(datos.fechaVencimiento)).toISOString(),
+          // Fechas sin hora ("2026-10-10"): el navegador las interpreta como
+          // medianoche UTC, y el servidor normaliza cada una al límite de su
+          // propio día (inicio al primero, vencimiento al último) antes de
+          // comparar. Fijarles aquí una hora local —como hacía antes
+          // `finDelDia`, y encima se la ponía también a INICIO— es lo que
+          // hacía que una tarea "del mismo día" comparase dos medianoches
+          // locales corridas de zona horaria y pareciera vencer antes de
+          // empezar.
+          fechaInicio: new Date(datos.fechaInicio).toISOString(),
+          fechaVencimiento: new Date(datos.fechaVencimiento).toISOString(),
           cantidadEjercicios: Number(datos.cantidadEjercicios) || 5,
           limiteReintentos: Number(datos.limiteReintentos) || 0,
           nodoId: datos.nodoId || null,

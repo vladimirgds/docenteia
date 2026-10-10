@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -70,7 +71,7 @@ import {
 } from "@/lib/leccion/columna";
 import { cierreDelDesarrollo } from "@/lib/leccion/cierre";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
-import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
+import { TEMAS_LECCION, temaPorClave, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
 
 /** Botones de apoyo del entorno de resolución (Módulo 8). */
@@ -134,11 +135,28 @@ export interface ProgresoTema {
   intentos: number;
 }
 
+/**
+ * Una tarea asignada en curso (HITO 3 — corrección QA), resuelta por la
+ * página servidor a partir de `?tareaId=`.
+ *
+ * `temaClave` es el tema que el docente le asoció a la tarea —si tiene motor
+ * determinista—: con ella el aula arranca DIRECTO en ese tema, sin pasar por
+ * el selector. `null` si la tarea no tiene tema (el alumno elige) o si su
+ * tema no tiene motor (entonces no hay cómo practicarla de forma acotada
+ * aquí, y la tarea no debería haber llegado con esta prop puesta).
+ */
+export interface TareaActiva {
+  id: string;
+  cantidadEjercicios: number;
+  temaClave: string | null;
+}
+
 export function Aula({
   temas = TEMAS_LECCION,
   reglas = [],
   progreso = [],
   curso = null,
+  tarea = null,
 }: {
   /**
    * Los temas que se le pueden ofrecer a ESTE alumno.
@@ -154,6 +172,8 @@ export function Aula({
   progreso?: ProgresoTema[];
   /** Curso del alumno, para poder decírselo en pantalla. */
   curso?: string | null;
+  /** La tarea que se está intentando, si la lección se abrió desde una. */
+  tarea?: TareaActiva | null;
 }) {
   // ── Instancias del motor (sólo en el navegador) ────────────────────────────
   const pseRef = useRef<PSELight | null>(null);
@@ -195,6 +215,33 @@ export function Aula({
    * eso hace falta el catálogo completo del tema, no sólo la última detectada.
    */
   const reglasDelTemaRef = useRef<ReglaVista[]>([]);
+
+  /**
+   * Espejo de la prop `tarea`, por la misma razón que `reglasDelTemaRef`: lo
+   * lee el callback de `onLessonEnd`, que se declara una sola vez dentro del
+   * `useEffect` de montaje y no puede depender de una prop que cambia.
+   */
+  const tareaRef = useRef<TareaActiva | null>(tarea);
+  tareaRef.current = tarea;
+
+  /**
+   * El enunciado de la última práctica CONTADA para el cupo de la tarea.
+   *
+   * "El ENUNCIADO se conserva, porque una aclaración no cambia el ejercicio
+   * que el alumno está resolviendo" (ver más abajo, en `pedirLeccion"): una
+   * aclaración o un repaso del mismo paso vuelve a cerrar el MISMO ejercicio,
+   * con el mismo texto. Comparar contra el último contado —en vez de llevar
+   * la cuenta de "ejercicios vistos" a ciegas— es lo que distingue "ejercicio
+   * nuevo" de "se volvió a cerrar el que ya había", sin necesitar un evento
+   * dedicado que el motor no tiene.
+   */
+  const ultimoEnunciadoContadoRef = useRef<string | null>(null);
+
+  /** Ejercicios resueltos y aciertos de la tarea en curso, para el cupo y la nota. */
+  const [progresoTarea, setProgresoTarea] = useState({ hechos: 0, aciertos: 0 });
+  const [envioTarea, setEnvioTarea] = useState<"pendiente" | "enviando" | "lista" | "error">(
+    "pendiente",
+  );
 
   /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
   const narrado = useRef<string[]>([]);
@@ -797,6 +844,31 @@ export function Aula({
         // ejercicio; si por lo que sea no llegó —una lección de otra versión
         // del reproductor—, se escribe aquí. Si ya está, no hace nada.
         if (respuesta) cerrarEjercicio(respuesta, ultimaPregunta.current);
+
+        // CUPO DE LA TAREA (HITO 3 — corrección QA). Sólo cuenta una ronda que
+        // termina en PRÁCTICA —ni Concepto ni Reglas ni el ejemplo que resuelve
+        // el tutor son ejercicios del alumno— y cuyo enunciado es distinto del
+        // último contado, para no contar dos veces la misma aclaración. Pasado
+        // el cupo no se sigue sumando: "Reiniciar lección" no debe poder
+        // inflarlo.
+        const tareaActual = tareaRef.current;
+        if (tareaActual) {
+          const ultimaFase = fasesRef.current[fasesRef.current.length - 1]?.id ?? "";
+          const enunciadoActual = ejercicioRef.current?.texto ?? null;
+          if (
+            esFaseDePractica(ultimaFase) &&
+            enunciadoActual &&
+            enunciadoActual !== ultimoEnunciadoContadoRef.current
+          ) {
+            ultimoEnunciadoContadoRef.current = enunciadoActual;
+            setProgresoTarea((prev) =>
+              prev.hechos >= tareaActual.cantidadEjercicios
+                ? prev
+                : { hechos: prev.hechos + 1, aciertos: prev.aciertos + (acerto ? 1 : 0) },
+            );
+          }
+        }
+
         // Se cierra la sesión para que quede su duración registrada.
         if (sesionId.current) {
           void fetch("/api/sesion", {
@@ -1248,6 +1320,41 @@ export function Aula({
     [pedirLeccion],
   );
 
+  // ── Tarea asignada: arranque directo y cierre automático ───────────────────
+  // Con tema asociado, la tarea se abre SOLA en ese tema —sin el selector, que
+  // es justo lo que dejaba al alumno entrar a cualquier lección suelta en vez
+  // de a la que le tocaba—. Sin tema asociado, el selector se muestra igual
+  // (el docente no lo exigió) y el cupo se aplica sobre lo que el alumno
+  // elija.
+  useEffect(() => {
+    if (tarea?.temaClave && !tema) {
+      const t = temaPorClave(tarea.temaClave);
+      if (t) empezarTema(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarea?.temaClave]);
+
+  // Al llegar al cupo, la tarea se entrega sola —"la sesión debe detenerse,
+  // calcular el puntaje, registrar la entrega… y mostrar una pantalla de
+  // cierre con la calificación obtenida"—, con la nota de aciertos sobre el
+  // total de ejercicios de la tarea. `envioTarea` evita reenviarla si el
+  // efecto se repite (p. ej. al cambiar `progresoTarea` por otro motivo).
+  useEffect(() => {
+    if (!tarea) return;
+    if (progresoTarea.hechos < tarea.cantidadEjercicios) return;
+    if (envioTarea !== "pendiente") return;
+    setEnvioTarea("enviando");
+    const puntaje = Math.round((progresoTarea.aciertos / tarea.cantidadEjercicios) * 100);
+    fetch(`/api/estudiante/tareas/${tarea.id}/entregar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ puntaje, completada: true }),
+    })
+      .then((r) => (r.ok ? r : Promise.reject(r)))
+      .then(() => setEnvioTarea("lista"))
+      .catch(() => setEnvioTarea("error"));
+  }, [tarea, progresoTarea, envioTarea]);
+
   // ── Envío de la respuesta del alumno ───────────────────────────────────────
   const responder = useCallback(async () => {
     const respuesta = borrador.trim();
@@ -1465,6 +1572,9 @@ export function Aula({
     setReglaDetectada(encontrada);
   }, [ejercicio, desarrollo, reglasDelTema, subtitulo]);
 
+  /** La tarea llegó a su cupo de ejercicios: se acabó la práctica, toca el cierre. */
+  const tareaCompleta = Boolean(tarea) && progresoTarea.hechos >= (tarea?.cantidadEjercicios ?? 0);
+
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {
     return (
@@ -1549,21 +1659,35 @@ export function Aula({
           <h1 className="text-2xl font-bold tracking-tight">{tema.titulo}</h1>
           {/* La fase en curso ya la indica el paso a paso sobre la pizarra: no
               hace falta repetirla aquí. */}
+          {/* "Renderizar en la cabecera un contador visible": el cupo de la
+              tarea, no la fase. Desaparece al llegar al cupo —ahí lo que toca
+              ver es la pantalla de cierre, más abajo—. */}
+          {tarea && !tareaCompleta && (
+            <p className="text-sm font-medium text-muted-foreground">
+              Ejercicio {Math.min(progresoTarea.hechos + 1, tarea.cantidadEjercicios)} de{" "}
+              {tarea.cantidadEjercicios}
+            </p>
+          )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            pseRef.current?.stop();
-            setTema(null);
-            limpiarPizarra();
-            setSubtitulo("");
-            setFeedback(null);
-            setVeredicto(null);
-          }}
-        >
-          Cambiar de tema
-        </Button>
+        {/* Con una tarea en curso no hay "otro tema" al que cambiarse: el
+            cupo y la nota son de ÉSTE, y cambiarlo a medias los dejaría sin
+            sentido. */}
+        {!tarea && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              pseRef.current?.stop();
+              setTema(null);
+              limpiarPizarra();
+              setSubtitulo("");
+              setFeedback(null);
+              setVeredicto(null);
+            }}
+          >
+            Cambiar de tema
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -1614,7 +1738,7 @@ export function Aula({
                 size="sm"
                 variant="ghost"
                 className="w-full"
-                disabled={cargando}
+                disabled={cargando || tareaCompleta}
                 onClick={() => empezarTema(tema)}
               >
                 <RotateCcw className="h-4 w-4" />
@@ -1809,48 +1933,90 @@ export function Aula({
             />
           )}
 
-          {/* Botones contextuales de apoyo */}
-          <div className="flex flex-wrap gap-2">
-            {BOTONES_APOYO.map((b) => (
+          {/* "Al completar el último ejercicio, la sesión debe detenerse… y
+              mostrarse una pantalla de cierre con la calificación obtenida":
+              sustituye a los botones de práctica, que pedirían un ejercicio
+              más allá del cupo de la tarea. */}
+          {tareaCompleta && tarea ? (
+            <Card className="border-2 border-primary">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Tarea completada</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {envioTarea === "enviando" && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Registrando tu entrega…
+                  </p>
+                )}
+                {envioTarea === "lista" && (
+                  <>
+                    <p className="text-lg font-semibold">
+                      Nota: {Math.round((progresoTarea.aciertos / tarea.cantidadEjercicios) * 100)}/100
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {progresoTarea.aciertos} de {tarea.cantidadEjercicios} ejercicios correctos.
+                    </p>
+                    <Button asChild size="sm">
+                      <Link href="/estudiante/tareas">Volver a mis tareas</Link>
+                    </Button>
+                  </>
+                )}
+                {envioTarea === "error" && (
+                  <p className="text-sm text-destructive">
+                    No se pudo registrar la entrega. Vuelve a intentarlo desde{" "}
+                    <Link href="/estudiante/tareas" className="underline">
+                      Mis tareas
+                    </Link>
+                    .
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            /* Botones contextuales de apoyo */
+            <div className="flex flex-wrap gap-2">
+              {BOTONES_APOYO.map((b) => (
+                <Button
+                  key={b.etiqueta}
+                  variant="secondary"
+                  size="sm"
+                  disabled={cargando || !listo}
+                  onClick={() =>
+                    void pedirLeccion(b.consulta, {
+                      seguimiento: b.seguimiento,
+                      parte: b.parte,
+                      soloExplicacion: b.soloExplicacion,
+                    })
+                  }
+                >
+                  {b.etiqueta}
+                </Button>
+              ))}
               <Button
-                key={b.etiqueta}
                 variant="secondary"
                 size="sm"
                 disabled={cargando || !listo}
                 onClick={() =>
-                  void pedirLeccion(b.consulta, {
-                    seguimiento: b.seguimiento,
-                    parte: b.parte,
-                    soloExplicacion: b.soloExplicacion,
+                  void pedirLeccion("Proponme un problema más difícil", {
+                    seguimiento: "mas_dificil",
                   })
                 }
               >
-                {b.etiqueta}
+                Más difícil
               </Button>
-            ))}
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={cargando || !listo}
-              onClick={() =>
-                void pedirLeccion("Proponme un problema más difícil", {
-                  seguimiento: "mas_dificil",
-                })
-              }
-            >
-              Más difícil
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={cargando || !listo}
-              onClick={() =>
-                void pedirLeccion("Ahora uno más fácil", { seguimiento: "mas_facil" })
-              }
-            >
-              Más fácil
-            </Button>
-          </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={cargando || !listo}
+                onClick={() =>
+                  void pedirLeccion("Ahora uno más fácil", { seguimiento: "mas_facil" })
+                }
+              >
+                Más fácil
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

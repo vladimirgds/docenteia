@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,10 +36,29 @@ export interface AulaVista {
   tareas: number;
 }
 
+interface TareaVista {
+  id: string;
+  titulo: string;
+  fechaInicio: string;
+  fechaVencimiento: string;
+  cantidadEjercicios: number;
+  limiteReintentos: number;
+  entregadas: number;
+  pendientes: number;
+}
+
+interface FichaAula {
+  estudiantes: { nombre: string; email: string }[];
+  tareas: TareaVista[];
+}
+
 interface Props {
   aulas: AulaVista[];
   baseUrl: string;
 }
+
+/** Cada cuántos milisegundos se refresca sola la lista, mientras la pestaña esté activa. */
+const INTERVALO_SONDEO_MS = 12_000;
 
 export function GestorAulas({ aulas, baseUrl }: Props) {
   const router = useRouter();
@@ -47,10 +67,33 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
   const [creando, setCreando] = useState(false);
   const [nueva, setNueva] = useState({ nombre: "", grado: "", seccion: "" });
   const [copiado, setCopiado] = useState<{ aulaId: string; que: "codigo" | "enlace" } | null>(null);
-  const [abierta, setAbierta] = useState<string | null>(null);
-  const [estudiantes, setEstudiantes] = useState<
-    Record<string, { nombre: string; email: string }[] | "cargando">
-  >({});
+  const [abierta, setAbierta] = useState<{ aulaId: string; vista: "estudiantes" | "tareas" } | null>(
+    null,
+  );
+  const [fichas, setFichas] = useState<Record<string, FichaAula | "cargando">>({});
+  const [actualizando, setActualizando] = useState(false);
+
+  // SONDEO LIGERO (HITO 3 — corrección QA): el cliente vio que un alumno que
+  // acaba de matricularse con el código no aparece hasta que el docente pulsa
+  // F5 a mano. `router.refresh()` vuelve a pedir los datos del servidor sin
+  // perder el estado de la pantalla (formularios abiertos, panel desplegado…),
+  // así que basta con llamarlo cada pocos segundos mientras la pestaña esté a
+  // la vista. En segundo plano no tiene sentido: nadie está mirando el
+  // contador para que valga la pena gastar la petición.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, INTERVALO_SONDEO_MS);
+    return () => clearInterval(id);
+  }, [router]);
+
+  const actualizarAhora = () => {
+    setActualizando(true);
+    router.refresh();
+    // No hay forma de saber cuándo termina un `refresh()`: el giro del ícono
+    // es sólo la confirmación visual de que el clic se registró.
+    setTimeout(() => setActualizando(false), 600);
+  };
 
   const crear = () => {
     const grado = Number(nueva.grado);
@@ -82,21 +125,25 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
     });
   };
 
-  const verEstudiantes = (aulaId: string) => {
-    if (abierta === aulaId) {
+  /**
+   * Abre (o cierra) el panel de "Ver estudiantes" o "Ver tarea asignada" de
+   * una tarjeta. Las dos vistas leen de la MISMA ficha del aula —la ruta ya
+   * trae alumnos y tareas juntos—, así que una sola caché evita pedirla dos
+   * veces si el docente mira primero una pestaña y luego la otra.
+   */
+  const verDetalle = (aulaId: string, vista: "estudiantes" | "tareas") => {
+    if (abierta?.aulaId === aulaId && abierta.vista === vista) {
       setAbierta(null);
       return;
     }
-    setAbierta(aulaId);
-    if (!estudiantes[aulaId]) {
-      setEstudiantes((e) => ({ ...e, [aulaId]: "cargando" }));
+    setAbierta({ aulaId, vista });
+    if (!fichas[aulaId]) {
+      setFichas((f) => ({ ...f, [aulaId]: "cargando" }));
       iniciar(async () => {
-        const r = await pedir<{ estudiantes: { nombre: string; email: string }[] }>(
-          `/api/docente/aulas/${aulaId}`,
-        );
-        setEstudiantes((e) => ({
-          ...e,
-          [aulaId]: r.ok ? r.datos.estudiantes : [],
+        const r = await pedir<FichaAula & { aula: unknown }>(`/api/docente/aulas/${aulaId}`);
+        setFichas((f) => ({
+          ...f,
+          [aulaId]: r.ok ? { estudiantes: r.datos.estudiantes, tareas: r.datos.tareas } : { estudiantes: [], tareas: [] },
         }));
         if (!r.ok) setAviso({ tono: "mal", texto: r.error });
       });
@@ -137,9 +184,20 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
             matriculen.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setCreando((v) => !v)}>
-          {creando ? "Cancelar" : "Crear nueva aula"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Actualizar mis aulas"
+            onClick={actualizarAhora}
+          >
+            <RefreshCw className={cn("h-4 w-4", actualizando && "animate-spin")} />
+            Actualizar
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setCreando((v) => !v)}>
+            {creando ? "Cancelar" : "Crear nueva aula"}
+          </Button>
+        </div>
       </div>
 
       {creando && (
@@ -238,30 +296,83 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                       variant="ghost"
                       size="sm"
                       className="flex-1"
-                      onClick={() => verEstudiantes(a.id)}
+                      onClick={() => verDetalle(a.id, "estudiantes")}
                     >
-                      {abierta === a.id ? "Ocultar alumnos" : "Ver estudiantes"}
+                      {abierta?.aulaId === a.id && abierta.vista === "estudiantes"
+                        ? "Ocultar alumnos"
+                        : "Ver estudiantes"}
                     </Button>
-                    <Link href={`/docente/asignar-tarea?aulaId=${a.id}`} className="flex-1">
-                      <Button size="sm" className="w-full">
-                        Asignar tarea
+                    {a.tareas === 0 ? (
+                      <Link href={`/docente/asignar-tarea?aulaId=${a.id}`} className="flex-1">
+                        <Button size="sm" className="w-full">
+                          Asignar tarea
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button size="sm" className="flex-1" onClick={() => verDetalle(a.id, "tareas")}>
+                        {abierta?.aulaId === a.id && abierta.vista === "tareas"
+                          ? "Ocultar tarea"
+                          : "Ver tarea asignada"}
                       </Button>
-                    </Link>
+                    )}
                   </div>
-                  {abierta === a.id && (
+                  {/* "Ver tarea asignada" dice qué YA hay; esto es cómo programar una
+                      más sin perder la de encima. Antes el único botón —"Asignar
+                      tarea"— desaparecía en cuanto el aula ya tenía una, y el
+                      cliente preguntó "la tarea se asignó mas no se visualiza; quiero
+                      visualizar la tarea, ¿qué hago?": no es que no se viera, es que
+                      ya no había cómo abrir una segunda. */}
+                  {a.tareas > 0 && (
+                    <Link
+                      href={`/docente/asignar-tarea?aulaId=${a.id}`}
+                      className="block text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      + Asignar otra tarea
+                    </Link>
+                  )}
+                  {abierta?.aulaId === a.id && (
                     <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                      {estudiantes[a.id] === "cargando" ? (
+                      {fichas[a.id] === "cargando" ? (
                         <p className="text-muted-foreground">Cargando…</p>
-                      ) : !estudiantes[a.id] || (estudiantes[a.id] as unknown[]).length === 0 ? (
-                        <p className="text-muted-foreground">
-                          Todavía no hay alumnos matriculados en esta aula.
-                        </p>
+                      ) : !fichas[a.id] ? null : abierta.vista === "estudiantes" ? (
+                        (fichas[a.id] as FichaAula).estudiantes.length === 0 ? (
+                          <p className="text-muted-foreground">
+                            Todavía no hay alumnos matriculados en esta aula.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {(fichas[a.id] as FichaAula).estudiantes.map((al) => (
+                              <li key={al.email} className="flex items-baseline justify-between gap-2">
+                                <span className="font-medium">{al.nombre}</span>
+                                <span className="truncate text-xs text-muted-foreground">{al.email}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )
+                      ) : (fichas[a.id] as FichaAula).tareas.length === 0 ? (
+                        <p className="text-muted-foreground">Esta aula todavía no tiene tareas.</p>
                       ) : (
-                        <ul className="space-y-1.5">
-                          {(estudiantes[a.id] as { nombre: string; email: string }[]).map((al) => (
-                            <li key={al.email} className="flex items-baseline justify-between gap-2">
-                              <span className="font-medium">{al.nombre}</span>
-                              <span className="truncate text-xs text-muted-foreground">{al.email}</span>
+                        <ul className="space-y-3">
+                          {(fichas[a.id] as FichaAula).tareas.map((t) => (
+                            <li key={t.id} className="space-y-1 border-b pb-2 last:border-0 last:pb-0">
+                              <p className="font-medium">{t.titulo}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(t.fechaInicio).toLocaleDateString("es")} –{" "}
+                                {new Date(t.fechaVencimiento).toLocaleDateString("es")} ·{" "}
+                                {t.cantidadEjercicios} ejercicio{t.cantidadEjercicios === 1 ? "" : "s"} ·{" "}
+                                {t.limiteReintentos === 0
+                                  ? "reintentos sin límite"
+                                  : `${t.limiteReintentos} reintento${t.limiteReintentos === 1 ? "" : "s"}`}
+                              </p>
+                              <p className="text-xs">
+                                <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                                  {t.entregadas} entregada{t.entregadas === 1 ? "" : "s"}
+                                </span>
+                                {" · "}
+                                <span className="text-muted-foreground">
+                                  {t.pendientes} pendiente{t.pendientes === 1 ? "" : "s"}
+                                </span>
+                              </p>
                             </li>
                           ))}
                         </ul>

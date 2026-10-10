@@ -59,9 +59,15 @@ export const unirseSchema = z.object({
 /**
  * Una tarea nueva.
  *
- * La comprobación de que `fechaVencimiento` sea posterior a `fechaInicio` vive
- * en el `.refine`: es una regla sobre las DOS fechas juntas, no sobre una por
- * separado, y zod sólo sabe dónde señalar el error si se lo dice el esquema.
+ * `fechaInicio` y `fechaVencimiento` llegan como fecha sin hora (el campo del
+ * formulario es `<input type="date">`), así que las dos se normalizan al
+ * límite de su propio día antes de comparar: INICIO al primer instante, 00:00,
+ * y VENCIMIENTO al último, 23:59:59.999. Sin esto, una tarea "del 10/10 al
+ * 10/10" —una tarea de clase, de un solo día— comparaba dos medianoches
+ * IDÉNTICAS con `>` estricto y el formulario la rechazaba siempre, aunque el
+ * propio aviso de error ("tiene que ser posterior") no tenía sentido para ese
+ * caso: un día no puede vencer ANTES de empezar, pero sí puede vencer EN el
+ * mismo día en que empieza.
  */
 export const tareaSchema = z
   .object({
@@ -84,8 +90,15 @@ export const tareaSchema = z
       .optional(),
     nodoId: z.string().trim().min(1).optional().nullable(),
   })
-  .refine((t) => t.fechaVencimiento.getTime() > t.fechaInicio.getTime(), {
-    message: "La fecha de vencimiento tiene que ser posterior a la de inicio.",
+  .transform((t) => {
+    const fechaInicio = new Date(t.fechaInicio);
+    fechaInicio.setUTCHours(0, 0, 0, 0);
+    const fechaVencimiento = new Date(t.fechaVencimiento);
+    fechaVencimiento.setUTCHours(23, 59, 59, 999);
+    return { ...t, fechaInicio, fechaVencimiento };
+  })
+  .refine((t) => t.fechaVencimiento.getTime() >= t.fechaInicio.getTime(), {
+    message: "La fecha de vencimiento no puede ser anterior a la de inicio.",
     path: ["fechaVencimiento"],
   });
 export type EntradaTarea = z.infer<typeof tareaSchema>;

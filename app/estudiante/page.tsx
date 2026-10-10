@@ -130,20 +130,36 @@ export default async function PanelEstudiante() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Lecciones</CardTitle>
-          <CardDescription>
-            El tutor te explica el tema paso a paso en la pizarra, con voz, y
-            después practicas con corrección inmediata.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild size="lg">
-            <Link href="/estudiante/leccion">Empezar una lección</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Lecciones</CardTitle>
+            <CardDescription>
+              El tutor te explica el tema paso a paso en la pizarra, con voz, y
+              después practicas con corrección inmediata.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild size="lg">
+              <Link href="/estudiante/leccion">Empezar una lección</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tareas asignadas</CardTitle>
+            <CardDescription>
+              Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild size="lg" variant="outline">
+              <Link href="/estudiante/tareas">Ver mis tareas</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

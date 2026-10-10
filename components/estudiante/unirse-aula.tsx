@@ -67,7 +67,7 @@ export function UnirseAula({ codigoInicial }: { codigoInicial?: string }) {
             <span className="font-medium">{unida.nombre}</span>, con el profesor{" "}
             <span className="font-medium">{unida.docente}</span>.
           </p>
-          <Button className="w-full" onClick={() => router.push("/estudiante")}>
+          <Button className="w-full" onClick={() => router.push("/estudiante/tareas")}>
             Ir a mis tareas
           </Button>
         </CardContent>

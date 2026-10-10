@@ -1,16 +1,48 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Aula, type ProgresoTema, type ReglaVista } from "@/components/leccion/aula";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cursoDelPerfil, describirCurso } from "@/lib/curriculo/etapas";
 import { temasDisponiblesPara } from "@/lib/leccion/disponibles";
+import { puedeEntregar } from "@/lib/docente/aulas";
+import { temaPorMotor } from "@/lib/leccion/temas";
 
 export const metadata: Metadata = { title: "Lección" };
 export const dynamic = "force-dynamic";
 
-export default async function PaginaLeccion() {
+/**
+ * Pantalla de estado para una tarea que NO se puede (o ya no se puede)
+ * practicar: vencida, sin reintentos, ya entregada, o que sencillamente no es
+ * del alumno en sesión. Misma tarjeta que el "cierre" de la lección, para que
+ * llegar aquí por cualquiera de los dos caminos —entrar ya tarde, o
+ * terminarla ahora mismo— se sienta como la misma pantalla.
+ */
+function EstadoDeTarea({ titulo, mensaje }: { titulo: string; mensaje: string }) {
+  return (
+    <Card className="mx-auto max-w-md">
+      <CardHeader>
+        <CardTitle>{titulo}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">{mensaje}</p>
+        <Button asChild size="sm">
+          <Link href="/estudiante/tareas">Volver a mis tareas</Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default async function PaginaLeccion({
+  searchParams,
+}: {
+  searchParams: Promise<{ tareaId?: string }>;
+}) {
   const sesion = await auth();
   if (!sesion?.user) redirect("/login");
 
@@ -18,6 +50,60 @@ export default async function PaginaLeccion() {
   // primera lección.
   if (sesion.user.rol === "ESTUDIANTE" && !sesion.user.nivelActual) {
     redirect("/estudiante/diagnostico");
+  }
+
+  // ── Tarea asignada (HITO 3 — corrección QA) ───────────────────────────────
+  // "Al ingresar con el código o seleccionar la tarea, la lección debe recibir
+  // el parámetro de la tarea": si llega `tareaId`, ésta no es una lección
+  // libre, es UN INTENTO DE LA TAREA, y antes de dejar entrar se comprueban
+  // las mismas puertas que ya usa `POST /api/estudiante/tareas/[id]/entregar`
+  // —`puedeEntregar`—: no hay una regla para dejar PRACTICAR y otra distinta
+  // para dejar ENTREGAR, porque practicar sin poder entregar después sería
+  // trabajo del alumno que no puede llegar a ningún lado.
+  const { tareaId } = await searchParams;
+  let tareaActiva: { id: string; cantidadEjercicios: number; temaClave: string | null } | null = null;
+
+  if (tareaId) {
+    const tarea = await prisma.tarea.findUnique({
+      where: { id: tareaId },
+      include: { nodo: { select: { motor: true } } },
+    });
+    const matricula = tarea
+      ? await prisma.matricula.findUnique({
+          where: { aulaId_estudianteId: { aulaId: tarea.aulaId, estudianteId: sesion.user.id } },
+        })
+      : null;
+
+    if (!tarea || !matricula) {
+      return (
+        <EstadoDeTarea
+          titulo="Esa tarea no existe"
+          mensaje="No encontramos esa tarea, o no está asignada a ninguna de tus aulas."
+        />
+      );
+    }
+
+    const entrega = await prisma.entregaTarea.findUnique({
+      where: { tareaId_estudianteId: { tareaId: tarea.id, estudianteId: sesion.user.id } },
+    });
+
+    const bloqueo = puedeEntregar(tarea, entrega);
+    if (bloqueo) {
+      return (
+        <EstadoDeTarea
+          titulo={tarea.titulo}
+          mensaje={
+            entrega?.puntaje != null ? `${bloqueo} Tu nota: ${entrega.puntaje}/100.` : bloqueo
+          }
+        />
+      );
+    }
+
+    tareaActiva = {
+      id: tarea.id,
+      cantidadEjercicios: tarea.cantidadEjercicios,
+      temaClave: tarea.nodo?.motor ? (temaPorMotor(tarea.nodo.motor)?.clave ?? null) : null,
+    };
   }
 
   const perfilId = sesion.user.perfilId;
@@ -145,6 +231,7 @@ export default async function PaginaLeccion() {
       reglas={reglas}
       progreso={progreso}
       curso={describirCurso(alumno.etapa, alumno.curso)}
+      tarea={tareaActiva}
     />
   );
 }
