@@ -27,10 +27,6 @@ export async function GET() {
       },
     });
   } catch (e) {
-    console.error("[GET /api/director/exportar/pdf] fallo no previsto:", e);
-    return NextResponse.json(
-      { error: "diagnóstico temporal", detalle: String(e), stack: e instanceof Error ? e.stack : null },
-      { status: 500 },
-    );
+    return fallo(e, "GET /api/director/exportar/pdf");
   }
 }
