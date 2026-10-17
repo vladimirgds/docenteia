@@ -93,7 +93,7 @@ export async function POST(req: Request) {
           grado: aula.grado,
           seccion: aula.seccion,
           institucion: aula.institucion.nombre,
-          docente: aula.docente.nombre,
+          docente: aula.docente?.nombre ?? "Sin asignar",
         },
       },
       { status: 201 },

@@ -264,8 +264,15 @@ model Aula {
   institucionId String
   institucion   Institucion @relation(fields: [institucionId], references: [id], onDelete: Cascade)
 
-  docenteId String
-  docente   Usuario @relation("DocenteDeAula", fields: [docenteId], references: [id], onDelete: Cascade)
+  /// Opcional (HITO 4, checklist actualizado — "desacoplar el alta de la
+  /// estructura física/académica de la asignación de personas"): un aula se
+  /// crea primero como entidad independiente (nombre, grado, sección,
+  /// institución), y el docente titular se asigna DESPUÉS, desde
+  /// `/admin/aulas`. `SetNull` en vez de `Cascade`: borrar al docente no
+  /// debe arrastrarse el aula entera —con sus matrículas y tareas—, sólo
+  /// dejarla sin titular.
+  docenteId String?
+  docente   Usuario? @relation("DocenteDeAula", fields: [docenteId], references: [id], onDelete: SetNull)
 
   matriculas Matricula[]
   tareas     Tarea[]

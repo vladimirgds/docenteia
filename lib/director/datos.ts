@@ -56,7 +56,7 @@ export async function obtenerResumenInstitucional(institucionId: string): Promis
         nombre: a.nombre,
         grado: a.grado,
         seccion: a.seccion,
-        docenteNombre: a.docente.nombre,
+        docenteNombre: a.docente?.nombre ?? "Sin asignar",
         matriculas: a._count.matriculas,
         tareasCreadas: a._count.tareas,
         entregasCompletadas: a.tareas.reduce((t, tarea) => t + tarea.entregas.length, 0),

@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 /**
  * "/admin/aulas — vista maestra" (checklist actualizado de HITO 4): crear
- * aulas asignando colegio y docente titular, y matricular alumnos
- * directamente —ya no es el docente quien las crea, ver `/docente/aulas`—.
+ * aulas —sólo nombre, grado, sección e institución; el aula nace SIN
+ * titular— y, por separado, asignar o cambiar el docente titular y
+ * matricular alumnos directamente —ya no es el docente quien las crea, ver
+ * `/docente/aulas`—.
  */
 export default async function PaginaAulasAdmin() {
   const sesion = await auth();
@@ -47,7 +49,7 @@ export default async function PaginaAulasAdmin() {
     institucionId: a.institucionId,
     institucion: a.institucion.nombre,
     docenteId: a.docenteId,
-    docente: a.docente.nombre,
+    docente: a.docente?.nombre ?? null,
     matriculas: a._count.matriculas,
     tareas: a._count.tareas,
   }));

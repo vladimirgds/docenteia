@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { exigirSuperadmin } from "@/lib/admin/api";
 import { aulaAdminSchema } from "@/lib/admin/aulas";
-import { conflicto, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import { fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { generarCodigoAcceso } from "@/lib/docente/codigo-acceso";
 
 export const runtime = "nodejs";
@@ -44,7 +44,7 @@ export async function GET() {
         institucionId: a.institucionId,
         institucion: a.institucion.nombre,
         docenteId: a.docenteId,
-        docente: a.docente.nombre,
+        docente: a.docente?.nombre ?? null,
         matriculas: a._count.matriculas,
         tareas: a._count.tareas,
       })),
@@ -63,15 +63,8 @@ export async function POST(req: Request) {
   const datos = cuerpo.datos;
 
   try {
-    const [institucion, docente] = await Promise.all([
-      prisma.institucion.findUnique({ where: { id: datos.institucionId }, select: { id: true } }),
-      prisma.usuario.findUnique({ where: { id: datos.docenteId }, select: { id: true, rol: true } }),
-    ]);
+    const institucion = await prisma.institucion.findUnique({ where: { id: datos.institucionId }, select: { id: true } });
     if (!institucion) return noEncontrado("Esa institución");
-    if (!docente) return noEncontrado("Ese docente");
-    if (docente.rol !== "DOCENTE" && docente.rol !== "DIRECTOR" && docente.rol !== "SUPERADMIN") {
-      return conflicto("El titular de un aula tiene que ser un docente, un director o el administrador.");
-    }
 
     // Mismo reintento por colisión de código que `POST /api/docente/aulas`:
     // rarísimo con 16.777.216 combinaciones, pero no imposible.
@@ -85,7 +78,8 @@ export async function POST(req: Request) {
             seccion: datos.seccion,
             codigoAcceso: generarCodigoAcceso(),
             institucionId: datos.institucionId,
-            docenteId: datos.docenteId,
+            // SIN docenteId: el aula nace sin titular —se asigna después,
+            // con PATCH /api/admin/aulas/[id]—.
           },
         });
       } catch (e: unknown) {
@@ -98,7 +92,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ aula }, { status: 201 });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
-      return noEncontrado("Esa institución o ese docente");
+      return noEncontrado("Esa institución");
     }
     return fallo(e, "admin/aulas:crear");
   }

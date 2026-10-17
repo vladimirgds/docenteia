@@ -22,8 +22,9 @@ export interface AulaAdminVista {
   activa: boolean;
   institucionId: string;
   institucion: string;
-  docenteId: string;
-  docente: string;
+  /** `null` = todavía sin titular: el aula se crea sola, se asigna después. */
+  docenteId: string | null;
+  docente: string | null;
   matriculas: number;
   tareas: number;
 }
@@ -46,9 +47,11 @@ interface Props {
 }
 
 /**
- * "/admin/aulas — vista maestra" (checklist actualizado de HITO 4): el
- * administrador crea aulas asignando explícitamente colegio y docente
- * titular, y matricula alumnos directamente —el "Módulo de Matrícula/
+ * "/admin/aulas — vista maestra" (checklist actualizado de HITO 4):
+ * estructura física/académica y asignación de personas, DESACOPLADAS. El
+ * administrador crea el aula con sólo nombre, grado, sección e institución
+ * —nace sin titular—, y por separado asigna (o cambia) el docente desde la
+ * propia tabla, y matricula alumnos directamente —el "Módulo de Matrícula/
  * Asignación" sin depender del código de invitación—.
  *
  * Mismo patrón que `GestorUsuarios`/`GestorAulas` (del docente): formulario
@@ -61,9 +64,9 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
   const [aviso, setAviso] = useState<{ tono: "ok" | "mal"; texto: string } | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  // ── Crear aula ──────────────────────────────────────────────────────────
+  // ── Crear aula (estructura base, SIN docente) ──────────────────────────
   const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: "", grado: "", seccion: "", institucionId: "", docenteId: "" });
+  const [nueva, setNueva] = useState({ nombre: "", grado: "", seccion: "", institucionId: "" });
 
   const crearAula = () => {
     const grado = Number(nueva.grado);
@@ -73,7 +76,6 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
     }
     if (!nueva.seccion.trim()) return setAviso({ tono: "mal", texto: "La sección no puede estar vacía." });
     if (!nueva.institucionId) return setAviso({ tono: "mal", texto: "Elige a qué institución pertenece." });
-    if (!nueva.docenteId) return setAviso({ tono: "mal", texto: "Elige el docente titular." });
 
     setGuardando(true);
     iniciar(async () => {
@@ -84,14 +86,33 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
           grado,
           seccion: nueva.seccion.trim(),
           institucionId: nueva.institucionId,
-          docenteId: nueva.docenteId,
         },
       });
       setGuardando(false);
       if (r.ok) {
-        setNueva({ nombre: "", grado: "", seccion: "", institucionId: "", docenteId: "" });
+        setNueva({ nombre: "", grado: "", seccion: "", institucionId: "" });
         setCreando(false);
-        setAviso({ tono: "ok", texto: `Aula "${nueva.nombre.trim()}" creada.` });
+        setAviso({ tono: "ok", texto: `Aula "${nueva.nombre.trim()}" creada. Asígnale un docente desde la tabla.` });
+        router.refresh();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
+  };
+
+  // ── Asignar o cambiar el docente titular ───────────────────────────────
+  const [asignandoDocente, setAsignandoDocente] = useState<string | null>(null);
+
+  const asignarDocente = (aulaId: string, docenteId: string) => {
+    setAsignandoDocente(aulaId);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/aulas/" + aulaId, {
+        metodo: "PATCH",
+        cuerpo: { docenteId: docenteId || null },
+      });
+      setAsignandoDocente(null);
+      if (r.ok) {
+        setAviso({ tono: "ok", texto: docenteId ? "Docente asignado." : "Aula desvinculada de su docente." });
         router.refresh();
       } else {
         setAviso({ tono: "mal", texto: r.error });
@@ -156,7 +177,8 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
         <div className="space-y-1.5">
           <h2 className="text-xl font-semibold tracking-tight">Aulas de la plataforma</h2>
           <p className="text-sm text-muted-foreground">
-            Crea aulas asignando colegio y docente titular, y matricula alumnos directamente.
+            Crea el aula con su institución; asigna el docente titular y matricula alumnos después,
+            desde la tabla.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setCreando((v) => !v)}>
@@ -166,7 +188,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
 
       {creando && (
         <Card>
-          <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-5">
+          <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="admin-aula-nombre">Nombre del salón</Label>
               <Input
@@ -212,22 +234,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
                 ))}
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-aula-docente">Docente titular</Label>
-              <Select
-                id="admin-aula-docente"
-                value={nueva.docenteId}
-                onChange={(e) => setNueva({ ...nueva, docenteId: e.target.value })}
-              >
-                <option value="">Elige uno</option>
-                {docentes.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nombre}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="sm:col-span-2 lg:col-span-5">
+            <div className="sm:col-span-2 lg:col-span-4">
               <Button onClick={crearAula} disabled={guardando}>
                 Crear aula
               </Button>
@@ -266,7 +273,21 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
                       )}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{a.institucion}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{a.docente}</td>
+                    <td className="px-3 py-2">
+                      <Select
+                        value={a.docenteId ?? ""}
+                        disabled={asignandoDocente === a.id}
+                        onChange={(e) => asignarDocente(a.id, e.target.value)}
+                        className={cn("h-8 py-0 text-xs", !a.docenteId && "text-muted-foreground")}
+                      >
+                        <option value="">Sin asignar</option>
+                        {docentes.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.nombre}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
                     <td className="px-3 py-2">
                       <code className="rounded border bg-muted/40 px-2 py-0.5 font-mono text-xs tracking-widest">
                         {a.codigoAcceso}

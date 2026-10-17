@@ -15,17 +15,30 @@ import { aulaSchema } from "../docente/aulas.ts";
 /**
  * Un aula nueva, creada por el administrador.
  *
- * A diferencia de `aulaSchema` (que usa el docente, y donde `institucionId`
- * y `docenteId` salen de la sesión) aquí SÍ se piden explícitos: el
- * administrador gestiona TODA la plataforma, no un colegio propio, así que
- * no hay sesión de la que deducirlos —es, de hecho, el motivo de que esta
- * ruta exista—.
+ * SIN `docenteId` (corrección del cliente, tras ver el primer formulario:
+ * "desacoplar el alta de la estructura física/académica de la asignación de
+ * personas" — un aula se crea como entidad independiente, con sólo nombre,
+ * grado, sección e institución; el docente titular se asigna DESPUÉS, con
+ * `asignarDocenteSchema`). `institucionId` SÍ se pide explícito, a
+ * diferencia de `aulaSchema` (que usa el docente, y donde sale de su
+ * sesión): el administrador gestiona TODA la plataforma, no un colegio
+ * propio, así que no hay sesión de la que deducirlo.
  */
 export const aulaAdminSchema = aulaSchema.extend({
-  docenteId: z.string().trim().min(1, "Falta elegir el docente titular."),
   institucionId: z.string().trim().min(1, "Falta elegir la institución."),
 });
 export type EntradaAulaAdmin = z.infer<typeof aulaAdminSchema>;
+
+/**
+ * Asignar (o quitar) el docente titular de un aula YA creada —el "Flujo de
+ * Asignación Posterior" que pide el pliego—. `docenteId: null` desvincula al
+ * titular actual sin asignar uno nuevo; es un valor legítimo, no un campo
+ * vacío por error.
+ */
+export const asignarDocenteSchema = z.object({
+  docenteId: z.string().trim().min(1).nullable(),
+});
+export type EntradaAsignarDocente = z.infer<typeof asignarDocenteSchema>;
 
 /**
  * Matricular a un alumno en un aula directamente, sin pasar por el código de
