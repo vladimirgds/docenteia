@@ -24,6 +24,19 @@ const nextConfig = {
   // ejecución, no código que webpack pueda rastrear estáticamente. Externo
   // también, por el mismo motivo.
   serverExternalPackages: ["bcryptjs", "@react-pdf/renderer", "pdfkit"],
+  // `serverExternalPackages` arregla el EMPAQUETADO de webpack, pero no el
+  // RASTREO DE ARCHIVOS de Vercel (`@vercel/nft`), que es un paso aparte: el
+  // mismo error seguía en producción incluso con `pdfkit` externo, porque el
+  // rastreador analiza estáticamente los `require()`/`import` del código YA
+  // compilado para decidir qué copiar a la función serverless, y la carga de
+  // las fuentes estándar de `pdfkit` usa una ruta calculada en tiempo de
+  // ejecución —nada que el análisis estático pueda seguir—. Esto fuerza la
+  // inclusión explícita de esos archivos para las dos rutas que exportan PDF,
+  // documentado así por el propio Next.js para justo este caso.
+  outputFileTracingIncludes: {
+    "/api/docente/exportar/pdf": ["./node_modules/pdfkit/**/*"],
+    "/api/director/exportar/pdf": ["./node_modules/pdfkit/**/*"],
+  },
   eslint: {
     // El prototipo heredado (public/, qa/, server.js) no se lintea: es código de
     // referencia para la paridad, no código nuevo del PMV 1.
