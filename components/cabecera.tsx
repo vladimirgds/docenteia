@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { auth, signOut } from "@/auth";
+import { VolverAdmin } from "@/components/admin/volver-admin";
 import { Button } from "@/components/ui/button";
 import { ETIQUETA_ROL, INICIO_POR_ROL } from "@/lib/rbac";
 
@@ -18,6 +19,7 @@ export async function Cabecera() {
         </Link>
 
         <div className="flex items-center gap-4">
+          {rol === "SUPERADMIN" && <VolverAdmin />}
           <div className="text-right text-sm leading-tight">
             <p className="font-medium">{name}</p>
             <p className="text-muted-foreground">{ETIQUETA_ROL[rol]}</p>
