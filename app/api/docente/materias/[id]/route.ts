@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import {
+  conflicto,
+  exigirDocente,
+  fallo,
+  leerCuerpo,
+  noEncontrado,
+  puedeEscribirEnInstitucion,
+} from "@/lib/docente/api";
 import { materiaSchema } from "@/lib/docente/curriculo";
 
 export const runtime = "nodejs";
@@ -23,6 +30,11 @@ export async function PATCH(req: Request, { params }: Contexto) {
   try {
     const existente = await prisma.materia.findUnique({ where: { id } });
     if (!existente) return noEncontrado("La asignatura");
+    // Aislamiento curricular (cierre HITO 4): 404, no 403 —no se confirma a
+    // quien pregunta que el recurso existe en OTRO colegio—.
+    if (!puedeEscribirEnInstitucion(permiso.quien, existente.institucionId)) {
+      return noEncontrado("La asignatura");
+    }
 
     const materia = await prisma.materia.update({
       where: { id },
@@ -63,6 +75,9 @@ export async function DELETE(_req: Request, { params }: Contexto) {
       include: { _count: { select: { temas: true, perfiles: true } } },
     });
     if (!materia) return noEncontrado("La asignatura");
+    if (!puedeEscribirEnInstitucion(permiso.quien, materia.institucionId)) {
+      return noEncontrado("La asignatura");
+    }
 
     if (materia._count.temas > 0) {
       return conflicto(

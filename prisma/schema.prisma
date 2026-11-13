@@ -259,6 +259,14 @@ model Institucion {
   usuarios Usuario[]
   aulas    Aula[]
 
+  // Aislamiento curricular (cierre HITO 4, observación del cliente): el
+  // currículo propio de ESTE colegio —ver el comentario de `institucionId`
+  // en `Materia`/`NodoConocimiento`/`Ejercicio` para el porqué es opcional
+  // en esos tres modelos, no aquí—.
+  materias   Materia[]
+  temas      NodoConocimiento[]
+  ejercicios Ejercicio[]
+
   @@map("instituciones")
 }
 
@@ -536,6 +544,25 @@ model Materia {
   /// Una asignatura retirada deja de ofrecerse sin borrar sus temas.
   activa      Boolean @default(true)
 
+  /// AISLAMIENTO CURRICULAR MULTIINSTITUCIONAL (observación del cliente,
+  /// cierre HITO 4: "cada institución tenga su propio currículo
+  /// independiente... impedir que un docente pueda visualizar, modificar o
+  /// eliminar contenido perteneciente a otra institución").
+  ///
+  /// `null` es el CATÁLOGO BASE de la plataforma —el que trae la semilla y
+  /// el que crea un SUPERADMIN directamente—, visible para CUALQUIER colegio
+  /// pero editable sólo por un SUPERADMIN: ningún colegio concreto puede
+  /// tocar lo que comparten todos. Con un valor, es el contenido PROPIO de
+  /// ese colegio: sólo sus DOCENTE/DIRECTOR lo ven, y sólo sus DOCENTE (o un
+  /// SUPERADMIN) lo editan. Ver `lib/docente/api.ts` (`puedeLeerDeInstitucion`,
+  /// `puedeEscribirEnInstitucion`, `institucionParaCrear`), que es donde se
+  /// hace cumplir esto —el esquema sólo deja el dato, no la regla—.
+  ///
+  /// SetNull: si el colegio se borra, su currículo no desaparece con él,
+  /// pasa a quedar sin institución —igual que ya hace `Usuario.institucionId`—.
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
 
@@ -543,6 +570,7 @@ model Materia {
   temas    NodoConocimiento[]
 
   @@index([activa, orden])
+  @@index([institucionId])
   @@map("materias")
 }
 
@@ -636,6 +664,14 @@ model NodoConocimiento {
   padre   NodoConocimiento?  @relation("ArbolConocimiento", fields: [padreId], references: [id], onDelete: SetNull)
   hijos   NodoConocimiento[] @relation("ArbolConocimiento")
 
+  /// AISLAMIENTO CURRICULAR MULTIINSTITUCIONAL — mismo campo, mismo porqué
+  /// que `Materia.institucionId` (ver ese comentario). Un subtema SIEMPRE
+  /// nace en la institución de quien lo crea (`institucionParaCrear`), sin
+  /// importar la de su padre: colgar un subtema propio de un tema base
+  /// compartido no vuelve propio al padre, ni comparte el subtema.
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
   estado EstadoContenido @default(BORRADOR)
 
   /// Objetivos de aprendizaje, en el orden en que se persiguen.
@@ -660,6 +696,7 @@ model NodoConocimiento {
   @@index([motor, nivel])
   @@index([estado, actualizadoEn])
   @@index([etapa, cursoMin])
+  @@index([institucionId])
   @@map("nodos_conocimiento")
 }
 
@@ -699,6 +736,14 @@ model Ejercicio {
   cursoMin Int?
 
   nivel NivelAcademico
+
+  /// AISLAMIENTO CURRICULAR MULTIINSTITUCIONAL — mismo campo, mismo porqué
+  /// que `Materia.institucionId` (ver ese comentario). SIEMPRE heredado del
+  /// tema (`nodo.institucionId`) al crear o al reasignar de tema: un
+  /// ejercicio nunca tiene una institución distinta a la de su propio tema,
+  /// igual que ya hereda `motor` de él.
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
 
   /// El enunciado. En una plantilla lleva los huecos: "{a}x + {b} = {c}".
   enunciado         String
@@ -747,6 +792,7 @@ model Ejercicio {
   @@index([motor, nivel, validado])
   @@index([nodoId, estado])
   @@index([etapa, cursoMin])
+  @@index([institucionId])
   @@map("ejercicios")
 }
 

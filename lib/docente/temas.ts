@@ -29,6 +29,7 @@ export const SELECCION_TEMA = {
   etiquetas: true,
   padreId: true,
   materiaId: true,
+  institucionId: true,
   creadoEn: true,
   actualizadoEn: true,
   materia: { select: { id: true, nombre: true, color: true } },

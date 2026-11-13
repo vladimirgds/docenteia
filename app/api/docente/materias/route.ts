@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { exigirDocente, fallo, leerCuerpo, conflicto } from "@/lib/docente/api";
+import {
+  clausulaInstitucional,
+  conflicto,
+  exigirDocente,
+  fallo,
+  institucionParaCrear,
+  leerCuerpo,
+} from "@/lib/docente/api";
 import { claveUnica, generarClave, materiaSchema } from "@/lib/docente/curriculo";
 
 export const runtime = "nodejs";
@@ -20,7 +28,13 @@ export async function GET() {
   if (!permiso.ok) return permiso.respuesta;
 
   try {
+    // Aislamiento curricular (cierre HITO 4): un DOCENTE/DIRECTOR ve su
+    // propio catálogo más el catálogo base; SUPERADMIN los ve todos.
+    const clausula = clausulaInstitucional(permiso.quien);
+    const where: Prisma.MateriaWhereInput | undefined = clausula ? { OR: clausula } : undefined;
+
     const materias = await prisma.materia.findMany({
+      where,
       orderBy: [{ orden: "asc" }, { nombre: "asc" }],
       include: {
         // Cuántos temas cuelgan de cada asignatura: es lo que decide si se
@@ -37,6 +51,12 @@ export async function GET() {
 export async function POST(req: Request) {
   const permiso = await exigirDocente({ escritura: true });
   if (!permiso.ok) return permiso.respuesta;
+
+  // Aislamiento curricular (cierre HITO 4): una asignatura nueva nace en el
+  // colegio de quien la crea —nunca en uno que mande el cliente— o en el
+  // catálogo base si la crea un SUPERADMIN.
+  const propietario = institucionParaCrear(permiso.quien);
+  if (!propietario.ok) return propietario.respuesta;
 
   const cuerpo = await leerCuerpo(req, materiaSchema);
   if (!cuerpo.ok) return cuerpo.respuesta;
@@ -66,6 +86,7 @@ export async function POST(req: Request) {
         color: datos.color ?? null,
         orden: datos.orden ?? 0,
         activa: datos.activa ?? true,
+        institucionId: propietario.institucionId,
       },
     });
 

@@ -21,6 +21,10 @@ export interface Autorizacion {
   usuarioId: string;
   rol: Rol;
   nombre: string;
+  /// El colegio de quien hace la petición, o `null` si no tiene uno asignado
+  /// (incluido SUPERADMIN, que no pertenece a ningún colegio por diseño).
+  /// Lo necesitan las comprobaciones de aislamiento curricular de más abajo.
+  institucionId: string | null;
 }
 
 type Resultado =
@@ -67,7 +71,12 @@ export async function exigirDocente({ escritura = false } = {}): Promise<Resulta
 
   return {
     ok: true,
-    quien: { usuarioId: usuario.id, rol: usuario.rol, nombre: usuario.name ?? "" },
+    quien: {
+      usuarioId: usuario.id,
+      rol: usuario.rol,
+      nombre: usuario.name ?? "",
+      institucionId: usuario.institucionId ?? null,
+    },
   };
 }
 
@@ -120,6 +129,87 @@ export async function exigirDocenteConInstitucion(): Promise<
       institucionId: usuario.institucionId,
     },
   };
+}
+
+/**
+ * AISLAMIENTO CURRICULAR MULTIINSTITUCIONAL (observación del cliente, cierre
+ * HITO 4): las cuatro reglas de quién puede leer, escribir y crear contenido
+ * de `Materia`/`NodoConocimiento`/`Ejercicio`, en un solo sitio —para que
+ * `/api/docente/materias`, `/api/docente/temas` y `/api/docente/ejercicios`
+ * (y sus `[id]`) apliquen EXACTAMENTE la misma regla y no diverjan con el
+ * tiempo, que es como se cuelan los IDOR—.
+ *
+ * El contrato, para los tres modelos por igual:
+ *   · `institucionId: null`  → catálogo BASE de la plataforma. Lo ve
+ *     cualquiera; sólo lo edita un SUPERADMIN.
+ *   · `institucionId: "…"`   → contenido PROPIO de ese colegio. Sólo lo ven
+ *     y lo editan DOCENTE/DIRECTOR de ESE colegio (DIRECTOR nunca edita,
+ *     eso ya lo corta `puedeEditarCurriculo`), o un SUPERADMIN.
+ *   · SUPERADMIN no tiene límite: lee y escribe cualquier institución.
+ */
+
+/**
+ * ¿Puede LEER un recurso con esta institución? Para `GET` (listar o uno
+ * solo). Nunca deniega por "no es mío": lo propio y lo base son ambos
+ * legítimos de ver.
+ */
+export function puedeLeerDeInstitucion(quien: Autorizacion, institucionId: string | null): boolean {
+  if (quien.rol === "SUPERADMIN") return true;
+  if (institucionId === null) return true;
+  return institucionId === quien.institucionId;
+}
+
+/**
+ * ¿Puede ESCRIBIR (crear/editar/borrar) un recurso con esta institución? Más
+ * estricto que leer: el catálogo BASE (`null`) sólo lo toca un SUPERADMIN,
+ * nunca un DOCENTE de un colegio concreto —si pudiera, un solo colegio
+ * alteraría lo que ven todos los demás, que es justo lo que se quiere evitar—.
+ */
+export function puedeEscribirEnInstitucion(quien: Autorizacion, institucionId: string | null): boolean {
+  if (quien.rol === "SUPERADMIN") return true;
+  if (institucionId === null) return false;
+  return institucionId === quien.institucionId;
+}
+
+/**
+ * La cláusula `OR` de Prisma para un `findMany` de LECTURA: la propia
+ * institución más el catálogo base. `null` significa "sin restricción"
+ * (SUPERADMIN), para que quien llama pueda hacer
+ * `if (clausula) where.OR = clausula;` y omitir el filtro limpiamente.
+ */
+export function clausulaInstitucional(
+  quien: Autorizacion,
+): { institucionId: string | null }[] | null {
+  if (quien.rol === "SUPERADMIN") return null;
+  return [{ institucionId: null }, { institucionId: quien.institucionId }];
+}
+
+/**
+ * Qué institución le toca a un recurso NUEVO: la del colegio de quien lo
+ * crea (DOCENTE/DIRECTOR, aunque en la práctica sólo DOCENTE llega aquí
+ * porque `puedeEditarCurriculo` ya corta a DIRECTOR antes), o el catálogo
+ * BASE (`null`) si quien crea es SUPERADMIN. Mismo mensaje y mismo 409 que
+ * `exigirDocenteConInstitucion`, para que un DOCENTE sin colegio asignado
+ * vea el mismo aviso en cualquier formulario de autoría, no uno distinto
+ * según cree un aula o un tema.
+ */
+export function institucionParaCrear(
+  quien: Autorizacion,
+): { ok: true; institucionId: string | null } | { ok: false; respuesta: NextResponse } {
+  if (quien.rol === "SUPERADMIN") return { ok: true, institucionId: null };
+  if (!quien.institucionId) {
+    return {
+      ok: false,
+      respuesta: NextResponse.json(
+        {
+          error:
+            "Tu cuenta todavía no está asignada a ningún colegio. Pide al administrador que te vincule a uno.",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+  return { ok: true, institucionId: quien.institucionId };
 }
 
 type Cuerpo<T> = { ok: true; datos: T } | { ok: false; respuesta: NextResponse };

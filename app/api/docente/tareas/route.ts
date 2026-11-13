@@ -4,6 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { tareaSchema } from "@/lib/docente/aulas";
 
+/**
+ * ¿Es este tema (o este ejercicio, por el tema del que cuelga) legible desde
+ * el colegio de ESTA aula? Deliberadamente no es `puedeLeerDeInstitucion`
+ * (esa compara contra el colegio del DOCENTE): aquí lo que importa es el
+ * colegio del AULA a la que se le asigna la tarea, que en la inmensa
+ * mayoría de los casos coincide con el del docente titular, pero no tiene
+ * por qué —un SUPERADMIN puede titular un aula con un docente de otro
+ * colegio desde `/admin/aulas`—.
+ */
+function legibleEnElAula(institucionIdDelRecurso: string | null, institucionIdDelAula: string | null): boolean {
+  return institucionIdDelRecurso === null || institucionIdDelRecurso === institucionIdDelAula;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -53,6 +66,23 @@ export async function POST(req: Request) {
       return noEncontrado("El aula");
     }
 
+    // Aislamiento curricular (cierre HITO 4): un tema enlazado a la tarea —se
+    // use o no para armar el banco— tiene que ser legible desde el colegio
+    // del aula; si no, un docente podría asignar una tarea apuntando al tema
+    // PRIVADO de otra institución con sólo saber su id.
+    if (datos.nodoId) {
+      const tema = await prisma.nodoConocimiento.findUnique({
+        where: { id: datos.nodoId },
+        select: { institucionId: true },
+      });
+      if (
+        !tema ||
+        (permiso.quien.rol !== "SUPERADMIN" && !legibleEnElAula(tema.institucionId, aula.institucionId))
+      ) {
+        return noEncontrado("El tema");
+      }
+    }
+
     // DEL BANCO DE EJERCICIOS (HITO 3 — corrección QA): "nivel de dificultad
     // en la asignación", automático o elegido a mano. `ejercicioIds` vacío
     // mantiene el comportamiento de siempre —el motor conversacional genera
@@ -70,6 +100,13 @@ export async function POST(req: Request) {
             estado: "PUBLICADO",
             validado: true,
             plantilla: false,
+            // Aislamiento curricular (cierre HITO 4): sin esto, un docente
+            // podría armar una tarea a mano citando ids de OTRA institución
+            // —no se ven en /api/docente/ejercicios, pero nada impedía
+            // escribirlos directamente en la petición—.
+            ...(permiso.quien.rol === "SUPERADMIN"
+              ? {}
+              : { OR: [{ institucionId: null }, { institucionId: aula.institucionId }] }),
           },
           select: { id: true },
         });

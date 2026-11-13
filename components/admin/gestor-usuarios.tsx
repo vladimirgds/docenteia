@@ -227,6 +227,39 @@ export function GestorUsuarios({ miPropioId }: Props) {
     });
   };
 
+  // ── Formulario de Colegios (cierre HITO 4, observación del cliente: ──────
+  // "garantizar que cada institución tenga su propio currículo
+  // independiente"). Antes de este formulario NO había ningún sitio desde el
+  // que dar de alta un segundo colegio —la semilla trae uno solo—, así que el
+  // aislamiento por institución no tenía con qué probarse más allá de él.
+  const [creandoInstitucion, setCreandoInstitucion] = useState(false);
+  const [nuevaInstitucion, setNuevaInstitucion] = useState({ nombre: "", codigoModular: "" });
+
+  const crearInstitucion = () => {
+    if (!nuevaInstitucion.nombre.trim()) {
+      return setAviso({ tono: "mal", texto: "El colegio necesita un nombre." });
+    }
+    setGuardandoAlta(true);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/instituciones", {
+        metodo: "POST",
+        cuerpo: {
+          nombre: nuevaInstitucion.nombre.trim(),
+          codigoModular: nuevaInstitucion.codigoModular.trim() || undefined,
+        },
+      });
+      setGuardandoAlta(false);
+      if (r.ok) {
+        setNuevaInstitucion({ nombre: "", codigoModular: "" });
+        setCreandoInstitucion(false);
+        setAviso({ tono: "ok", texto: `Colegio "${nuevaInstitucion.nombre.trim()}" creado. Ya aparece en los selectores de institución.` });
+        cargar();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
+  };
+
   // ── Formulario de Alumnos: entidad maestra, con su etapa/curso ya ────────
   // listos de una vez si el administrador los sabe —si no, el propio
   // alumno los completa en su primer inicio de sesión—.
@@ -292,7 +325,40 @@ export function GestorUsuarios({ miPropioId }: Props) {
         <Button variant="outline" size="sm" onClick={() => setCreandoAlumno((v) => !v)}>
           {creandoAlumno ? "Cancelar" : "Crear alumno"}
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setCreandoInstitucion((v) => !v)}>
+          {creandoInstitucion ? "Cancelar" : "Crear colegio"}
+        </Button>
       </div>
+
+      {creandoInstitucion && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-medium">Formulario de Colegios</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="nueva-institucion-nombre">Nombre</Label>
+                <Input
+                  id="nueva-institucion-nombre"
+                  placeholder="Colegio San Martín"
+                  value={nuevaInstitucion.nombre}
+                  onChange={(e) => setNuevaInstitucion({ ...nuevaInstitucion, nombre: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nueva-institucion-codigo">Código del Ministerio (opcional)</Label>
+                <Input
+                  id="nueva-institucion-codigo"
+                  value={nuevaInstitucion.codigoModular}
+                  onChange={(e) => setNuevaInstitucion({ ...nuevaInstitucion, codigoModular: e.target.value })}
+                />
+              </div>
+            </div>
+            <Button onClick={crearInstitucion} disabled={guardandoAlta}>
+              Crear colegio
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {creandoDocente && (
         <Card>

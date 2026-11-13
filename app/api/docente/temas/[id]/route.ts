@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import {
+  conflicto,
+  exigirDocente,
+  fallo,
+  leerCuerpo,
+  noEncontrado,
+  puedeEscribirEnInstitucion,
+  puedeLeerDeInstitucion,
+} from "@/lib/docente/api";
 import { puedeSerPadre, temaActualizacionSchema, type Estado, type Motor } from "@/lib/docente/curriculo";
 import { SELECCION_TEMA, normalizarEtiquetas, reglasParaGuardar } from "@/lib/docente/temas";
 import { normalizarLatex } from "@/lib/matematicas";
@@ -42,6 +50,9 @@ export async function GET(_req: Request, { params }: Contexto) {
       },
     });
     if (!tema) return noEncontrado("El tema");
+    if (!puedeLeerDeInstitucion(permiso.quien, tema.institucionId)) {
+      return noEncontrado("El tema");
+    }
     return NextResponse.json({ tema });
   } catch (e) {
     return fallo(e, "docente/temas:consultar");
@@ -60,17 +71,38 @@ export async function PATCH(req: Request, { params }: Contexto) {
   try {
     const actual = await prisma.nodoConocimiento.findUnique({
       where: { id },
-      select: { id: true, clave: true, motor: true, estado: true, etapa: true, cursoMin: true },
+      select: {
+        id: true,
+        clave: true,
+        motor: true,
+        estado: true,
+        etapa: true,
+        cursoMin: true,
+        institucionId: true,
+      },
     });
     if (!actual) return noEncontrado("El tema");
+    // Aislamiento curricular (cierre HITO 4): 404, no 403 —igual que en
+    // materias—.
+    if (!puedeEscribirEnInstitucion(permiso.quien, actual.institucionId)) {
+      return noEncontrado("El tema");
+    }
 
     // ── Nunca un tema puede ser su propio antepasado ─────────────────────────
     // Es un error fácil de cometer al reorganizar el temario y muy difícil de
     // reparar después: el árbol se queda sin raíz, el listado entra en bucle y
     // la lección no encuentra por dónde empezar.
     if (datos.padreId !== undefined && datos.padreId) {
-      const todos = await prisma.nodoConocimiento.findMany({ select: { id: true, padreId: true } });
-      if (!todos.some((n) => n.id === datos.padreId)) return noEncontrado("El tema padre");
+      const todos = await prisma.nodoConocimiento.findMany({
+        select: { id: true, padreId: true, institucionId: true },
+      });
+      const nuevoPadre = todos.find((n) => n.id === datos.padreId);
+      if (!nuevoPadre) return noEncontrado("El tema padre");
+      // El padre nuevo también tiene que ser legible: propio colegio o
+      // catálogo base, nunca el de otra institución.
+      if (!puedeLeerDeInstitucion(permiso.quien, nuevoPadre.institucionId)) {
+        return noEncontrado("El tema padre");
+      }
       if (!puedeSerPadre(todos, id, datos.padreId)) {
         return conflicto(
           "Ese tema no puede ser el padre: es el propio tema o uno de sus subtemas, y el temario quedaría en bucle.",
@@ -80,7 +112,9 @@ export async function PATCH(req: Request, { params }: Contexto) {
 
     if (datos.materiaId) {
       const materia = await prisma.materia.findUnique({ where: { id: datos.materiaId } });
-      if (!materia) return noEncontrado("La asignatura");
+      if (!materia || !puedeLeerDeInstitucion(permiso.quien, materia.institucionId)) {
+        return noEncontrado("La asignatura");
+      }
     }
 
     const motor = (datos.motor !== undefined ? (datos.motor ?? null) : actual.motor) as Motor | null;
@@ -246,10 +280,14 @@ export async function DELETE(_req: Request, { params }: Contexto) {
       select: {
         id: true,
         titulo: true,
+        institucionId: true,
         _count: { select: { hijos: true, ejercicios: true } },
       },
     });
     if (!tema) return noEncontrado("El tema");
+    if (!puedeEscribirEnInstitucion(permiso.quien, tema.institucionId)) {
+      return noEncontrado("El tema");
+    }
 
     if (tema._count.hijos > 0) {
       return conflicto(

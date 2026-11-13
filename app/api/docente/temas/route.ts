@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import {
+  clausulaInstitucional,
+  exigirDocente,
+  fallo,
+  institucionParaCrear,
+  leerCuerpo,
+  noEncontrado,
+  puedeLeerDeInstitucion,
+} from "@/lib/docente/api";
 import {
   ESTADOS,
   MOTORES,
@@ -62,6 +70,14 @@ export async function GET(req: Request) {
     ];
   }
 
+  // Aislamiento curricular (cierre HITO 4): el propio colegio más el
+  // catálogo base, SUPERADMIN sin límite. Se combina con AND —no se
+  // sobrescribe `where.OR`— porque la búsqueda de arriba también usa OR.
+  const clausulaInstitucion = clausulaInstitucional(permiso.quien);
+  if (clausulaInstitucion) {
+    where.AND = [{ OR: clausulaInstitucion }];
+  }
+
   try {
     const temas = await prisma.nodoConocimiento.findMany({
       where,
@@ -79,6 +95,13 @@ export async function POST(req: Request) {
   const permiso = await exigirDocente({ escritura: true });
   if (!permiso.ok) return permiso.respuesta;
 
+  // Aislamiento curricular (cierre HITO 4): el tema nuevo nace en el colegio
+  // de quien lo crea —o en el catálogo base si es un SUPERADMIN— sin
+  // importar de qué institución sea su padre (ver el comentario del campo
+  // en prisma/schema.prisma).
+  const propietario = institucionParaCrear(permiso.quien);
+  if (!propietario.ok) return propietario.respuesta;
+
   const cuerpo = await leerCuerpo(req, temaSchema);
   if (!cuerpo.ok) return cuerpo.respuesta;
   const datos = cuerpo.datos;
@@ -92,15 +115,23 @@ export async function POST(req: Request) {
     const padre = datos.padreId
       ? await prisma.nodoConocimiento.findUnique({
           where: { id: datos.padreId },
-          select: { id: true, materiaId: true, motor: true, etapa: true, cursoMin: true },
+          select: { id: true, materiaId: true, motor: true, etapa: true, cursoMin: true, institucionId: true },
         })
       : null;
     if (datos.padreId && !padre) return noEncontrado("El tema padre");
+    // El padre tiene que ser algo que quien crea pueda LEER —su propio
+    // colegio o el catálogo base—: colgar un subtema de un tema ajeno sería
+    // otra forma de fuga, aunque el subtema en sí nazca bien aislado.
+    if (padre && !puedeLeerDeInstitucion(permiso.quien, padre.institucionId)) {
+      return noEncontrado("El tema padre");
+    }
 
     const materiaId = datos.materiaId ?? padre?.materiaId ?? null;
     if (materiaId) {
       const materia = await prisma.materia.findUnique({ where: { id: materiaId } });
-      if (!materia) return noEncontrado("La asignatura");
+      if (!materia || !puedeLeerDeInstitucion(permiso.quien, materia.institucionId)) {
+        return noEncontrado("La asignatura");
+      }
     }
     const motor = datos.motor !== undefined ? (datos.motor ?? null) : (padre?.motor ?? null);
     // El alcance curricular se hereda del padre igual que el motor: un subtema
@@ -123,6 +154,7 @@ export async function POST(req: Request) {
           descripcion: datos.descripcion ?? null,
           materiaId,
           padreId: padre?.id ?? null,
+          institucionId: propietario.institucionId,
           motor,
           nivel: datos.nivel ?? null,
           etapa,
