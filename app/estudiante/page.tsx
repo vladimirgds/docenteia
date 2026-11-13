@@ -205,7 +205,7 @@ export default async function PanelEstudiante() {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Lecciones</CardTitle>
             <CardDescription>
@@ -213,21 +213,21 @@ export default async function PanelEstudiante() {
               después practicas con corrección inmediata.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-auto">
             <Button asChild size="lg">
               <Link href="/estudiante/leccion">Empezar una lección</Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Tareas asignadas</CardTitle>
             <CardDescription>
               Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="mt-auto">
             <Button asChild size="lg">
               <Link href="/estudiante/tareas">Ver mis tareas</Link>
             </Button>
