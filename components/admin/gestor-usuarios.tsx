@@ -77,6 +77,7 @@ export function GestorUsuarios({ miPropioId }: Props) {
   const [instituciones, setInstituciones] = useState<{ id: string; nombre: string }[]>([]);
   const [aulas, setAulas] = useState<AulaParaMatricular[]>([]);
   const [filtroRol, setFiltroRol] = useState("");
+  const [filtroInstitucion, setFiltroInstitucion] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [aviso, setAviso] = useState<{ tono: "ok" | "mal"; texto: string } | null>(null);
   const [guardando, setGuardando] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function GestorUsuarios({ miPropioId }: Props) {
     iniciar(async () => {
       const parametros = new URLSearchParams();
       if (filtroRol) parametros.set("rol", filtroRol);
+      if (filtroInstitucion) parametros.set("institucion", filtroInstitucion);
       if (busqueda.trim()) parametros.set("q", busqueda.trim());
       const r = await pedir<{ usuarios: UsuarioVista[]; instituciones: { id: string; nombre: string }[] }>(
         `/api/admin/usuarios?${parametros.toString()}`,
@@ -120,7 +122,7 @@ export function GestorUsuarios({ miPropioId }: Props) {
     const t = setTimeout(cargar, busqueda ? 300 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroRol, busqueda]);
+  }, [filtroRol, filtroInstitucion, busqueda]);
 
   const actualizar = async (id: string, cambios: Record<string, unknown>) => {
     setGuardando(id);
@@ -523,6 +525,21 @@ export function GestorUsuarios({ miPropioId }: Props) {
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {ETIQUETA_ROL[r]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="filtro-institucion">Colegio</Label>
+          <Select
+            id="filtro-institucion"
+            value={filtroInstitucion}
+            onChange={(e) => setFiltroInstitucion(e.target.value)}
+          >
+            <option value="">Todos los colegios</option>
+            {instituciones.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.nombre}
               </option>
             ))}
           </Select>
