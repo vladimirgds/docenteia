@@ -394,4 +394,125 @@ console.log("\n · E. POST /api/admin/usuarios — alta directa de docentes y al
   check("…y esa cuenta puede iniciar sesión de verdad, con la contraseña puesta", Boolean(sesionDirectorNuevo));
 }
 
+// ── F. GET /api/admin/usuarios?institucion=… — "AGREGAR FILTRO POR COLEGIO" ─
+//
+// El cliente mandó una captura de /admin/usuarios señalando, junto al filtro
+// de Rol, que faltaba uno por colegio. Un DOCENTE/DIRECTOR/SUPERADMIN tiene
+// su institución directo en la fila (`institucionId`), pero un ESTUDIANTE no
+// —la tiene por aula, vía su matrícula (`rolUsaInstitucion` es false para
+// ESTUDIANTE)—, así que el filtro tiene que cubrir las dos formas o dejaría
+// fuera a todo el alumnado de un colegio.
+console.log('\n · F. GET /api/admin/usuarios?institucion=… — filtro por colegio, cubre docentes/directores Y alumnos por aula');
+{
+  const sufijo = Date.now().toString(36);
+
+  const rNuevoColegio = await apiAdmin("/api/admin/instituciones", {
+    method: "POST",
+    body: JSON.stringify({ nombre: `QA Filtro Colegio ${sufijo}` }),
+  });
+  const nuevoColegio = await rNuevoColegio.json().catch(() => ({}));
+  check(
+    "se crea un segundo colegio para probar el filtro",
+    rNuevoColegio.status === 201 && Boolean(nuevoColegio?.institucion?.id),
+    JSON.stringify(nuevoColegio),
+  );
+  const colegioB = nuevoColegio?.institucion?.id;
+
+  const rListaInicial = await apiAdmin("/api/admin/usuarios");
+  const listaInicial = await rListaInicial.json().catch(() => ({}));
+  const colegioDemo = listaInicial?.instituciones?.find((i) => i.nombre === "Colegio de demostración")?.id;
+  check("el colegio sembrado de siempre ('Colegio de demostración') sigue ahí", Boolean(colegioDemo));
+
+  // Un docente vinculado DIRECTO al colegio B.
+  const correoDocenteB = `qa.filtrodocente.${sufijo}@mentoriamath.local`;
+  const altaDocenteB = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "QA Docente Colegio B", email: correoDocenteB, password: "Docente-2026", rol: "DOCENTE" }),
+  });
+  const docenteB = (await altaDocenteB.json().catch(() => ({})))?.usuario;
+  if (colegioB && docenteB?.id) {
+    await apiAdmin(`/api/admin/usuarios/${docenteB.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ institucionId: colegioB }),
+    });
+  }
+
+  // Un alumno matriculado en un aula del colegio B —SIN institucionId propio—.
+  const correoAlumnoB = `qa.filtroalumno.${sufijo}@mentoriamath.local`;
+  const altaAlumnoB = await registrarAlumno(BASE, { email: correoAlumnoB, password: "Alumno-2026", nombre: "QA Alumno Colegio B" });
+  let aulaB = null;
+  if (colegioB) {
+    const rAulaB = await apiAdmin("/api/admin/aulas", {
+      method: "POST",
+      body: JSON.stringify({ nombre: `QA Aula Filtro ${sufijo}`, etapa: "SECUNDARIA", grado: 3, seccion: `F${sufijo.slice(-3)}`, institucionId: colegioB }),
+    });
+    aulaB = (await rAulaB.json().catch(() => ({})))?.aula;
+  }
+  const rListaParaIds = await apiAdmin(`/api/admin/usuarios?q=${encodeURIComponent(correoAlumnoB)}`);
+  const alumnoBId = (await rListaParaIds.json().catch(() => ({})))?.usuarios?.find((u) => u.email === correoAlumnoB)?.id;
+  if (aulaB?.id && alumnoBId) {
+    await apiAdmin("/api/admin/matriculas", {
+      method: "POST",
+      body: JSON.stringify({ estudianteId: alumnoBId, aulaId: aulaB.id }),
+    });
+  }
+
+  if (colegioB) {
+    const rFiltroB = await apiAdmin(`/api/admin/usuarios?institucion=${colegioB}`);
+    const filtroB = await rFiltroB.json().catch(() => ({}));
+    const correosB = (filtroB?.usuarios ?? []).map((u) => u.email);
+    check(
+      "filtrando por el colegio B aparece su docente, vinculado directo",
+      correosB.includes(correoDocenteB),
+      JSON.stringify(correosB),
+    );
+    check(
+      "…y también su alumno, matriculado por aula —no tiene institucionId propio—",
+      correosB.includes(correoAlumnoB),
+      JSON.stringify(correosB),
+    );
+    check(
+      "…pero NO el docente de la semilla, que es de 'Colegio de demostración', otro colegio",
+      !correosB.includes("docente@mentoriamath.local"),
+      JSON.stringify(correosB),
+    );
+  }
+
+  if (colegioDemo) {
+    const rFiltroDemo = await apiAdmin(`/api/admin/usuarios?institucion=${colegioDemo}`);
+    const filtroDemo = await rFiltroDemo.json().catch(() => ({}));
+    const correosDemo = (filtroDemo?.usuarios ?? []).map((u) => u.email);
+    check(
+      "filtrando por 'Colegio de demostración' aparece el docente de la semilla",
+      correosDemo.includes("docente@mentoriamath.local"),
+      JSON.stringify(correosDemo),
+    );
+    check(
+      "…pero NO el docente nuevo del colegio B",
+      !correosDemo.includes(correoDocenteB),
+      JSON.stringify(correosDemo),
+    );
+  }
+
+  // Combinado con el filtro de rol: sólo los DOCENTE del colegio B.
+  if (colegioB) {
+    const rCombinado = await apiAdmin(`/api/admin/usuarios?institucion=${colegioB}&rol=DOCENTE`);
+    const combinado = await rCombinado.json().catch(() => ({}));
+    const correosCombinado = (combinado?.usuarios ?? []).map((u) => u.email);
+    check(
+      "institución + rol combinados: sólo el docente del colegio B, no su alumno",
+      correosCombinado.includes(correoDocenteB) && !correosCombinado.includes(correoAlumnoB),
+      JSON.stringify(correosCombinado),
+    );
+  }
+
+  // Un id de colegio inventado no revienta —simplemente no encuentra a nadie—.
+  const rColegioInventado = await apiAdmin("/api/admin/usuarios?institucion=no-existe-este-id");
+  check(
+    "un id de colegio que no existe no rompe nada: lista vacía, HTTP 200",
+    rColegioInventado.status === 200 && (await rColegioInventado.json())?.usuarios?.length === 0,
+    `HTTP ${rColegioInventado.status}`,
+  );
+}
+
 salir();

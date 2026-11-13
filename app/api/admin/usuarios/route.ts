@@ -23,22 +23,39 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const rol = url.searchParams.get("rol");
+  const institucionId = url.searchParams.get("institucion");
   const busqueda = (url.searchParams.get("q") ?? "").trim();
+
+  // Dos condiciones, cada una ya con su propio `OR` (ésta y la de la
+  // búsqueda), así que van en `AND` en vez de mezclarse en el mismo objeto:
+  // dos claves `OR` en un mismo `where` se pisarían entre sí.
+  const condiciones: Prisma.UsuarioWhereInput[] = [];
+  if (rol && (ROLES as readonly string[]).includes(rol)) {
+    condiciones.push({ rol: rol as (typeof ROLES)[number] });
+  }
+  if (institucionId) {
+    // Un DOCENTE/DIRECTOR/SUPERADMIN tiene su institución directo en la
+    // fila (`institucionId`); un ESTUDIANTE no —la tiene por aula, vía su
+    // matrícula (ver el comentario de `rolUsaInstitucion` más abajo)—, así
+    // que hace falta cubrir las dos formas para que el filtro encuentre a
+    // los alumnos de un colegio y no sólo a su personal.
+    condiciones.push({
+      OR: [{ institucionId }, { matriculas: { some: { aula: { institucionId } } } }],
+    });
+  }
+  if (busqueda) {
+    condiciones.push({
+      OR: [
+        { nombre: { contains: busqueda, mode: "insensitive" } },
+        { email: { contains: busqueda, mode: "insensitive" } },
+      ],
+    });
+  }
 
   try {
     const [usuarios, instituciones] = await Promise.all([
       prisma.usuario.findMany({
-        where: {
-          ...(rol && (ROLES as readonly string[]).includes(rol) ? { rol: rol as (typeof ROLES)[number] } : {}),
-          ...(busqueda
-            ? {
-                OR: [
-                  { nombre: { contains: busqueda, mode: "insensitive" } },
-                  { email: { contains: busqueda, mode: "insensitive" } },
-                ],
-              }
-            : {}),
-        },
+        where: condiciones.length ? { AND: condiciones } : {},
         // El orden jerárquico-operativo (Administrador → Director → Docentes
         // → Alumnos) no se puede pedir aquí: Postgres ordena un enum por su
         // posición de DECLARACIÓN, no alfabéticamente, y `Rol` declara
