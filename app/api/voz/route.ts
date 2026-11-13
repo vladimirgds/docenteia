@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { auth } from "@/auth";
 import { AYUDA_DE_VOZ, CLAVES_DE_VOZ, configuracionDeVoz, type Config } from "@/lib/voz/config";
+import { ipDeLaPeticion, permiteIntento, segundosParaReintentar } from "@/lib/seguridad/limite-tasa";
 
 /**
  * LA VOZ DEL TUTOR, SINTETIZADA FUERA DEL NAVEGADOR.
@@ -38,6 +40,59 @@ export const dynamic = "force-dynamic";
 
 /** Lo más largo que se acepta en una petición: el reproductor trocea antes. */
 const LIMITE = 600;
+
+/**
+ * PROTECCIÓN DEL ENDPOINT (observación del cliente, cierre HITO 4: "proteger
+ * el endpoint de generación de voz mediante autenticación y límites de
+ * consumo... por usuario y por IP"). Cada llamada real al proveedor
+ * (`sintetizar`) está detrás de sesión Y de un doble tope: antes de esto,
+ * cualquiera —sin iniciar sesión— podía pedir audio sin límite y cada
+ * petición es una llamada PAGADA al proveedor.
+ *
+ * `/estudiante/leccion`, el único sitio real que llama a este endpoint, ya
+ * exige sesión por middleware: exigirla aquí también no le quita nada a
+ * nadie legítimo, sólo cierra la puerta a quien se salte la interfaz.
+ *
+ * Por usuario (30/min): generoso para una clase de verdad —una frase cada
+ * dos segundos—, estrecho para un bucle automatizado. Por IP (90/min),
+ * además: una red compartida de colegio puede tener a varios alumnos
+ * narrando audio a la vez, y el tope por usuario ya los distingue entre sí;
+ * el de IP sólo entra cuando hace falta, como red de seguridad.
+ */
+async function exigirSesionYLimite(
+  peticion: Request,
+): Promise<{ ok: true } | { ok: false; respuesta: NextResponse }> {
+  const sesion = await auth();
+  if (!sesion?.user) {
+    return {
+      ok: false,
+      respuesta: NextResponse.json(
+        { error: "No autenticado." },
+        { status: 401, headers: { "cache-control": "no-store" } },
+      ),
+    };
+  }
+
+  const porUsuario = permiteIntento(`voz:${sesion.user.id}`, 30, 60_000);
+  const porIp = permiteIntento(`voz-ip:${ipDeLaPeticion(peticion)}`, 90, 60_000);
+  const limite = porUsuario.permitido ? porIp : porUsuario;
+  if (!limite.permitido) {
+    return {
+      ok: false,
+      respuesta: NextResponse.json(
+        { error: "Demasiadas peticiones de voz. Espera un momento." },
+        {
+          status: 429,
+          headers: {
+            "cache-control": "no-store",
+            "Retry-After": String(segundosParaReintentar(limite.reintentarEnMs)),
+          },
+        },
+      ),
+    };
+  }
+  return { ok: true };
+}
 
 /** Caché en memoria: una lección repite muchas frases, y cada una se paga. */
 const CACHE = new Map<string, Buffer>();
@@ -96,6 +151,9 @@ async function sintetizar(texto: string, cfg: Config): Promise<Buffer> {
  * es lo mismo que estar puesta.
  */
 export async function GET(peticion: Request) {
+  const permiso = await exigirSesionYLimite(peticion);
+  if (!permiso.ok) return permiso.respuesta;
+
   const cfg = configuracionDeVoz();
   if (!cfg) {
     // Sin clave no es un error: es una instalación sin voz neuronal contratada.
@@ -134,6 +192,9 @@ export async function GET(peticion: Request) {
 }
 
 export async function POST(peticion: Request) {
+  const permiso = await exigirSesionYLimite(peticion);
+  if (!permiso.ok) return permiso.respuesta;
+
   const cfg = configuracionDeVoz();
   if (!cfg) {
     return NextResponse.json(

@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import {
+  clausulaInstitucional,
+  conflicto,
+  exigirDocente,
+  fallo,
+  leerCuerpo,
+  noEncontrado,
+  puedeEscribirEnInstitucion,
+} from "@/lib/docente/api";
 import { ESTADOS, NIVELES, ejercicioSchema, type Estado, type Motor, type Nivel } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
@@ -55,6 +63,11 @@ export async function GET(req: Request) {
   if (nivel && (NIVELES as readonly string[]).includes(nivel)) where.nivel = nivel as Nivel;
   if (busqueda) where.enunciado = { contains: busqueda, mode: "insensitive" };
 
+  // Aislamiento curricular (cierre HITO 4): el propio colegio más el
+  // catálogo base, SUPERADMIN sin límite.
+  const clausula = clausulaInstitucional(permiso.quien);
+  if (clausula) where.OR = clausula;
+
   try {
     const ejercicios = await prisma.ejercicio.findMany({
       where,
@@ -83,9 +96,15 @@ export async function POST(req: Request) {
     // no lo corrige.
     const tema = await prisma.nodoConocimiento.findUnique({
       where: { id: datos.nodoId },
-      select: { id: true, motor: true, titulo: true, etapa: true, cursoMin: true },
+      select: { id: true, motor: true, titulo: true, etapa: true, cursoMin: true, institucionId: true },
     });
     if (!tema) return noEncontrado("El tema");
+    // Aislamiento curricular (cierre HITO 4): el ejercicio hereda la
+    // institución de su tema, así que la pregunta real es "¿puedo ESCRIBIR
+    // en el tema?" —exactamente la misma regla que editar el tema en sí—.
+    if (!puedeEscribirEnInstitucion(permiso.quien, tema.institucionId)) {
+      return noEncontrado("El tema");
+    }
     const motor = tema.motor as Motor | null;
 
     const repetido = await prisma.ejercicio.findFirst({
@@ -125,6 +144,7 @@ export async function POST(req: Request) {
     const ejercicio = await prisma.ejercicio.create({
       data: {
         nodoId: datos.nodoId,
+        institucionId: tema.institucionId,
         motor,
         // El alcance se guarda SÓLO si el docente lo ha afinado; a null significa
         // "el de mi tema", de modo que al cambiar el tema sus ejercicios lo siguen

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Session } from "next-auth";
 
 // Núcleo pedagógico heredado, en JavaScript. Se importa tal cual, a propósito:
 // es la lógica matemática validada del prototipo y reescribirla en TypeScript
@@ -12,6 +13,7 @@ import {
   contextoParaElModelo,
   type ContextoAlumno,
 } from "@/lib/perfil/contexto";
+import { permiteIntento, segundosParaReintentar } from "@/lib/seguridad/limite-tasa";
 
 // Node, no edge: el núcleo usa temporizadores y estado en memoria (caché LRU y
 // ventanas del limitador) que el runtime edge no conserva entre invocaciones.
@@ -43,6 +45,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Falta la consulta ('query')." }, { status: 400 });
   }
 
+  // Capa 2: tope por USUARIO autenticado (observación del cliente, cierre
+  // HITO 4: "límites por usuario y por IP según corresponda"). La capa 1
+  // (arriba) ya protege por IP contra el consumo de Gemini —incluye tráfico
+  // anónimo, que no tiene usuario del que tirar—; ésta añade lo que faltaba:
+  // una cuenta concreta no puede agotar su propio cupo aunque cambie de IP, y
+  // varias cuentas detrás del mismo NAT de colegio no se castigan entre sí.
+  // Sin sesión no hay nada que limitar aquí —ya lo cubre la capa 1—.
+  const sesion = await auth();
+  if (sesion?.user?.id) {
+    const limiteUsuario = permiteIntento(`query:${sesion.user.id}`, 60, 60_000);
+    if (!limiteUsuario.permitido) {
+      return NextResponse.json(
+        { error: "Demasiadas consultas. Espera un momento." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(segundosParaReintentar(limiteUsuario.reintentarEnMs)) },
+        },
+      );
+    }
+  }
+
   // Los metadatos académicos del alumno viajan con la consulta: el ciclo, el
   // nivel que le asignó el diagnóstico y sus debilidades. Sin ellos, el motor
   // generaba la misma lección para un alumno de Básico recién diagnosticado que
@@ -51,7 +74,7 @@ export async function POST(req: Request) {
   // Sin sesión no se añade nada y la consulta se comporta igual que siempre: la
   // lección determinista no puede depender de quién la pida, o dejaría de ser
   // reproducible.
-  const alumno = await contextoDelSolicitante();
+  const alumno = await contextoDelSolicitante(sesion);
   const cuerpo =
     alumno && body && typeof body === "object"
       ? {
@@ -69,10 +92,12 @@ export async function POST(req: Request) {
  *
  * Un fallo al leerlo no puede tumbar la consulta: la lección es lo importante y
  * el contexto sólo la afina. Si la base no responde, se sigue sin él.
+ *
+ * Recibe la sesión ya resuelta (la capa 2 de arriba la necesita de todos
+ * modos) en vez de volver a llamar a `auth()`.
  */
-async function contextoDelSolicitante(): Promise<ContextoAlumno | null> {
+async function contextoDelSolicitante(sesion: Session | null): Promise<ContextoAlumno | null> {
   try {
-    const sesion = await auth();
     const perfilId = sesion?.user?.perfilId;
     if (!perfilId) return null;
 

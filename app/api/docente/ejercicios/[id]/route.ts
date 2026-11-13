@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
+import {
+  conflicto,
+  exigirDocente,
+  fallo,
+  leerCuerpo,
+  noEncontrado,
+  puedeEscribirEnInstitucion,
+} from "@/lib/docente/api";
 import { ejercicioActualizacionSchema, type Motor } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
@@ -32,10 +39,16 @@ export async function PATCH(req: Request, { params }: Contexto) {
   try {
     const actual = await prisma.ejercicio.findUnique({ where: { id } });
     if (!actual) return noEncontrado("El ejercicio");
+    // Aislamiento curricular (cierre HITO 4): 404, no 403 —igual que en
+    // materias y temas—.
+    if (!puedeEscribirEnInstitucion(permiso.quien, actual.institucionId)) {
+      return noEncontrado("El ejercicio");
+    }
 
     // Si el ejercicio cambia de tema, cambia de motor con él.
     const nodoId = datos.nodoId ?? actual.nodoId;
     let motor = actual.motor as Motor | null;
+    let institucionId = actual.institucionId;
     // El alcance curricular vuelve a leerse del tema en cada edición: si el
     // tema cambió de etapa, sus ejercicios la siguen.
     let alcance: { etapa: typeof actual.etapa; cursoMin: number | null } = {
@@ -45,10 +58,17 @@ export async function PATCH(req: Request, { params }: Contexto) {
     if (nodoId) {
       const tema = await prisma.nodoConocimiento.findUnique({
         where: { id: nodoId },
-        select: { motor: true, etapa: true, cursoMin: true },
+        select: { motor: true, etapa: true, cursoMin: true, institucionId: true },
       });
       if (!tema) return noEncontrado("El tema");
+      // El tema (el actual o el nuevo, si se está reasignando) también tiene
+      // que ser escribible: mover un ejercicio a un tema ajeno sería otra
+      // forma de fuga, y dejarlo en un tema que ya no es tuyo, también.
+      if (!puedeEscribirEnInstitucion(permiso.quien, tema.institucionId)) {
+        return noEncontrado("El tema");
+      }
       motor = tema.motor as Motor | null;
+      institucionId = tema.institucionId;
 
       // Si la petición trae alcance propio se valida contra el tema; si no lo
       // trae, se conserva el que ya tuviera el ejercicio (que puede ser nulo,
@@ -118,6 +138,7 @@ export async function PATCH(req: Request, { params }: Contexto) {
       data: {
         ...(datos.nodoId !== undefined ? { nodoId: datos.nodoId } : {}),
         motor,
+        institucionId,
         etapa: alcance.etapa,
         cursoMin: alcance.cursoMin,
         nivel: fusionado.nivel,
@@ -168,9 +189,12 @@ export async function DELETE(_req: Request, { params }: Contexto) {
   try {
     const ejercicio = await prisma.ejercicio.findUnique({
       where: { id },
-      select: { id: true, _count: { select: { progreso: true } } },
+      select: { id: true, institucionId: true, _count: { select: { progreso: true } } },
     });
     if (!ejercicio) return noEncontrado("El ejercicio");
+    if (!puedeEscribirEnInstitucion(permiso.quien, ejercicio.institucionId)) {
+      return noEncontrado("El ejercicio");
+    }
 
     if (ejercicio._count.progreso > 0) {
       return conflicto(

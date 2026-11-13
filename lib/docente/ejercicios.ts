@@ -25,6 +25,7 @@ export const SELECCION_EJERCICIO = {
   creadoEn: true,
   actualizadoEn: true,
   nodoId: true,
+  institucionId: true,
   // El alcance del tema viaja con el ejercicio: sin él no se puede resolver el
   // efectivo, porque el del ejercicio a null significa "el de mi tema".
   nodo: {
