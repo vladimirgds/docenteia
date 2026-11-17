@@ -222,6 +222,21 @@ export default async function PanelEstudiante() {
 
         <Card className="flex flex-col">
           <CardHeader>
+            <CardTitle>Explicaciones en la pizarra</CardTitle>
+            <CardDescription>
+              Un profesor virtual te explica ejemplos paso a paso: toca un término para oír qué significa, pide pistas y
+              responde escribiendo o hablando.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/pizarra">Abrir la pizarra</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
             <CardTitle>Tareas asignadas</CardTitle>
             <CardDescription>
               Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.

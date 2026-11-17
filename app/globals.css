@@ -1472,3 +1472,38 @@
     animation: none;
   }
 }
+
+/* ── PMV 3 · HITO 3: pizarra interactiva ───────────────────────────────────── */
+.pizarra-interactiva .katex [class*="pzt-"] {
+  cursor: pointer;
+  border-bottom: 2px dotted hsl(var(--primary));
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+.pizarra-interactiva .katex [class*="pzt-"]:hover {
+  background-color: hsl(var(--primary) / 0.12);
+}
+.pizarra-interactiva .katex .pz-activo {
+  background-color: hsl(var(--primary) / 0.2);
+  outline: 2px solid hsl(var(--primary) / 0.6);
+}
+.pizarra-interactiva .pz-laser {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  /* Centrado con transform (no con márgenes): ningún estilo heredado del
+     contenedor puede desplazarlo. */
+  transform: translate(-50%, -50%);
+  margin: 0;
+  border-radius: 9999px;
+  background: #ff2a2a;
+  box-shadow: 0 0 10px 4px rgba(255, 42, 42, 0.65);
+  pointer-events: none;
+  transition: left 0.45s cubic-bezier(0.4, 0, 0.2, 1), top 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s;
+  z-index: 5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pizarra-interactiva .pz-laser {
+    transition: none;
+  }
+}

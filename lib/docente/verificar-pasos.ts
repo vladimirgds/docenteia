@@ -3,7 +3,7 @@ import katex from "katex";
 
 import { analizar, evaluar, variablesDe } from "../matematicas/expresiones.ts";
 import { compararRespuesta, equivalentes } from "../matematicas/equivalencia.ts";
-import { planoALatex } from "../matematicas/index.ts";
+import { OPCIONES_KATEX, latexConTerminos } from "../pizarra/latex-terminos.ts";
 import { validarEjercicio } from "./validador.ts";
 import type { Paso } from "./procedimientos.ts";
 
@@ -129,9 +129,15 @@ function derivadaConcuerda(fun: string, der: string): boolean | null {
   return comparados >= 2 ? true : null;
 }
 
-function renderiza(plano: string): string | null {
+/**
+ * ¿Se puede MOSTRAR el paso tal como lo verá el alumno —con sus términos
+ * resaltados—? Devuelve el motivo si no, o `null`.
+ */
+function renderiza(plano: string, terminos: readonly { texto: string }[] = []): string | null {
+  const compuesto = latexConTerminos(plano, terminos);
+  if (compuesto.error) return compuesto.error;
   try {
-    katex.renderToString(planoALatex(plano), { throwOnError: true, strict: "ignore" });
+    katex.renderToString(compuesto.latex, { ...OPCIONES_KATEX, throwOnError: true });
     return null;
   } catch (e) {
     return e instanceof Error ? e.message.slice(0, 120) : "no se puede mostrar";
@@ -278,12 +284,15 @@ export function verificarPasos(entrada: {
 
   // Que cada paso se pueda MOSTRAR es independiente del motor.
   entrada.pasos.forEach((p, i) => {
-    const fallo = renderiza(p.escribe);
-    if (fallo) errores.push(`Paso ${i + 1}: la pizarra no puede mostrar «${p.escribe}» (${fallo}).`);
+    // Primero los términos: su mensaje es más preciso que el de KaTeX.
     for (const t of p.terminos ?? []) {
       if (!p.escribe.includes(t.texto)) {
         errores.push(`Paso ${i + 1}: el término «${t.texto}» no aparece en lo que se escribe en el paso.`);
       }
+    }
+    if (!errores.some((e) => e.startsWith(`Paso ${i + 1}:`))) {
+      const fallo = renderiza(p.escribe, p.terminos ?? []);
+      if (fallo) errores.push(`Paso ${i + 1}: la pizarra no puede mostrar «${p.escribe}» (${fallo}).`);
     }
   });
   if (entrada.pasos.length > 0 && entrada.pasos[entrada.pasos.length - 1].tipo !== "resultado") {

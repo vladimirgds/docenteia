@@ -334,7 +334,7 @@ function demoFracciones(p: PeticionProcedimiento): { proc: ProcedimientoCrudo; e
           escribe: `${n1}/${den} + ${n2}/${den}`,
           tipo: "transformacion",
           regla: "denominador común",
-          terminos: [{ texto: `/${den}`, explica: `El denominador común: ${den}.` }],
+          terminos: [{ texto: `${n1}/${den}`, explica: `La primera fracción, ya con el denominador común ${den}.` }],
         },
         {
           explica: "Con el mismo denominador, se suman los numeradores y se deja el denominador.",

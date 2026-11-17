@@ -579,6 +579,9 @@ export function GestorProcedimientos({ temas, procedimientos, soporte, puedeEdit
                       <td className="py-3">
                         {puedeEditar && (
                           <div className="flex flex-wrap justify-end gap-1">
+                            <Button variant="ghost" size="sm" asChild>
+                              <a href={`/docente/procedimientos/${p.id}/previa`}>Vista previa</a>
+                            </Button>
                             <Button variant="ghost" size="sm" onClick={() => editar(p)}>Editar</Button>
                             <Button variant="ghost" size="sm" disabled={ocupado} onClick={() => cambiarEstado(p, p.estado === "PUBLICADO" ? "ARCHIVADO" : "PUBLICADO")}>
                               {p.estado === "PUBLICADO" ? "Archivar" : p.origen === "IA" && !p.revisadoEn ? "Revisar y publicar" : "Publicar"}
