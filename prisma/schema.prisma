@@ -165,6 +165,22 @@ enum AmbitoContenido {
   DOCENTE
 }
 
+/// QUÉ CLASE DE CONTENIDO DIDÁCTICO ES UN PROCEDIMIENTO (PMV 3 · HITO 2).
+///
+///   · REGLA: una propiedad o regla que se enuncia y se ilustra ("regla de la
+///     cadena").
+///   · MÉTODO: una estrategia general de resolución ("resolver por sustitución").
+///   · PROCEDIMIENTO: una secuencia de pasos para llegar a un resultado ("sumar
+///     fracciones con distinto denominador").
+///
+/// Los tres comparten forma —un ejemplo resuelto en pasos— y por eso comparten
+/// tabla: lo que cambia es cómo lo presenta la pizarra, no cómo se guarda.
+enum TipoProcedimiento {
+  REGLA
+  METODO
+  PROCEDIMIENTO
+}
+
 /// Ciclo de vida del contenido de autoría docente.
 ///
 /// El borrador es trabajo en curso y NO llega al alumno; publicado es lo que la
@@ -217,10 +233,14 @@ model Usuario {
   // responder "quién escribió esto" sin cruzar tablas de auditoría, y para que
   // borrar una cuenta no se lleve por delante el currículo del colegio: la
   // relación es SetNull, no Cascade.
-  temasCreados      NodoConocimiento[] @relation("AutorDelTema")
-  reglasCreadas     ReglaMatematica[]  @relation("AutorDeLaRegla")
-  ejerciciosCreados Ejercicio[]        @relation("AutorDelEjercicio")
-  ejerciciosRevisados Ejercicio[]      @relation("RevisorDelEjercicio")
+  temasCreados        NodoConocimiento[] @relation("AutorDelTema")
+  reglasCreadas       ReglaMatematica[]  @relation("AutorDeLaRegla")
+  ejerciciosCreados   Ejercicio[]        @relation("AutorDelEjercicio")
+  ejerciciosRevisados Ejercicio[]        @relation("RevisorDelEjercicio")
+
+  // PMV 3 · HITO 2: procedimientos que escribe y revisa el docente.
+  procedimientosCreados   Procedimiento[] @relation("AutorDelProcedimiento")
+  procedimientosRevisados Procedimiento[] @relation("RevisorDelProcedimiento")
 
   // Multi-tenant (HITO 3). A qué colegio pertenece este DOCENTE o DIRECTOR —un
   // ESTUDIANTE no pertenece a ninguno por esta vía: entra en las aulas de sus
@@ -281,9 +301,10 @@ model Institucion {
   // currículo propio de ESTE colegio —ver el comentario de `institucionId`
   // en `Materia`/`NodoConocimiento`/`Ejercicio` para el porqué es opcional
   // en esos tres modelos, no aquí—.
-  materias   Materia[]
-  temas      NodoConocimiento[]
-  ejercicios Ejercicio[]
+  materias       Materia[]
+  temas          NodoConocimiento[]
+  ejercicios     Ejercicio[]
+  procedimientos Procedimiento[]
 
   @@map("instituciones")
 }
@@ -293,7 +314,7 @@ model Institucion {
 /// «Un alumno no se matricula 2 veces en la misma aula» vive en `Matricula`,
 /// no aquí: esta tabla es el salón, no quién está dentro.
 model Aula {
-  id           String   @id @default(cuid())
+  id           String          @id @default(cuid())
   nombre       String
   /// ETAPA EDUCATIVA del aula (cierre HITO 4, a petición del cliente: sin
   /// esto, `grado` era ambiguo —"grado 3" no dice si es primaria, secundaria
@@ -313,11 +334,11 @@ model Aula {
   /// alta y corto a propósito: un alumno lo copia de la pizarra del aula física
   /// o lo recibe por enlace (`/estudiante/unirse?codigo=…`). Ver
   /// `generarCodigoAcceso` en `lib/docente/aulas.ts`.
-  codigoAcceso String   @unique
+  codigoAcceso String          @unique
   /// Un aula inactiva no admite matrículas nuevas, pero conserva las que ya
   /// tenía: cerrar el curso no puede borrar el historial de quien ya estaba.
-  activa       Boolean  @default(true)
-  creadoEn     DateTime @default(now())
+  activa       Boolean         @default(true)
+  creadoEn     DateTime        @default(now())
 
   institucionId String
   institucion   Institucion @relation(fields: [institucionId], references: [id], onDelete: Cascade)
@@ -359,14 +380,14 @@ model Matricula {
   /// certeza, el origen real de TODA matrícula creada antes de esta
   /// migración: la matriculación directa por el admin es nueva en este
   /// mismo hito. Ver `OrigenMatricula`.
-  origen OrigenMatricula @default(CODIGO_INVITACION)
+  origen      OrigenMatricula @default(CODIGO_INVITACION)
   /// Quién ejecutó la acción, cuando no fue el propio alumno (un admin que
   /// lo matricula desde /admin/usuarios). `null` cuando `origen` es
   /// CODIGO_INVITACION: ahí el autor YA es `estudianteId`, duplicarlo aquí
   /// no añadiría información. SetNull: si esa cuenta de admin se borra, la
   /// matrícula no desaparece con ella, sólo pierde el dato de quién la hizo.
   creadoPorId String?
-  creadoPor   Usuario? @relation("CreadorDeMatricula", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  creadoPor   Usuario?        @relation("CreadorDeMatricula", fields: [creadoPorId], references: [id], onDelete: SetNull)
 
   // Un alumno no se matricula dos veces en la misma aula: es el 409 que
   // devuelve POST /api/estudiante/unirse cuando ya pertenece a ella.
@@ -396,7 +417,7 @@ model LogAuditoria {
   /// "MATRICULA_CREADA"). Texto libre, no enum: el catálogo de acciones
   /// auditables crece con el panel, y forzar una migración por cada una
   /// nueva costaría más fricción de la que un enum aquí vale la pena.
-  accion String
+  accion    String
   /// Sobre qué modelo ("Usuario", "Matricula") y qué fila.
   entidad   String
   entidadId String
@@ -704,11 +725,12 @@ model NodoConocimiento {
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
 
-  ejercicios Ejercicio[]
-  reglas     ReglaMatematica[]
-  progreso   RegistroProgreso[]
-  errores    RegistroError[]
-  tareas     Tarea[]
+  ejercicios     Ejercicio[]
+  procedimientos Procedimiento[]
+  reglas         ReglaMatematica[]
+  progreso       RegistroProgreso[]
+  errores        RegistroError[]
+  tareas         Tarea[]
 
   @@index([materiaId, orden])
   @@index([motor, nivel])
@@ -840,6 +862,82 @@ model Ejercicio {
   @@index([etapa, cursoMin])
   @@index([institucionId])
   @@map("ejercicios")
+}
+
+/// PROCEDIMIENTO DIDÁCTICO (PMV 3 · HITO 2): un ejemplo resuelto PASO A PASO que
+/// el docente define, prueba y publica desde su panel —sin tocar código— y que
+/// la pizarra interactiva proyecta al alumno.
+///
+/// La garantía que lo distingue de "texto libre" es la VERIFICACIÓN: el servidor
+/// comprueba cada paso contra el motor determinista (¿este paso equivale al
+/// anterior? ¿el resultado es el que calcula el motor?) y deja el informe en
+/// `informeVerificacion`. Un procedimiento que el servidor no ha podido
+/// verificar se guarda, pero no se publica: lo mismo que ya pasa con los
+/// borradores de IA del HITO 1.
+///
+/// El ámbito sigue la misma regla que `Ejercicio`: MAESTRO (catálogo, lo
+/// publica un SUPERADMIN) o DOCENTE (privado de su autor, y sólo llega a los
+/// alumnos matriculados en un aula suya).
+model Procedimiento {
+  id String @id @default(cuid())
+
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  tipo        TipoProcedimiento @default(PROCEDIMIENTO)
+  titulo      String
+  descripcion String?
+
+  /// Motor determinista con el que se verifica. Se hereda del tema, igual que en
+  /// `Ejercicio`: el cliente no lo elige.
+  motor Tema?
+
+  /// El problema que se resuelve en los pasos ("1/2 + 1/3", "(3x+1)^5").
+  ejemplo          String
+  /// Su resultado según el motor, o el declarado por el autor si el motor no lo
+  /// resuelve.
+  respuestaEjemplo String?
+
+  /// [{ explica, escribe, tipo, regla?, terminos?: [{ texto, explica }] }]
+  pasos     Json     @default("[]")
+  /// Preguntas de comprensión: [{ enunciado, respuesta?, pistas[] }]
+  preguntas Json     @default("[]")
+  /// Pistas generales del procedimiento, de la más suave a la más concreta.
+  pistas    String[] @default([])
+
+  origen OrigenContenido @default(DOCENTE)
+  ambito AmbitoContenido @default(DOCENTE)
+  estado EstadoContenido @default(BORRADOR)
+
+  /// ¿El servidor ha comprobado todos los pasos que sabe comprobar?
+  verificado          Boolean   @default(false)
+  informeVerificacion Json      @default("{}")
+  verificadoEn        DateTime?
+
+  /// Un repaso BREVE al que acudir cuando el alumno se bloquea en este tema
+  /// (PMV 3 · HITO 4): otro procedimiento, normalmente de un prerrequisito.
+  repasoId   String?
+  repaso     Procedimiento?  @relation("RepasoDe", fields: [repasoId], references: [id], onDelete: SetNull)
+  esRepasoDe Procedimiento[] @relation("RepasoDe")
+
+  autorId String?
+  autor   Usuario? @relation("AutorDelProcedimiento", fields: [autorId], references: [id], onDelete: SetNull)
+
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
+  revisadoPorId String?
+  revisadoPor   Usuario?  @relation("RevisorDelProcedimiento", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn    DateTime?
+
+  metadatos     Json     @default("{}")
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  @@index([nodoId, estado])
+  @@index([ambito, autorId])
+  @@index([institucionId])
+  @@map("procedimientos")
 }
 
 /// Sesión de aprendizaje: una unidad de trabajo del estudiante.

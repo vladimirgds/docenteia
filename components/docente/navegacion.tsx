@@ -19,6 +19,8 @@ const SECCIONES = [
   // PMV 3 · HITO 1: catálogo maestro y banco privado por tema.
   { href: "/docente/bancos", titulo: "Mis bancos" },
   { href: "/docente/ejercicios", titulo: "Ejercicios" },
+  // PMV 3 · HITO 2: editor de reglas, métodos y procedimientos.
+  { href: "/docente/procedimientos", titulo: "Procedimientos" },
   // HITO 3: arquitectura multi-tenant — aulas y tareas programadas.
   { href: "/docente/aulas", titulo: "Aulas" },
   { href: "/docente/asignar-tarea", titulo: "Asignar tarea" },

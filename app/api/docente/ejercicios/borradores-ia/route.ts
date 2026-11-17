@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
@@ -12,9 +11,8 @@ import {
 } from "@/lib/docente/api";
 import { ambitoParaCrear } from "@/lib/docente/bancos";
 import { NIVELES } from "@/lib/docente/curriculo";
-import { SELECCION_EJERCICIO, camposDeValidacion, pasosJson } from "@/lib/docente/ejercicios";
+import { guardarBorradoresDeEjercicios } from "@/lib/docente/guardar-borradores";
 import { ErrorDeIA, generarBorradores } from "@/lib/docente/borradores-ia";
-import { validarEjercicio } from "@/lib/docente/validador";
 import { ipDeLaPeticion, permiteIntento, segundosParaReintentar } from "@/lib/seguridad/limite-tasa";
 
 export const runtime = "nodejs";
@@ -121,87 +119,18 @@ export async function POST(req: Request) {
       throw e;
     }
 
-    // Lo que ya hay en el banco de destino, para no duplicar.
-    const existentes = new Set(
-      (
-        await prisma.ejercicio.findMany({
-          where: {
-            nodoId: tema.id,
-            ambito,
-            ...(ambito === "DOCENTE" ? { autorId: quien.usuarioId } : {}),
-          },
-          select: { enunciado: true },
-        })
-      ).map((e) => e.enunciado),
-    );
-
-    const guardados = [];
-    const descartados: { enunciado: string; motivo: string }[] = [];
-
-    for (const b of generado.borradores) {
-      if (existentes.has(b.enunciado)) {
-        descartados.push({ enunciado: b.enunciado, motivo: "Ya está en tu banco de este tema." });
-        continue;
-      }
-
-      // Se valida con la respuesta que dio la IA: si el motor calcula otra
-      // cosa, el validador lo rechaza y el borrador se descarta (ver arriba).
-      const informe = validarEjercicio({
-        enunciado: b.enunciado,
-        respuestaCorrecta: b.respuestaCorrecta,
-        motor: tema.motor,
-        pistas: b.pistas,
-      });
-      if (!informe.valido) {
-        descartados.push({
-          enunciado: b.enunciado,
-          motivo: `La IA y el motor no coinciden, o el ejercicio no es válido: ${informe.errores[0] ?? "no supera la validación del servidor."}`,
-        });
-        continue;
-      }
-
-      const campos = camposDeValidacion(informe);
-      try {
-        const creado = await prisma.ejercicio.create({
-          data: {
-            nodoId: tema.id,
-            institucionId: tema.institucionId,
-            motor: tema.motor,
-            nivel: datos.nivel,
-            enunciado: b.enunciado,
-            respuestaCorrecta: campos.respuestaCorrecta,
-            pistas: b.pistas,
-            pasos: pasosJson(informe.muestras[0]?.enunciado ?? b.enunciado, tema.motor),
-            origen: "IA",
-            ambito,
-            validado: campos.validado,
-            validadoEn: campos.validadoEn,
-            informeValidacion: campos.informeValidacion as unknown as Prisma.InputJsonValue,
-            // SIEMPRE borrador: publicar es un acto humano posterior.
-            estado: "BORRADOR",
-            autorId: quien.usuarioId,
-            metadatos: {
-              ia: {
-                modelo: generado.modelo,
-                modo: generado.modo,
-                generadoEn: new Date().toISOString(),
-                indicaciones: datos.indicaciones ?? null,
-                respuestaIA: b.respuestaCorrecta,
-              },
-            } as unknown as Prisma.InputJsonValue,
-          },
-          select: SELECCION_EJERCICIO,
-        });
-        existentes.add(b.enunciado);
-        guardados.push(creado);
-      } catch (e) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-          descartados.push({ enunciado: b.enunciado, motivo: "Ya existe un ejercicio igual." });
-          continue;
-        }
-        throw e;
-      }
-    }
+    // La regla de qué se guarda (y cómo) es la MISMA para todo borrador de IA y
+    // vive en un solo sitio: ver `lib/docente/guardar-borradores.ts`.
+    const { guardados, descartados } = await guardarBorradoresDeEjercicios({
+      autorId: quien.usuarioId,
+      ambito,
+      tema,
+      nivel: datos.nivel,
+      borradores: generado.borradores,
+      modelo: generado.modelo,
+      modo: generado.modo,
+      indicaciones: datos.indicaciones,
+    });
 
     await prisma.logAuditoria.create({
       data: {

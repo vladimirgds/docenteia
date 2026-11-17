@@ -54,8 +54,8 @@ export class ErrorDeIA extends Error {
 }
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const MODELO_POR_DEFECTO = "gemini-2.5-flash-lite";
-const MODELOS_DE_RESPALDO = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+export const MODELO_POR_DEFECTO = "gemini-2.5-flash-lite";
+export const MODELOS_DE_RESPALDO = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
 const TIMEOUT_MS = 45_000;
 
 const GUIA_DE_FORMATO: Record<Tema, string> = {
@@ -143,7 +143,14 @@ export function normalizarBorradores(crudo: unknown, maximo: number): BorradorCr
   return salida;
 }
 
-async function llamarGemini(modelo: string, clave: string, prompt: string): Promise<string> {
+export async function llamarGemini(
+  modelo: string,
+  clave: string,
+  prompt: string,
+  esquema: unknown = ESQUEMA_RESPUESTA,
+  /** Tokens de "razonamiento" del modelo. 0 para ejercicios cortos; más para derivaciones. */
+  presupuestoPensamiento = 0,
+): Promise<string> {
   const controlador = new AbortController();
   const temporizador = setTimeout(() => controlador.abort(), TIMEOUT_MS);
   let res: Response;
@@ -156,12 +163,12 @@ async function llamarGemini(modelo: string, clave: string, prompt: string): Prom
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.8,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
-          responseSchema: ESQUEMA_RESPUESTA,
+          responseSchema: esquema,
           // Los modelos "flash" gastan salida en razonar antes de contestar; para
           // redactar ejercicios cortos no hace falta y agota el presupuesto.
-          thinkingConfig: { thinkingBudget: 0 },
+          thinkingConfig: { thinkingBudget: presupuestoPensamiento },
         },
       }),
       signal: controlador.signal,
