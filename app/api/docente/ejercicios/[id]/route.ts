@@ -9,7 +9,9 @@ import {
   leerCuerpo,
   noEncontrado,
   puedeEscribirEnInstitucion,
+  puedeLeerDeInstitucion,
 } from "@/lib/docente/api";
+import { puedeEscribirEjercicio } from "@/lib/docente/bancos";
 import { ejercicioActualizacionSchema, type Motor } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
@@ -39,9 +41,10 @@ export async function PATCH(req: Request, { params }: Contexto) {
   try {
     const actual = await prisma.ejercicio.findUnique({ where: { id } });
     if (!actual) return noEncontrado("El ejercicio");
-    // Aislamiento curricular (cierre HITO 4): 404, no 403 —igual que en
-    // materias y temas—.
-    if (!puedeEscribirEnInstitucion(permiso.quien, actual.institucionId)) {
+    // Aislamiento curricular (HITO 4) y bancos privados (PMV 3 · HITO 1): 404,
+    // no 403 —igual que en materias y temas—. Un ejercicio del banco privado de
+    // OTRO docente responde exactamente igual que uno que no existe.
+    if (!puedeEscribirEjercicio(permiso.quien, actual)) {
       return noEncontrado("El ejercicio");
     }
 
@@ -64,7 +67,13 @@ export async function PATCH(req: Request, { params }: Contexto) {
       // El tema (el actual o el nuevo, si se está reasignando) también tiene
       // que ser escribible: mover un ejercicio a un tema ajeno sería otra
       // forma de fuga, y dejarlo en un tema que ya no es tuyo, también.
-      if (!puedeEscribirEnInstitucion(permiso.quien, tema.institucionId)) {
+      // En el banco PRIVADO basta con poder leer el tema destino; en el
+      // catálogo, con poder escribirlo (la misma regla que al crear).
+      const temaPermitido =
+        actual.ambito === "DOCENTE"
+          ? puedeLeerDeInstitucion(permiso.quien, tema.institucionId)
+          : puedeEscribirEnInstitucion(permiso.quien, tema.institucionId);
+      if (!temaPermitido) {
         return noEncontrado("El tema");
       }
       motor = tema.motor as Motor | null;
@@ -133,6 +142,26 @@ export async function PATCH(req: Request, { params }: Contexto) {
     }
 
     const campos = camposDeValidacion(informe);
+
+    // BORRADORES DE IA (PMV 3 · HITO 1). Un ejercicio generado por IA sólo
+    // llega a PUBLICADO si (a) lo pide una persona —esta ruta es la única que
+    // publica, y exige sesión de docente— y (b) el motor determinista del
+    // servidor lo VERIFICA. Lo que la IA escribió y el servidor no puede
+    // comprobar se queda en borrador: es la misma regla que ya aplica el resto
+    // de la plataforma (la matemática la decide el motor, no el modelo).
+    const publicaBorradorIA =
+      actual.origen === "IA" && fusionado.estado === "PUBLICADO" && actual.estado !== "PUBLICADO";
+    if (publicaBorradorIA && !campos.validado) {
+      return NextResponse.json(
+        {
+          error:
+            "Este borrador lo generó la IA y el servidor no ha podido verificarlo: corrígelo hasta que el validador lo dé por bueno antes de publicarlo.",
+          informe,
+        },
+        { status: 422 },
+      );
+    }
+
     const ejercicio = await prisma.ejercicio.update({
       where: { id },
       data: {
@@ -153,6 +182,10 @@ export async function PATCH(req: Request, { params }: Contexto) {
           : {}),
         ...(datos.pistas !== undefined ? { pistas: datos.pistas } : {}),
         ...(datos.estado !== undefined ? { estado: datos.estado } : {}),
+        // Constancia de la revisión humana de un borrador de IA.
+        ...(publicaBorradorIA
+          ? { revisadoPorId: permiso.quien.usuarioId, revisadoEn: new Date() }
+          : {}),
         pasos: pasosJson(informe.muestras[0]?.enunciado ?? fusionado.enunciado, motor),
         validado: campos.validado,
         validadoEn: campos.validadoEn,
@@ -189,10 +222,16 @@ export async function DELETE(_req: Request, { params }: Contexto) {
   try {
     const ejercicio = await prisma.ejercicio.findUnique({
       where: { id },
-      select: { id: true, institucionId: true, _count: { select: { progreso: true } } },
+      select: {
+        id: true,
+        institucionId: true,
+        ambito: true,
+        autorId: true,
+        _count: { select: { progreso: true } },
+      },
     });
     if (!ejercicio) return noEncontrado("El ejercicio");
-    if (!puedeEscribirEnInstitucion(permiso.quien, ejercicio.institucionId)) {
+    if (!puedeEscribirEjercicio(permiso.quien, ejercicio)) {
       return noEncontrado("El ejercicio");
     }
 

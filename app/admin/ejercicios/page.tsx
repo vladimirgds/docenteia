@@ -86,6 +86,9 @@ export default async function PaginaEjerciciosAdmin() {
     nodoId: e.nodoId,
     nodo: e.nodo,
     autor: e.autor,
+    institucionId: e.institucionId,
+    ambito: e.ambito,
+    revisadoEn: e.revisadoEn ? e.revisadoEn.toISOString() : null,
   }));
 
   return (
@@ -101,7 +104,7 @@ export default async function PaginaEjerciciosAdmin() {
           </p>
         </div>
 
-        <GestorEjercicios temas={temasVista} ejercicios={ejerciciosVista} puedeEditar />
+        <GestorEjercicios temas={temasVista} ejercicios={ejerciciosVista} puedeEditar rol="SUPERADMIN" />
       </main>
     </div>
   );

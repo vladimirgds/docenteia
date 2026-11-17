@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { tareaSchema } from "@/lib/docente/aulas";
+import { dondeEjerciciosAsignables } from "@/lib/docente/bancos";
 
 /**
  * ¿Es este tema (o este ejercicio, por el tema del que cuelga) legible desde
@@ -104,9 +105,10 @@ export async function POST(req: Request) {
             // podría armar una tarea a mano citando ids de OTRA institución
             // —no se ven en /api/docente/ejercicios, pero nada impedía
             // escribirlos directamente en la petición—.
-            ...(permiso.quien.rol === "SUPERADMIN"
-              ? {}
-              : { OR: [{ institucionId: null }, { institucionId: aula.institucionId }] }),
+            // PMV 3 · HITO 1: el catálogo del colegio del aula MÁS el banco
+            // PRIVADO de quien asigna. El de otro docente no entra, aunque se
+            // cite su id a mano.
+            AND: [dondeEjerciciosAsignables(permiso.quien, aula.institucionId)],
           },
           select: { id: true },
         });
@@ -133,6 +135,7 @@ export async function POST(req: Request) {
             validado: true,
             plantilla: false,
             ...(datos.dificultad ? { nivel: datos.dificultad } : {}),
+            AND: [dondeEjerciciosAsignables(permiso.quien, aula.institucionId)],
           },
           select: { id: true },
         });

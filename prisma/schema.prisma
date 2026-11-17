@@ -148,6 +148,23 @@ enum OrigenMatricula {
   DOCENTE
 }
 
+/// A QUIÉN PERTENECE UN EJERCICIO (PMV 3 · HITO 1).
+///
+///   · `MAESTRO` es el CATÁLOGO MAESTRO: lo que alimenta el diagnóstico general
+///     y la práctica de cualquier alumno. Lo curan los SUPERADMIN (o, si lleva
+///     `institucionId`, el catálogo propio de ese colegio, como en el HITO 4).
+///   · `DOCENTE` es el BANCO PRIVADO de un docente: sólo lo ven su autor y un
+///     SUPERADMIN, nunca llega al diagnóstico general y sólo le llega a un
+///     alumno por una tarea que ese mismo docente le asigna.
+///
+/// La migración marca como `MAESTRO` TODO lo que ya existía: así los 400+
+/// ejercicios del PMV 2 siguen alimentando el diagnóstico exactamente igual, y
+/// los bancos docentes nacen vacíos.
+enum AmbitoContenido {
+  MAESTRO
+  DOCENTE
+}
+
 /// Ciclo de vida del contenido de autoría docente.
 ///
 /// El borrador es trabajo en curso y NO llega al alumno; publicado es lo que la
@@ -203,6 +220,7 @@ model Usuario {
   temasCreados      NodoConocimiento[] @relation("AutorDelTema")
   reglasCreadas     ReglaMatematica[]  @relation("AutorDeLaRegla")
   ejerciciosCreados Ejercicio[]        @relation("AutorDelEjercicio")
+  ejerciciosRevisados Ejercicio[]      @relation("RevisorDelEjercicio")
 
   // Multi-tenant (HITO 3). A qué colegio pertenece este DOCENTE o DIRECTOR —un
   // ESTUDIANTE no pertenece a ninguno por esta vía: entra en las aulas de sus
@@ -775,6 +793,20 @@ model Ejercicio {
   autorId String?
   autor   Usuario?        @relation("AutorDelEjercicio", fields: [autorId], references: [id], onDelete: SetNull)
 
+  /// CATÁLOGO MAESTRO o BANCO PRIVADO DEL DOCENTE (PMV 3 · HITO 1). Ver
+  /// `AmbitoContenido`. En un ejercicio `DOCENTE`, `autorId` es el dueño del
+  /// banco: no hay una tabla aparte porque el banco de un docente en un tema ES
+  /// "los ejercicios de ese tema cuyo ámbito es DOCENTE y cuyo autor soy yo".
+  ambito AmbitoContenido @default(MAESTRO)
+
+  /// REVISIÓN HUMANA de un borrador de IA. Un ejercicio de `origen: IA` nace
+  /// BORRADOR y sólo se publica cuando un docente lo revisa: estos dos campos
+  /// dejan constancia de quién y cuándo, para poder auditar que ninguna
+  /// generación automática llegó a un alumno sin que una persona la mirase.
+  revisadoPorId String?
+  revisadoPor   Usuario?  @relation("RevisorDelEjercicio", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn    DateTime?
+
   metadatos     Json     @default("{}")
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
@@ -782,13 +814,27 @@ model Ejercicio {
   progreso              RegistroProgreso[]
   respuestasDiagnostico RespuestaDiagnostico[]
 
-  /// Un mismo enunciado, en su motor y nivel, es UN ejercicio: la semilla lo
-  /// vuelve a sembrar en cada despliegue y sin esto se duplicaría cada vez.
+  /// UNICIDAD (PMV 3 · HITO 1). Hasta el PMV 2 había aquí un
+  /// `@@unique([motor, nivel, enunciado])` global. Con bancos privados esa
+  /// restricción FILTRARÍA información entre docentes —"ya existe un ejercicio
+  /// con ese enunciado" le diría a un docente que otro tiene el mismo en su
+  /// banco privado—, así que se sustituyó por dos índices PARCIALES que sólo
+  /// Postgres entiende y que viven en la migración
+  /// `20261117120000_pmv3_hito1_bancos_docentes`:
   ///
-  /// Ojo: PostgreSQL considera distintos dos NULL, así que esta restricción NO
-  /// alcanza a los ejercicios sin motor. Para ésos, el duplicado se comprueba
-  /// en la API contra el nodo del currículo, que es su contexto real.
-  @@unique([motor, nivel, enunciado])
+  ///   · `ejercicios_maestro_unico`: (motor, nivel, enunciado) donde ámbito =
+  ///     MAESTRO. La misma garantía de antes, pero sólo para el catálogo.
+  ///   · `ejercicios_banco_docente_unico`: (autorId, nodoId, enunciado) donde
+  ///     ámbito = DOCENTE. Un docente no repite enunciado en su banco de un
+  ///     tema, y dos docentes distintos no se estorban.
+  ///
+  /// Prisma no puede expresar índices parciales, por eso no aparecen aquí; la
+  /// semilla ya no usa `upsert` por la clave compuesta, usa `findFirst`.
+  ///
+  /// Ojo: PostgreSQL considera distintos dos NULL, así que ni el catálogo
+  /// maestro alcanza a los ejercicios sin motor. Para ésos, el duplicado se
+  /// comprueba en la API contra el nodo del currículo, que es su contexto real.
+  @@index([ambito, autorId])
   @@index([motor, nivel, validado])
   @@index([nodoId, estado])
   @@index([etapa, cursoMin])

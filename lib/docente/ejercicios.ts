@@ -26,6 +26,11 @@ export const SELECCION_EJERCICIO = {
   actualizadoEn: true,
   nodoId: true,
   institucionId: true,
+  // PMV 3 · HITO 1: a qué banco pertenece y si una persona lo revisó.
+  ambito: true,
+  autorId: true,
+  revisadoEn: true,
+  metadatos: true,
   // El alcance del tema viaja con el ejercicio: sin él no se puede resolver el
   // efectivo, porque el del ejercicio a null significa "el de mi tema".
   nodo: {

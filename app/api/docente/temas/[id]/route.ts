@@ -302,6 +302,23 @@ export async function DELETE(_req: Request, { params }: Contexto) {
       );
     }
 
+    // PMV 3 · HITO 1: el banco privado de OTRO docente no es de quien borra el
+    // tema. Sin esta comprobación, borrar un tema destruiría en silencio el
+    // trabajo privado de los demás docentes del colegio que escribieron en él.
+    // (Sus ejercicios no se cuentan ni se nombran: sólo se dice que existen.)
+    const deOtros = await prisma.ejercicio.count({
+      where: {
+        nodoId: id,
+        ambito: "DOCENTE",
+        OR: [{ autorId: null }, { autorId: { not: permiso.quien.usuarioId } }],
+      },
+    });
+    if (deOtros > 0) {
+      return conflicto(
+        `"${tema.titulo}" contiene ejercicios del banco privado de otros docentes y no se puede borrar. Archívalo: se retira del temario y su trabajo se conserva.`,
+      );
+    }
+
     await prisma.$transaction([
       // Los ejercicios se borran explícitamente: la relación es SetNull, así que
       // sin esto se quedarían en el banco huérfanos y sin tema.

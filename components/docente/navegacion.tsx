@@ -16,6 +16,8 @@ const SECCIONES = [
   { href: "/docente", titulo: "Panel", exacta: true },
   { href: "/docente/curriculo", titulo: "Currículo" },
   { href: "/docente/crear-tema", titulo: "Crear tema" },
+  // PMV 3 · HITO 1: catálogo maestro y banco privado por tema.
+  { href: "/docente/bancos", titulo: "Mis bancos" },
   { href: "/docente/ejercicios", titulo: "Ejercicios" },
   // HITO 3: arquitectura multi-tenant — aulas y tareas programadas.
   { href: "/docente/aulas", titulo: "Aulas" },

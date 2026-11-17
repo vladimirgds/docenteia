@@ -7,6 +7,7 @@ import { NavegacionDocente } from "@/components/docente/navegacion";
 import { SeguimientoMatriculados, type FilaSeguimiento } from "@/components/docente/seguimiento-matriculados";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
+import { autorizacionDeSesion, dondeEjerciciosVisibles } from "@/lib/docente/bancos";
 import {
   Card,
   CardContent,
@@ -64,6 +65,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function PanelDocente() {
   const sesion = await auth();
+  const quien = autorizacionDeSesion(sesion?.user);
 
   const [
     perfiles,
@@ -105,8 +107,10 @@ export default async function PanelDocente() {
     }),
     prisma.nodoConocimiento.count({ where: { estado: "PUBLICADO" } }),
     prisma.nodoConocimiento.count({ where: { estado: "BORRADOR" } }),
-    prisma.ejercicio.count({ where: { validado: true } }),
-    prisma.ejercicio.count(),
+    // PMV 3 · HITO 1: sólo se cuenta lo que ESTE docente puede ver —el catálogo
+    // y su propio banco—; contar el banco privado de otros delataría su tamaño.
+    prisma.ejercicio.count({ where: { AND: [{ validado: true }, dondeEjerciciosVisibles(quien)] } }),
+    prisma.ejercicio.count({ where: dondeEjerciciosVisibles(quien) }),
     prisma.reglaMatematica.count(),
     // Las tareas de SUS aulas (HITO 3), para el semáforo de riesgo: cuáles
     // están vencidas sin que un alumno matriculado las entregara. Un
