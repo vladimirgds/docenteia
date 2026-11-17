@@ -238,6 +238,9 @@ model Usuario {
   ejerciciosCreados   Ejercicio[]        @relation("AutorDelEjercicio")
   ejerciciosRevisados Ejercicio[]        @relation("RevisorDelEjercicio")
 
+  // PMV 3 · HITO 4: tutoría adaptativa del alumno.
+  tutorias SesionTutoria[] @relation("TutoriaDelEstudiante")
+
   // PMV 3 · HITO 2: procedimientos que escribe y revisa el docente.
   procedimientosCreados   Procedimiento[] @relation("AutorDelProcedimiento")
   procedimientosRevisados Procedimiento[] @relation("RevisorDelProcedimiento")
@@ -476,6 +479,8 @@ model Tarea {
   docente   Usuario @relation("DocenteDeTarea", fields: [docenteId], references: [id], onDelete: Cascade)
 
   entregas EntregaTarea[]
+
+  sesionesTutoria SesionTutoria[]
 
   @@index([aulaId])
   @@index([docenteId])
@@ -836,6 +841,8 @@ model Ejercicio {
   progreso              RegistroProgreso[]
   respuestasDiagnostico RespuestaDiagnostico[]
 
+  sesionesTutoria SesionTutoria[]
+
   /// UNICIDAD (PMV 3 · HITO 1). Hasta el PMV 2 había aquí un
   /// `@@unique([motor, nivel, enunciado])` global. Con bancos privados esa
   /// restricción FILTRARÍA información entre docentes —"ya existe un ejercicio
@@ -1176,4 +1183,82 @@ model RespuestaDiagnostico {
   @@unique([intentoId, preguntaId])
   @@unique([intentoId, ejercicioId])
   @@map("respuestas_diagnostico")
+}
+
+// ── PMV 3 · HITO 4: tutoría adaptativa ───────────────────────────────────────
+
+/// En qué punto de la tutoría está un alumno con un ejercicio. Es el estado de la
+/// máquina de `lib/tutoria/motor.ts`, que es quien decide las transiciones.
+enum FaseTutoria {
+  INICIAL
+  AYUDA
+  REPASO
+  REGRESO
+  EQUIVALENTE
+  RESUELTO
+}
+
+enum TipoEventoTutoria {
+  RESPUESTA_CORRECTA
+  RESPUESTA_INCORRECTA
+  PISTA
+  REPASO_ABIERTO
+  REPASO_CERRADO
+  EQUIVALENTE_PROPUESTO
+  EQUIVALENTE_RESPONDIDO
+}
+
+/// La tutoría de UN alumno con UN ejercicio de una tarea: dónde está (`fase`) y
+/// cuánto ha costado (errores, pistas, repasos, equivalentes). Es lo que el
+/// docente revisa en el informe de progreso, y por eso guarda contadores y no
+/// sólo el estado actual: «este alumno se bloqueó dos veces en fracciones» es
+/// información, «este alumno está en la fase RESUELTO» no lo es.
+model SesionTutoria {
+  id String @id @default(cuid())
+
+  estudianteId String
+  estudiante   Usuario @relation("TutoriaDelEstudiante", fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  tareaId String
+  tarea   Tarea  @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+
+  ejercicioId String?
+  ejercicio   Ejercicio? @relation(fields: [ejercicioId], references: [id], onDelete: SetNull)
+
+  /// El tema del ejercicio, copiado: el informe sigue teniendo sentido aunque el
+  /// ejercicio se archive o se borre.
+  nodoId String?
+  tema   String?
+
+  fase            FaseTutoria @default(INICIAL)
+  erroresSeguidos Int         @default(0)
+  erroresTotales  Int         @default(0)
+  pistasDadas     Int         @default(0)
+  repasos         Int         @default(0)
+  equivalentes    Int         @default(0)
+  resuelta        Boolean     @default(false)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  eventos EventoTutoria[]
+
+  @@unique([estudianteId, tareaId, ejercicioId])
+  @@index([tareaId])
+  @@index([estudianteId, actualizadoEn])
+  @@map("sesiones_tutoria")
+}
+
+model EventoTutoria {
+  id       String            @id @default(cuid())
+  sesionId String
+  sesion   SesionTutoria     @relation(fields: [sesionId], references: [id], onDelete: Cascade)
+  tipo     TipoEventoTutoria
+  /// Qué pasó exactamente: la pista dada, el repaso abierto, el ejercicio
+  /// equivalente propuesto (`equivalenteId`)…
+  detalle  Json              @default("{}")
+  creadoEn DateTime          @default(now())
+
+  @@index([sesionId, creadoEn])
+  @@map("eventos_tutoria")
 }

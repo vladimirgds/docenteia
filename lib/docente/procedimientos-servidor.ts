@@ -76,7 +76,15 @@ export function dondeProcedimientosDelAlumno(estudianteId: string): Prisma.Proce
   return {
     estado: "PUBLICADO",
     OR: [
-      { ambito: "MAESTRO" },
+      // El catálogo: el BASE, o el de un colegio en cuyas aulas está el alumno. El
+      // de otro colegio no existe para él, aunque lo haya publicado un SUPERADMIN.
+      {
+        ambito: "MAESTRO",
+        OR: [
+          { institucionId: null },
+          { institucion: { aulas: { some: { matriculas: { some: { estudianteId } } } } } },
+        ],
+      },
       {
         ambito: "DOCENTE",
         autor: { aulasComoDocente: { some: { matriculas: { some: { estudianteId } } } } },

@@ -20,7 +20,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
-    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/hito2.mjs && node qa/rigor.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs && node qa/navegador.mjs && node qa/voz.mjs && node qa/mandos.mjs && node qa/pmv3-hito1.mjs && node qa/pmv3-hito2.mjs && node --experimental-strip-types --no-warnings qa/pmv3-pizarra-sincronia.mjs && node qa/pmv3-hito3.mjs && node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs",
+    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/hito2.mjs && node qa/rigor.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs && node qa/navegador.mjs && node qa/voz.mjs && node qa/mandos.mjs && node qa/pmv3-hito1.mjs && node qa/pmv3-hito2.mjs && node --experimental-strip-types --no-warnings qa/pmv3-pizarra-sincronia.mjs && node qa/pmv3-hito3.mjs && node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs && node qa/pmv3-piloto.mjs",
     "qa:preflight": "node qa/preflight.mjs",
     "qa:diagnostico": "node qa/diagnostico.mjs",
     "qa:leccion": "node qa/leccion.mjs",
@@ -46,7 +46,8 @@
     "qa:pmv3-hito2": "node qa/pmv3-hito2.mjs",
     "qa:pmv3-hito3": "node qa/pmv3-hito3.mjs",
     "qa:pmv3-sincronia": "node --experimental-strip-types --no-warnings qa/pmv3-pizarra-sincronia.mjs",
-    "qa:pmv3-tutor": "node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs"
+    "qa:pmv3-tutor": "node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs",
+    "qa:pmv3-piloto": "node qa/pmv3-piloto.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

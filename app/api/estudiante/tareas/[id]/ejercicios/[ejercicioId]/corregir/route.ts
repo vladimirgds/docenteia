@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { puedeEntregar } from "@/lib/docente/aulas";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
+import { cargarContexto, procesarRespuesta } from "@/lib/tutoria/servidor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,7 +87,19 @@ export async function POST(
     }
 
     const resultado = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
-    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido });
+
+    // TUTORÍA ADAPTATIVA (PMV 3 · HITO 4): el servidor registra la respuesta y
+    // decide qué hace el tutor —una pista, abrir un repaso, un equivalente—. Sólo
+    // si el ejercicio se puede CORREGIR: un veredicto que el motor no sabe dar no
+    // cuenta como error del alumno.
+    let tutor = null;
+    if (resultado.conocido !== false) {
+      const ctx = await cargarContexto(tareaId, ejercicioId);
+      if (ctx.tarea && ctx.ejercicio) {
+        tutor = await procesarRespuesta(sesion.user.id, ctx.tarea, ctx.ejercicio, resultado.correcto);
+      }
+    }
+    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido, tutor });
   } catch (e) {
     const infra = explicarFalloDeBaseDeDatos(e);
     if (infra) {

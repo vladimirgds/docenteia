@@ -24,6 +24,8 @@ const SECCIONES = [
   // HITO 3: arquitectura multi-tenant — aulas y tareas programadas.
   { href: "/docente/aulas", titulo: "Aulas" },
   { href: "/docente/asignar-tarea", titulo: "Asignar tarea" },
+  // PMV 3 · HITO 4: progreso de los alumnos con el tutor adaptativo.
+  { href: "/docente/tutoria", titulo: "Tutoría" },
 ];
 
 export function NavegacionDocente() {

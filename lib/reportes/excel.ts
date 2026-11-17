@@ -44,9 +44,18 @@ export async function excelDocente(docenteNombre: string, aulas: readonly AulaDe
 
   const estudiantes = wb.addWorksheet("Estudiantes");
   aplicarFilas(estudiantes, [
-    ["Aula", "Estudiante", "Correo", "Sesiones completadas"],
+    ["Aula", "Estudiante", "Correo", "Sesiones completadas", "Pistas usadas", "Repasos abiertos", "Ejercicios equivalentes", "Bloqueos"],
     ...aulas.flatMap((a) =>
-      a.estudiantes.map((e) => [`${a.grado}.º ${a.seccion} — ${a.nombre}`, e.nombre, e.email, e.sesionesCompletadas]),
+      a.estudiantes.map((e) => [
+        `${a.grado}.º ${a.seccion} — ${a.nombre}`,
+        e.nombre,
+        e.email,
+        e.sesionesCompletadas,
+        e.tutoria.pistas,
+        e.tutoria.repasos,
+        e.tutoria.equivalentes,
+        e.tutoria.bloqueos,
+      ]),
     ),
   ]);
 
@@ -86,6 +95,26 @@ export async function excelDocente(docenteNombre: string, aulas: readonly AulaDe
   aplicarFilas(sesiones, [
     ["Aula", "Estudiante", "Sesiones de lección completadas"],
     ...aulas.flatMap((a) => a.estudiantes.map((e) => [`${a.grado}.º ${a.seccion} — ${a.nombre}`, e.nombre, e.sesionesCompletadas])),
+  ]);
+
+  // PMV 3 · HITO 4: el detalle de la tutoría adaptativa, ejercicio por ejercicio.
+  const tutoria = wb.addWorksheet("Tutoría adaptativa");
+  aplicarFilas(tutoria, [
+    ["Aula", "Estudiante", "Tarea", "Tema", "Ejercicio", "Errores", "Pistas", "Repasos", "Equivalentes", "Resuelto"],
+    ...aulas.flatMap((a) =>
+      a.tutoria.map((t) => [
+        `${a.grado}.º ${a.seccion} — ${a.nombre}`,
+        t.estudiante,
+        t.tarea,
+        t.tema,
+        t.ejercicio,
+        t.errores,
+        t.pistas,
+        t.repasos,
+        t.equivalentes,
+        t.resuelta ? "Sí" : "No",
+      ]),
+    ),
   ]);
 
   const buffer = await wb.xlsx.writeBuffer();
