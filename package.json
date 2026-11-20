@@ -20,7 +20,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
-    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/hito2.mjs && node qa/rigor.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs && node qa/navegador.mjs && node qa/voz.mjs && node qa/mandos.mjs",
+    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/paso1.mjs && node qa/hito1.mjs && node qa/hito2.mjs && node qa/rigor.mjs && node qa/matematicas.mjs && node qa/diagnostico-nivel.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/leccion.mjs && node qa/barrido.mjs && node qa/navegador.mjs && node qa/voz.mjs && node qa/mandos.mjs && node qa/pmv3-hito1.mjs && node --experimental-strip-types --no-warnings qa/pmv3-hito1-evaluacion.mjs && node qa/pmv3-hito2.mjs && node --experimental-strip-types --no-warnings qa/pmv3-hito2-orquestador.mjs && node qa/pmv3-hito2-navegador.mjs && node --experimental-strip-types --no-warnings qa/pmv3-pizarra-sincronia.mjs && node qa/pmv3-hito3.mjs && node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs && node qa/pmv3-piloto.mjs",
     "qa:preflight": "node qa/preflight.mjs",
     "qa:diagnostico": "node qa/diagnostico.mjs",
     "qa:leccion": "node qa/leccion.mjs",
@@ -41,7 +41,16 @@
     "qa:diagnostico-nivel": "node qa/diagnostico-nivel.mjs",
     "qa:hito2": "node qa/hito2.mjs",
     "qa:rigor": "node qa/rigor.mjs",
-    "qa:navegador": "node qa/navegador.mjs"
+    "qa:navegador": "node qa/navegador.mjs",
+    "qa:pmv3-hito1": "node qa/pmv3-hito1.mjs",
+    "qa:pmv3-evaluacion": "node --experimental-strip-types --no-warnings qa/pmv3-hito1-evaluacion.mjs",
+    "qa:pmv3-orquestador": "node --experimental-strip-types --no-warnings qa/pmv3-hito2-orquestador.mjs",
+    "qa:pmv3-orquestador-nav": "node qa/pmv3-hito2-navegador.mjs",
+    "qa:pmv3-hito2": "node qa/pmv3-hito2.mjs",
+    "qa:pmv3-hito3": "node qa/pmv3-hito3.mjs",
+    "qa:pmv3-sincronia": "node --experimental-strip-types --no-warnings qa/pmv3-pizarra-sincronia.mjs",
+    "qa:pmv3-tutor": "node --experimental-strip-types --no-warnings qa/pmv3-tutor-motor.mjs",
+    "qa:pmv3-piloto": "node qa/pmv3-piloto.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",
@@ -65,6 +74,7 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.170.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -73,6 +83,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.170.0",
     "autoprefixer": "^10.4.20",
     "playwright-core": "^1.63.0",
     "postcss": "^8.4.49",

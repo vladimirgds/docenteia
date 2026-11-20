@@ -3164,7 +3164,13 @@ console.log("\n · El catálogo se siembra entero y sin huecos");
   const semilla = readFileSync(new URL("../prisma/seed.ts", import.meta.url), "utf8");
   check(
     "la semilla siembra el banco de ejercicios",
-    /bancoDeEjercicios\(\)/.test(semilla) && /prisma\.ejercicio\.upsert/.test(semilla),
+    // PMV 3 · HITO 1: la semilla ya no usa `upsert` (el índice único global
+    // dejó de existir); busca el ejercicio MAESTRO y lo actualiza o lo crea.
+    /bancoDeEjercicios\(\)/.test(semilla) &&
+      /prisma\.ejercicio\.findFirst/.test(semilla) &&
+      /prisma\.ejercicio\.update/.test(semilla) &&
+      /prisma\.ejercicio\.create/.test(semilla) &&
+      /ambito: "MAESTRO"/.test(semilla),
   );
   check(
     "y calcula la respuesta con el motor, no la copia",

@@ -196,7 +196,9 @@ export async function POST(req: Request) {
       : Promise.resolve([]),
     idsBanco.length
       ? prisma.ejercicio.findMany({
-          where: { id: { in: idsBanco } },
+          // PMV 3 · HITO 1: defensa en profundidad —la prueba sólo se compone
+          // con el catálogo maestro, y la corrección también lo exige—.
+          where: { id: { in: idsBanco }, ambito: "MAESTRO" },
           select: { id: true, respuestaCorrecta: true },
         })
       : Promise.resolve([]),

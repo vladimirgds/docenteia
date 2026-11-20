@@ -80,6 +80,11 @@ export async function armarPrueba(perfil: PerfilParaPrueba): Promise<PruebaCompu
         validado: true,
         plantilla: false,
         motor: { not: null },
+        // PMV 3 · HITO 1: el diagnóstico general sale SÓLO del catálogo
+        // maestro. El banco privado de un docente nunca entra: lo que un
+        // docente guarda para sí no debe decidir el nivel de alumnos que no
+        // son suyos, ni filtrarse a ellos.
+        ambito: "MAESTRO",
       },
       // Orden estable: la prueba tiene que recomponerse igual al corregirla, y
       // `creadoEn` con el id de desempate no cambia entre peticiones.

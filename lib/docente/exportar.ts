@@ -22,6 +22,21 @@ export interface AulaDelReporte {
     email: string;
     /** Sesiones de lección TERMINADAS —lo más parecido a "asistencia" que hay: no existe un registro de asistencia como tal. */
     sesionesCompletadas: number;
+    /** Tutoría adaptativa (PMV 3 · HITO 4): lo que le ha costado avanzar. */
+    tutoria: { pistas: number; repasos: number; equivalentes: number; bloqueos: number };
+  }>;
+  /** Una fila por (alumno, ejercicio) con tutoría: dónde se atascó y qué hizo el tutor. */
+  tutoria: Array<{
+    estudianteId: string;
+    estudiante: string;
+    tarea: string;
+    tema: string;
+    ejercicio: string;
+    errores: number;
+    pistas: number;
+    repasos: number;
+    equivalentes: number;
+    resuelta: boolean;
   }>;
   tareas: Array<{
     id: string;
@@ -37,6 +52,19 @@ export interface AulaDelReporte {
     puntaje: number | null;
     fechaEntrega: Date | null;
   }>;
+}
+
+/** Los totales de un alumno: lo que se ve de un vistazo en el informe. */
+function resumenDeTutoria(
+  sesiones: { pistasDadas: number; repasos: number; equivalentes: number; erroresTotales: number }[],
+) {
+  return {
+    pistas: sesiones.reduce((n, s) => n + s.pistasDadas, 0),
+    repasos: sesiones.reduce((n, s) => n + s.repasos, 0),
+    equivalentes: sesiones.reduce((n, s) => n + s.equivalentes, 0),
+    // Un «bloqueo» es un ejercicio en el que el tutor tuvo que abrir un repaso.
+    bloqueos: sesiones.filter((s) => s.repasos > 0).length,
+  };
 }
 
 export async function obtenerReporteDocente(docenteId: string): Promise<AulaDelReporte[]> {
@@ -65,6 +93,26 @@ export async function obtenerReporteDocente(docenteId: string): Promise<AulaDelR
     },
   });
 
+  // TUTORÍA ADAPTATIVA (PMV 3 · HITO 4): todo lo que el tutor hizo con los alumnos
+  // de las aulas de ESTE docente. Se filtra por la tarea (y su aula), no por el
+  // alumno: un alumno puede estar en aulas de varios docentes.
+  const sesionesTutoria = await prisma.sesionTutoria.findMany({
+    where: { tarea: { aula: { docenteId } } },
+    orderBy: { actualizadoEn: "desc" },
+    select: {
+      estudianteId: true,
+      tema: true,
+      erroresTotales: true,
+      pistasDadas: true,
+      repasos: true,
+      equivalentes: true,
+      resuelta: true,
+      estudiante: { select: { nombre: true } },
+      tarea: { select: { titulo: true, aulaId: true } },
+      ejercicio: { select: { enunciado: true } },
+    },
+  });
+
   return aulas.map((a) => ({
     id: a.id,
     nombre: a.nombre,
@@ -75,7 +123,24 @@ export async function obtenerReporteDocente(docenteId: string): Promise<AulaDelR
       nombre: m.estudiante.nombre,
       email: m.estudiante.email,
       sesionesCompletadas: m.estudiante.perfilEstudiante?.sesiones.length ?? 0,
+      tutoria: resumenDeTutoria(
+        sesionesTutoria.filter((s) => s.tarea.aulaId === a.id && s.estudianteId === m.estudiante.id),
+      ),
     })),
+    tutoria: sesionesTutoria
+      .filter((s) => s.tarea.aulaId === a.id)
+      .map((s) => ({
+        estudianteId: s.estudianteId,
+        estudiante: s.estudiante.nombre,
+        tarea: s.tarea.titulo,
+        tema: s.tema ?? "—",
+        ejercicio: s.ejercicio?.enunciado ?? "(ejercicio retirado)",
+        errores: s.erroresTotales,
+        pistas: s.pistasDadas,
+        repasos: s.repasos,
+        equivalentes: s.equivalentes,
+        resuelta: s.resuelta,
+      })),
     tareas: a.tareas.map((t) => ({
       id: t.id,
       titulo: t.titulo,

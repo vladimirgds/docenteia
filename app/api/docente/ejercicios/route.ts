@@ -3,14 +3,20 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import {
-  clausulaInstitucional,
   conflicto,
   exigirDocente,
   fallo,
   leerCuerpo,
   noEncontrado,
-  puedeEscribirEnInstitucion,
+  puedeLeerDeInstitucion,
 } from "@/lib/docente/api";
+import {
+  BANCOS,
+  ambitoParaCrear,
+  dondeEjerciciosVisibles,
+  dondeFiltroBanco,
+  esFiltroBanco,
+} from "@/lib/docente/bancos";
 import { ESTADOS, NIVELES, ejercicioSchema, type Estado, type Motor, type Nivel } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
@@ -51,6 +57,15 @@ export async function GET(req: Request) {
   // "Ver ejercicios de la tarea" (HITO 3 — corrección QA) pide un conjunto
   // EXACTO y ya conocido —los `ejercicioIds` de una tarea—, no un filtro.
   const ids = url.searchParams.get("ids");
+  // PMV 3 · HITO 1: `?banco=maestro|propio|borradores-ia`. Sin él se ven los
+  // dos bancos a la vez (el catálogo y el propio), como hasta ahora.
+  const banco = url.searchParams.get("banco");
+  if (banco !== null && !esFiltroBanco(banco)) {
+    return NextResponse.json(
+      { error: `El parámetro "banco" admite: ${BANCOS.join(", ")}.` },
+      { status: 400 },
+    );
+  }
 
   const where: Prisma.EjercicioWhereInput = {};
   if (ids) where.id = { in: ids.split(",").filter(Boolean) };
@@ -63,14 +78,15 @@ export async function GET(req: Request) {
   if (nivel && (NIVELES as readonly string[]).includes(nivel)) where.nivel = nivel as Nivel;
   if (busqueda) where.enunciado = { contains: busqueda, mode: "insensitive" };
 
-  // Aislamiento curricular (cierre HITO 4): el propio colegio más el
-  // catálogo base, SUPERADMIN sin límite.
-  const clausula = clausulaInstitucional(permiso.quien);
-  if (clausula) where.OR = clausula;
+  // Visibilidad (aislamiento institucional del HITO 4 + bancos privados del
+  // PMV 3): se combina con AND, nunca se mezcla con los filtros de arriba. La
+  // regla completa está en `lib/docente/bancos.ts`.
+  const condiciones: Prisma.EjercicioWhereInput[] = [where, dondeEjerciciosVisibles(permiso.quien)];
+  if (banco) condiciones.push(dondeFiltroBanco(banco, permiso.quien));
 
   try {
     const ejercicios = await prisma.ejercicio.findMany({
-      where,
+      where: { AND: condiciones },
       orderBy: [{ actualizadoEn: "desc" }],
       select: SELECCION_EJERCICIO,
       take: 300,
@@ -99,20 +115,38 @@ export async function POST(req: Request) {
       select: { id: true, motor: true, titulo: true, etapa: true, cursoMin: true, institucionId: true },
     });
     if (!tema) return noEncontrado("El tema");
-    // Aislamiento curricular (cierre HITO 4): el ejercicio hereda la
-    // institución de su tema, así que la pregunta real es "¿puedo ESCRIBIR
-    // en el tema?" —exactamente la misma regla que editar el tema en sí—.
-    if (!puedeEscribirEnInstitucion(permiso.quien, tema.institucionId)) {
+    // PMV 3 · HITO 1. El ámbito lo decide el SERVIDOR (`ambitoParaCrear`): un
+    // docente escribe en SU banco privado, un SUPERADMIN en el catálogo.
+    const ambito = ambitoParaCrear(permiso.quien);
+    // Para escribir en el catálogo (SUPERADMIN) basta con poder verlo; para
+    // escribir en el banco PRIVADO basta con poder LEER el tema —un docente no
+    // necesita ser dueño del tema "Fracciones" del catálogo base para guardar
+    // sus propios ejercicios de fracciones—. Antes (HITO 4) se exigía poder
+    // ESCRIBIR el tema porque el ejercicio quedaba compartido con el colegio;
+    // ahora es privado y esa exigencia ya no tiene sentido. Lo que sigue
+    // vedado es el tema de OTRO colegio: ése responde 404.
+    if (!puedeLeerDeInstitucion(permiso.quien, tema.institucionId)) {
       return noEncontrado("El tema");
     }
     const motor = tema.motor as Motor | null;
 
+    // El duplicado se comprueba DENTRO del banco donde se va a escribir. Mirar
+    // en los dos delataría el contenido privado de otro docente.
     const repetido = await prisma.ejercicio.findFirst({
-      where: { nodoId: datos.nodoId, enunciado: datos.enunciado },
+      where: {
+        nodoId: datos.nodoId,
+        enunciado: datos.enunciado,
+        ambito,
+        ...(ambito === "DOCENTE" ? { autorId: permiso.quien.usuarioId } : {}),
+      },
       select: { id: true },
     });
     if (repetido) {
-      return conflicto(`El tema "${tema.titulo}" ya tiene un ejercicio con ese mismo enunciado.`);
+      return conflicto(
+        ambito === "DOCENTE"
+          ? `Tu banco del tema "${tema.titulo}" ya tiene un ejercicio con ese mismo enunciado.`
+          : `El tema "${tema.titulo}" ya tiene un ejercicio con ese mismo enunciado.`,
+      );
     }
 
     // El alcance propio, si lo pide, se valida contra el del tema: misma etapa y
@@ -160,6 +194,7 @@ export async function POST(req: Request) {
         pistas: datos.pistas ?? [],
         pasos: pasosJson(informe.muestras[0]?.enunciado ?? datos.enunciado, motor),
         origen: "DOCENTE",
+        ambito,
         validado: campos.validado,
         validadoEn: campos.validadoEn,
         informeValidacion: campos.informeValidacion as unknown as Prisma.InputJsonValue,

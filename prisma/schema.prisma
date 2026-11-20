@@ -148,6 +148,39 @@ enum OrigenMatricula {
   DOCENTE
 }
 
+/// A QUIÉN PERTENECE UN EJERCICIO (PMV 3 · HITO 1).
+///
+///   · `MAESTRO` es el CATÁLOGO MAESTRO: lo que alimenta el diagnóstico general
+///     y la práctica de cualquier alumno. Lo curan los SUPERADMIN (o, si lleva
+///     `institucionId`, el catálogo propio de ese colegio, como en el HITO 4).
+///   · `DOCENTE` es el BANCO PRIVADO de un docente: sólo lo ven su autor y un
+///     SUPERADMIN, nunca llega al diagnóstico general y sólo le llega a un
+///     alumno por una tarea que ese mismo docente le asigna.
+///
+/// La migración marca como `MAESTRO` TODO lo que ya existía: así los 400+
+/// ejercicios del PMV 2 siguen alimentando el diagnóstico exactamente igual, y
+/// los bancos docentes nacen vacíos.
+enum AmbitoContenido {
+  MAESTRO
+  DOCENTE
+}
+
+/// QUÉ CLASE DE CONTENIDO DIDÁCTICO ES UN PROCEDIMIENTO (PMV 3 · HITO 2).
+///
+///   · REGLA: una propiedad o regla que se enuncia y se ilustra ("regla de la
+///     cadena").
+///   · MÉTODO: una estrategia general de resolución ("resolver por sustitución").
+///   · PROCEDIMIENTO: una secuencia de pasos para llegar a un resultado ("sumar
+///     fracciones con distinto denominador").
+///
+/// Los tres comparten forma —un ejemplo resuelto en pasos— y por eso comparten
+/// tabla: lo que cambia es cómo lo presenta la pizarra, no cómo se guarda.
+enum TipoProcedimiento {
+  REGLA
+  METODO
+  PROCEDIMIENTO
+}
+
 /// Ciclo de vida del contenido de autoría docente.
 ///
 /// El borrador es trabajo en curso y NO llega al alumno; publicado es lo que la
@@ -158,6 +191,22 @@ enum EstadoContenido {
   BORRADOR
   PUBLICADO
   ARCHIVADO
+}
+
+/// MODO DE APRENDIZAJE (PMV 3 · HITO 2): decide cuánta ayuda recibe el alumno.
+/// Ver `lib/tutoria/orquestador.ts`.
+enum ModoAprendizaje {
+  EXPLICACION
+  PRACTICA_GUIADA
+  PRACTICA_LIBRE
+  EVALUACION
+}
+
+/// Estado de un intento de tarea (PMV 3 · HITO 1): en curso mientras el alumno
+/// responde, entregado cuando el servidor ya calculó su nota.
+enum EstadoIntento {
+  EN_CURSO
+  ENTREGADO
 }
 
 /// Qué clase de regla pedagógica se está registrando.
@@ -200,9 +249,17 @@ model Usuario {
   // responder "quién escribió esto" sin cruzar tablas de auditoría, y para que
   // borrar una cuenta no se lleve por delante el currículo del colegio: la
   // relación es SetNull, no Cascade.
-  temasCreados      NodoConocimiento[] @relation("AutorDelTema")
-  reglasCreadas     ReglaMatematica[]  @relation("AutorDeLaRegla")
-  ejerciciosCreados Ejercicio[]        @relation("AutorDelEjercicio")
+  temasCreados        NodoConocimiento[] @relation("AutorDelTema")
+  reglasCreadas       ReglaMatematica[]  @relation("AutorDeLaRegla")
+  ejerciciosCreados   Ejercicio[]        @relation("AutorDelEjercicio")
+  ejerciciosRevisados Ejercicio[]        @relation("RevisorDelEjercicio")
+
+  // PMV 3 · HITO 4: tutoría adaptativa del alumno.
+  tutorias SesionTutoria[] @relation("TutoriaDelEstudiante")
+
+  // PMV 3 · HITO 2: procedimientos que escribe y revisa el docente.
+  procedimientosCreados   Procedimiento[] @relation("AutorDelProcedimiento")
+  procedimientosRevisados Procedimiento[] @relation("RevisorDelProcedimiento")
 
   // Multi-tenant (HITO 3). A qué colegio pertenece este DOCENTE o DIRECTOR —un
   // ESTUDIANTE no pertenece a ninguno por esta vía: entra en las aulas de sus
@@ -213,10 +270,13 @@ model Usuario {
   institucionId String?
   institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
 
-  aulasComoDocente Aula[]         @relation("DocenteDeAula")
-  matriculas       Matricula[]    @relation("AlumnoDeLaMatricula")
-  tareasAsignadas  Tarea[]        @relation("DocenteDeTarea")
-  entregas         EntregaTarea[]
+  intentosTarea         IntentoTarea[]       @relation("IntentosDelEstudiante")
+  practicasGuiadas      PracticaGuiada[]
+  decisionesPedagogicas DecisionPedagogica[]
+  aulasComoDocente      Aula[]               @relation("DocenteDeAula")
+  matriculas            Matricula[]          @relation("AlumnoDeLaMatricula")
+  tareasAsignadas       Tarea[]              @relation("DocenteDeTarea")
+  entregas              EntregaTarea[]
 
   // Auditoría (observación del cliente, cierre HITO 4). Ambas son el lado
   // "quién lo hizo" de una acción ajena —nunca de la propia cuenta del
@@ -263,9 +323,10 @@ model Institucion {
   // currículo propio de ESTE colegio —ver el comentario de `institucionId`
   // en `Materia`/`NodoConocimiento`/`Ejercicio` para el porqué es opcional
   // en esos tres modelos, no aquí—.
-  materias   Materia[]
-  temas      NodoConocimiento[]
-  ejercicios Ejercicio[]
+  materias       Materia[]
+  temas          NodoConocimiento[]
+  ejercicios     Ejercicio[]
+  procedimientos Procedimiento[]
 
   @@map("instituciones")
 }
@@ -275,7 +336,7 @@ model Institucion {
 /// «Un alumno no se matricula 2 veces en la misma aula» vive en `Matricula`,
 /// no aquí: esta tabla es el salón, no quién está dentro.
 model Aula {
-  id           String   @id @default(cuid())
+  id           String          @id @default(cuid())
   nombre       String
   /// ETAPA EDUCATIVA del aula (cierre HITO 4, a petición del cliente: sin
   /// esto, `grado` era ambiguo —"grado 3" no dice si es primaria, secundaria
@@ -295,11 +356,11 @@ model Aula {
   /// alta y corto a propósito: un alumno lo copia de la pizarra del aula física
   /// o lo recibe por enlace (`/estudiante/unirse?codigo=…`). Ver
   /// `generarCodigoAcceso` en `lib/docente/aulas.ts`.
-  codigoAcceso String   @unique
+  codigoAcceso String          @unique
   /// Un aula inactiva no admite matrículas nuevas, pero conserva las que ya
   /// tenía: cerrar el curso no puede borrar el historial de quien ya estaba.
-  activa       Boolean  @default(true)
-  creadoEn     DateTime @default(now())
+  activa       Boolean         @default(true)
+  creadoEn     DateTime        @default(now())
 
   institucionId String
   institucion   Institucion @relation(fields: [institucionId], references: [id], onDelete: Cascade)
@@ -341,14 +402,14 @@ model Matricula {
   /// certeza, el origen real de TODA matrícula creada antes de esta
   /// migración: la matriculación directa por el admin es nueva en este
   /// mismo hito. Ver `OrigenMatricula`.
-  origen OrigenMatricula @default(CODIGO_INVITACION)
+  origen      OrigenMatricula @default(CODIGO_INVITACION)
   /// Quién ejecutó la acción, cuando no fue el propio alumno (un admin que
   /// lo matricula desde /admin/usuarios). `null` cuando `origen` es
   /// CODIGO_INVITACION: ahí el autor YA es `estudianteId`, duplicarlo aquí
   /// no añadiría información. SetNull: si esa cuenta de admin se borra, la
   /// matrícula no desaparece con ella, sólo pierde el dato de quién la hizo.
   creadoPorId String?
-  creadoPor   Usuario? @relation("CreadorDeMatricula", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  creadoPor   Usuario?        @relation("CreadorDeMatricula", fields: [creadoPorId], references: [id], onDelete: SetNull)
 
   // Un alumno no se matricula dos veces en la misma aula: es el 409 que
   // devuelve POST /api/estudiante/unirse cuando ya pertenece a ella.
@@ -378,7 +439,7 @@ model LogAuditoria {
   /// "MATRICULA_CREADA"). Texto libre, no enum: el catálogo de acciones
   /// auditables crece con el panel, y forzar una migración por cada una
   /// nueva costaría más fricción de la que un enum aquí vale la pena.
-  accion String
+  accion    String
   /// Sobre qué modelo ("Usuario", "Matricula") y qué fila.
   entidad   String
   entidadId String
@@ -428,7 +489,15 @@ model Tarea {
   /// resolverla —la miga de pan es de navegación libre—, pero si importa para
   /// que "Ver ejercicios de la tarea" liste siempre lo mismo.
   ejercicioIds       String[]          @default([])
+  /// REGLA DE CALIFICACIÓN (PMV 3 · HITO 1), fijada al asignar y no editable
+  /// después: `{ pesos: "IGUALES", creditoParcial: false, nota: "ULTIMO_INTENTO",
+  /// escala: 100 }`. La nota la calcula SIEMPRE el servidor con esta regla.
+  reglaCalificacion  Json              @default("{\"pesos\":\"IGUALES\",\"creditoParcial\":false,\"nota\":\"ULTIMO_INTENTO\",\"escala\":100}")
   creadoEn           DateTime          @default(now())
+
+  /// Los ejercicios y rúbricas CONGELADOS al asignar (ver `TareaEjercicio`).
+  ejerciciosCongelados TareaEjercicio[]
+  intentos             IntentoTarea[]
 
   aulaId String
   aula   Aula   @relation(fields: [aulaId], references: [id], onDelete: Cascade)
@@ -437,6 +506,8 @@ model Tarea {
   docente   Usuario @relation("DocenteDeTarea", fields: [docenteId], references: [id], onDelete: Cascade)
 
   entregas EntregaTarea[]
+
+  sesionesTutoria SesionTutoria[]
 
   @@index([aulaId])
   @@index([docenteId])
@@ -468,6 +539,10 @@ model EntregaTarea {
   /// de sólo ids es deliberado: a una tarea del motor conversacional no hay
   /// `Ejercicio` al que volver a consultar después.
   detalle        Json      @default("[]")
+  /// Quién calculó `puntaje`: "SERVIDOR" (con los ejercicios congelados y las
+  /// respuestas que el propio servidor corrigió) o "CLIENTE" (tareas del motor
+  /// conversacional anteriores al HITO 1, cuyos ejercicios no existen en la BD).
+  modoNota       String    @default("CLIENTE")
   creadoEn       DateTime  @default(now())
   actualizadoEn  DateTime  @updatedAt
 
@@ -480,6 +555,96 @@ model EntregaTarea {
   @@unique([tareaId, estudianteId])
   @@index([estudianteId])
   @@map("entregas_tarea")
+}
+
+/// EL EJERCICIO TAL COMO ESTABA AL ASIGNAR LA TAREA (PMV 3 · HITO 1).
+///
+/// Copia INMUTABLE del enunciado, la respuesta, las pistas y la RÚBRICA que
+/// valían cuando el docente asignó: editar o archivar después el ejercicio del
+/// banco no cambia lo que los alumnos resuelven ni cómo se les califica, y la
+/// nota de una tarea anterior sigue siendo la que fue. La rúbrica es
+/// `{ puntos, creditoParcial, criterio }`: con la regla del piloto, `puntos: 1`,
+/// sin crédito parcial y criterio de equivalencia con la respuesta.
+model TareaEjercicio {
+  id                String   @id @default(cuid())
+  tareaId           String
+  tarea             Tarea    @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  /// Del que se copió. Si el ejercicio del banco se borra, la copia sigue.
+  ejercicioId       String?
+  /// La versión del ejercicio del banco en el momento de congelarlo.
+  version           Int      @default(1)
+  orden             Int
+  enunciado         String
+  respuestaCorrecta String
+  pasos             Json     @default("[]")
+  pistas            String[] @default([])
+  rubrica           Json     @default("{\"puntos\":1,\"creditoParcial\":false,\"criterio\":\"EQUIVALENCIA\"}")
+  creadoEn          DateTime @default(now())
+
+  respuestas RespuestaIntento[]
+
+  @@unique([tareaId, orden])
+  @@index([ejercicioId])
+  @@map("tarea_ejercicios")
+}
+
+/// UN INTENTO DE UN ALUMNO SOBRE UNA TAREA (PMV 3 · HITO 1). `EntregaTarea`
+/// sigue siendo el resumen —el último intento—; aquí queda cada intento, con sus
+/// respuestas corregidas por el servidor.
+model IntentoTarea {
+  id           String        @id @default(cuid())
+  tareaId      String
+  tarea        Tarea         @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  estudianteId String
+  estudiante   Usuario       @relation("IntentosDelEstudiante", fields: [estudianteId], references: [id], onDelete: Cascade)
+  /// 1, 2, 3… dentro de (tarea, alumno).
+  numero       Int
+  estado       EstadoIntento @default(EN_CURSO)
+  puntaje      Float?
+  creadoEn     DateTime      @default(now())
+  entregadoEn  DateTime?
+
+  respuestas RespuestaIntento[]
+
+  @@unique([tareaId, estudianteId, numero])
+  @@index([estudianteId])
+  @@map("intentos_tarea")
+}
+
+/// La ÚLTIMA respuesta del alumno a un ejercicio congelado dentro de un intento,
+/// con el veredicto que dio el servidor. El navegador nunca manda el veredicto.
+model RespuestaIntento {
+  id               String         @id @default(cuid())
+  intentoId        String
+  intento          IntentoTarea   @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+  tareaEjercicioId String
+  tareaEjercicio   TareaEjercicio @relation(fields: [tareaEjercicioId], references: [id], onDelete: Cascade)
+  respuesta        String
+  /// `null` cuando el motor no sabe corregirla (no cuenta como acierto ni como error).
+  correcto         Boolean?
+  actualizadoEn    DateTime       @default(now()) @updatedAt
+
+  @@unique([intentoId, tareaEjercicioId])
+  @@map("respuestas_intento")
+}
+
+/// HISTORIAL DE VERSIONES DE UN EJERCICIO (PMV 3 · HITO 1): cada edición de
+/// contenido sube `Ejercicio.version` y deja aquí la versión que se acaba de
+/// reemplazar, para poder reconstruir qué se enseñó y cuándo.
+model EjercicioVersion {
+  id                String    @id @default(cuid())
+  ejercicioId       String
+  ejercicio         Ejercicio @relation(fields: [ejercicioId], references: [id], onDelete: Cascade)
+  version           Int
+  enunciado         String
+  respuestaCorrecta String
+  pasos             Json      @default("[]")
+  pistas            String[]  @default([])
+  creadoPorId       String?
+  creadoEn          DateTime  @default(now())
+
+  @@unique([ejercicioId, version])
+  @@map("ejercicio_versiones")
 }
 
 // ── b) Perfil académico del estudiante ───────────────────────────────────────
@@ -686,11 +851,12 @@ model NodoConocimiento {
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
 
-  ejercicios Ejercicio[]
-  reglas     ReglaMatematica[]
-  progreso   RegistroProgreso[]
-  errores    RegistroError[]
-  tareas     Tarea[]
+  ejercicios     Ejercicio[]
+  procedimientos Procedimiento[]
+  reglas         ReglaMatematica[]
+  progreso       RegistroProgreso[]
+  errores        RegistroError[]
+  tareas         Tarea[]
 
   @@index([materiaId, orden])
   @@index([motor, nivel])
@@ -775,25 +941,137 @@ model Ejercicio {
   autorId String?
   autor   Usuario?        @relation("AutorDelEjercicio", fields: [autorId], references: [id], onDelete: SetNull)
 
+  /// CATÁLOGO MAESTRO o BANCO PRIVADO DEL DOCENTE (PMV 3 · HITO 1). Ver
+  /// `AmbitoContenido`. En un ejercicio `DOCENTE`, `autorId` es el dueño del
+  /// banco: no hay una tabla aparte porque el banco de un docente en un tema ES
+  /// "los ejercicios de ese tema cuyo ámbito es DOCENTE y cuyo autor soy yo".
+  ambito AmbitoContenido @default(MAESTRO)
+
+  /// REVISIÓN HUMANA de un borrador de IA. Un ejercicio de `origen: IA` nace
+  /// BORRADOR y sólo se publica cuando un docente lo revisa: estos dos campos
+  /// dejan constancia de quién y cuándo, para poder auditar que ninguna
+  /// generación automática llegó a un alumno sin que una persona la mirase.
+  revisadoPorId String?
+  revisadoPor   Usuario?  @relation("RevisorDelEjercicio", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn    DateTime?
+
+  /// VERSIÓN DEL CONTENIDO (PMV 3 · HITO 1): empieza en 1 y sube cada vez que se
+  /// edita el enunciado, la respuesta, las pistas o los pasos. Las tareas ya
+  /// asignadas no se enteran: llevan su copia congelada (`TareaEjercicio`).
+  version Int @default(1)
+
   metadatos     Json     @default("{}")
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
 
+  versiones             EjercicioVersion[]
   progreso              RegistroProgreso[]
   respuestasDiagnostico RespuestaDiagnostico[]
 
-  /// Un mismo enunciado, en su motor y nivel, es UN ejercicio: la semilla lo
-  /// vuelve a sembrar en cada despliegue y sin esto se duplicaría cada vez.
+  sesionesTutoria SesionTutoria[]
+
+  /// UNICIDAD (PMV 3 · HITO 1). Hasta el PMV 2 había aquí un
+  /// `@@unique([motor, nivel, enunciado])` global. Con bancos privados esa
+  /// restricción FILTRARÍA información entre docentes —"ya existe un ejercicio
+  /// con ese enunciado" le diría a un docente que otro tiene el mismo en su
+  /// banco privado—, así que se sustituyó por dos índices PARCIALES que sólo
+  /// Postgres entiende y que viven en la migración
+  /// `20261117120000_pmv3_hito1_bancos_docentes`:
   ///
-  /// Ojo: PostgreSQL considera distintos dos NULL, así que esta restricción NO
-  /// alcanza a los ejercicios sin motor. Para ésos, el duplicado se comprueba
-  /// en la API contra el nodo del currículo, que es su contexto real.
-  @@unique([motor, nivel, enunciado])
+  ///   · `ejercicios_maestro_unico`: (motor, nivel, enunciado) donde ámbito =
+  ///     MAESTRO. La misma garantía de antes, pero sólo para el catálogo.
+  ///   · `ejercicios_banco_docente_unico`: (autorId, nodoId, enunciado) donde
+  ///     ámbito = DOCENTE. Un docente no repite enunciado en su banco de un
+  ///     tema, y dos docentes distintos no se estorban.
+  ///
+  /// Prisma no puede expresar índices parciales, por eso no aparecen aquí; la
+  /// semilla ya no usa `upsert` por la clave compuesta, usa `findFirst`.
+  ///
+  /// Ojo: PostgreSQL considera distintos dos NULL, así que ni el catálogo
+  /// maestro alcanza a los ejercicios sin motor. Para ésos, el duplicado se
+  /// comprueba en la API contra el nodo del currículo, que es su contexto real.
+  @@index([ambito, autorId])
   @@index([motor, nivel, validado])
   @@index([nodoId, estado])
   @@index([etapa, cursoMin])
   @@index([institucionId])
   @@map("ejercicios")
+}
+
+/// PROCEDIMIENTO DIDÁCTICO (PMV 3 · HITO 2): un ejemplo resuelto PASO A PASO que
+/// el docente define, prueba y publica desde su panel —sin tocar código— y que
+/// la pizarra interactiva proyecta al alumno.
+///
+/// La garantía que lo distingue de "texto libre" es la VERIFICACIÓN: el servidor
+/// comprueba cada paso contra el motor determinista (¿este paso equivale al
+/// anterior? ¿el resultado es el que calcula el motor?) y deja el informe en
+/// `informeVerificacion`. Un procedimiento que el servidor no ha podido
+/// verificar se guarda, pero no se publica: lo mismo que ya pasa con los
+/// borradores de IA del HITO 1.
+///
+/// El ámbito sigue la misma regla que `Ejercicio`: MAESTRO (catálogo, lo
+/// publica un SUPERADMIN) o DOCENTE (privado de su autor, y sólo llega a los
+/// alumnos matriculados en un aula suya).
+model Procedimiento {
+  id String @id @default(cuid())
+
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  tipo        TipoProcedimiento @default(PROCEDIMIENTO)
+  titulo      String
+  descripcion String?
+
+  /// Motor determinista con el que se verifica. Se hereda del tema, igual que en
+  /// `Ejercicio`: el cliente no lo elige.
+  motor Tema?
+
+  /// El problema que se resuelve en los pasos ("1/2 + 1/3", "(3x+1)^5").
+  ejemplo          String
+  /// Su resultado según el motor, o el declarado por el autor si el motor no lo
+  /// resuelve.
+  respuestaEjemplo String?
+
+  /// [{ explica, escribe, tipo, regla?, terminos?: [{ texto, explica }] }]
+  pasos     Json     @default("[]")
+  /// Preguntas de comprensión: [{ enunciado, respuesta?, pistas[] }]
+  preguntas Json     @default("[]")
+  /// Pistas generales del procedimiento, de la más suave a la más concreta.
+  pistas    String[] @default([])
+
+  origen OrigenContenido @default(DOCENTE)
+  ambito AmbitoContenido @default(DOCENTE)
+  estado EstadoContenido @default(BORRADOR)
+
+  /// ¿El servidor ha comprobado todos los pasos que sabe comprobar?
+  verificado          Boolean   @default(false)
+  informeVerificacion Json      @default("{}")
+  verificadoEn        DateTime?
+
+  /// Un repaso BREVE al que acudir cuando el alumno se bloquea en este tema
+  /// (PMV 3 · HITO 4): otro procedimiento, normalmente de un prerrequisito.
+  repasoId   String?
+  repaso     Procedimiento?  @relation("RepasoDe", fields: [repasoId], references: [id], onDelete: SetNull)
+  esRepasoDe Procedimiento[] @relation("RepasoDe")
+
+  autorId String?
+  autor   Usuario? @relation("AutorDelProcedimiento", fields: [autorId], references: [id], onDelete: SetNull)
+
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
+  revisadoPorId String?
+  revisadoPor   Usuario?  @relation("RevisorDelProcedimiento", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEn    DateTime?
+
+  metadatos     Json     @default("{}")
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  @@index([nodoId, estado])
+  @@index([ambito, autorId])
+  @@index([institucionId])
+  @@map("procedimientos")
 }
 
 /// Sesión de aprendizaje: una unidad de trabajo del estudiante.
@@ -1032,4 +1310,138 @@ model RespuestaDiagnostico {
   @@unique([intentoId, preguntaId])
   @@unique([intentoId, ejercicioId])
   @@map("respuestas_diagnostico")
+}
+
+// ── PMV 3 · HITO 4: tutoría adaptativa ───────────────────────────────────────
+
+/// En qué punto de la tutoría está un alumno con un ejercicio. Es el estado de la
+/// máquina de `lib/tutoria/motor.ts`, que es quien decide las transiciones.
+enum FaseTutoria {
+  INICIAL
+  AYUDA
+  REPASO
+  REGRESO
+  EQUIVALENTE
+  RESUELTO
+}
+
+enum TipoEventoTutoria {
+  RESPUESTA_CORRECTA
+  RESPUESTA_INCORRECTA
+  PISTA
+  REPASO_ABIERTO
+  REPASO_CERRADO
+  EQUIVALENTE_PROPUESTO
+  EQUIVALENTE_RESPONDIDO
+}
+
+/// La tutoría de UN alumno con UN ejercicio de una tarea: dónde está (`fase`) y
+/// cuánto ha costado (errores, pistas, repasos, equivalentes). Es lo que el
+/// docente revisa en el informe de progreso, y por eso guarda contadores y no
+/// sólo el estado actual: «este alumno se bloqueó dos veces en fracciones» es
+/// información, «este alumno está en la fase RESUELTO» no lo es.
+model SesionTutoria {
+  id String @id @default(cuid())
+
+  estudianteId String
+  estudiante   Usuario @relation("TutoriaDelEstudiante", fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  tareaId String
+  tarea   Tarea  @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+
+  ejercicioId String?
+  ejercicio   Ejercicio? @relation(fields: [ejercicioId], references: [id], onDelete: SetNull)
+
+  /// El tema del ejercicio, copiado: el informe sigue teniendo sentido aunque el
+  /// ejercicio se archive o se borre.
+  nodoId String?
+  tema   String?
+
+  fase            FaseTutoria @default(INICIAL)
+  erroresSeguidos Int         @default(0)
+  erroresTotales  Int         @default(0)
+  pistasDadas     Int         @default(0)
+  repasos         Int         @default(0)
+  equivalentes    Int         @default(0)
+  resuelta        Boolean     @default(false)
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  eventos EventoTutoria[]
+
+  @@unique([estudianteId, tareaId, ejercicioId])
+  @@index([tareaId])
+  @@index([estudianteId, actualizadoEn])
+  @@map("sesiones_tutoria")
+}
+
+model EventoTutoria {
+  id       String            @id @default(cuid())
+  sesionId String
+  sesion   SesionTutoria     @relation(fields: [sesionId], references: [id], onDelete: Cascade)
+  tipo     TipoEventoTutoria
+  /// Qué pasó exactamente: la pista dada, el repaso abierto, el ejercicio
+  /// equivalente propuesto (`equivalenteId`)…
+  detalle  Json              @default("{}")
+  creadoEn DateTime          @default(now())
+
+  @@index([sesionId, creadoEn])
+  @@map("eventos_tutoria")
+}
+
+/// UNA PRÁCTICA GUIADA (PMV 3 · HITO 2): el alumno resuelve una ecuación paso a
+/// paso y el servidor valida cada paso. Guarda el estado que lee el orquestador
+/// pedagógico: el paso activo y los intentos.
+model PracticaGuiada {
+  id               String          @id @default(cuid())
+  estudianteId     String
+  estudiante       Usuario         @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  enunciado        String
+  modo             ModoAprendizaje @default(PRACTICA_GUIADA)
+  /// Los pasos del alumno ya aceptados, en orden.
+  pasos            Json            @default("[]")
+  /// El último paso válido (al empezar, el enunciado): contra él se compara el siguiente.
+  pasoActual       String
+  /// Fallos seguidos en el paso activo.
+  fallosEnPaso     Int             @default(0)
+  pistasEnPaso     Int             @default(0)
+  pistasTotales    Int             @default(0)
+  solucionMostrada Boolean         @default(false)
+  resuelta         Boolean         @default(false)
+  creadoEn         DateTime        @default(now())
+  actualizadoEn    DateTime        @updatedAt
+
+  decisiones DecisionPedagogica[]
+
+  @@index([estudianteId, actualizadoEn])
+  @@map("practicas_guiadas")
+}
+
+/// CADA DECISIÓN DEL ORQUESTADOR, con su motivo y la entrada que la provocó.
+model DecisionPedagogica {
+  id           String          @id @default(cuid())
+  practicaId   String
+  practica     PracticaGuiada  @relation(fields: [practicaId], references: [id], onDelete: Cascade)
+  estudianteId String
+  estudiante   Usuario         @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  modo         ModoAprendizaje
+  evento       String
+  accion       String
+  /// Código estable de la razón (ver `Razon` en el orquestador).
+  razon        String
+  /// La razón en palabras.
+  motivo       String
+  nivelAyuda   Int             @default(0)
+  revelaHasta  String
+  pasoIndice   Int
+  /// La entrada completa (modo, paso, intentos) y, si la hubo, la causa del error.
+  entrada      Json            @default("{}")
+  /// Cuántas piezas retuvo la política de revelación.
+  retenidas    Int             @default(0)
+  creadoEn     DateTime        @default(now())
+
+  @@index([practicaId, creadoEn])
+  @@index([estudianteId])
+  @@map("decisiones_pedagogicas")
 }
