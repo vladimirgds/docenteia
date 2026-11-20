@@ -51,6 +51,26 @@ export default async function PaginaTutoria() {
 
   const hayDatos = aulas.some((a) => a.tutoria.length > 0);
 
+  // PRÁCTICAS GUIADAS (PMV 3 · HITO 2): las de los alumnos matriculados en SUS aulas,
+  // con cada decisión del tutor y su motivo.
+  const practicas = await prisma.practicaGuiada.findMany({
+    where: { estudiante: { matriculas: { some: { aula: { docenteId } } } } },
+    orderBy: { actualizadoEn: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      enunciado: true,
+      modo: true,
+      resuelta: true,
+      solucionMostrada: true,
+      estudiante: { select: { nombre: true } },
+      decisiones: {
+        orderBy: [{ creadoEn: "asc" }, { id: "asc" }],
+        select: { evento: true, accion: true, motivo: true, pasoIndice: true },
+      },
+    },
+  });
+
   return (
     <div className="min-h-screen">
       <Cabecera />
@@ -152,6 +172,39 @@ export default async function PaginaTutoria() {
             </CardContent>
           </Card>
         ))}
+
+        <Card data-testid="practicas-guiadas">
+          <CardHeader>
+            <CardTitle>Prácticas guiadas</CardTitle>
+            <CardDescription>
+              Qué decidió el tutor en cada paso y por qué: explicar, preguntar, dar una pista o mostrar el paso.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {practicas.length === 0 && (
+              <p className="text-sm text-muted-foreground">Todavía ningún alumno ha hecho una práctica guiada.</p>
+            )}
+            {practicas.map((p) => (
+              <details key={p.id} className="rounded-md border px-3 py-2 text-sm" data-testid="practica-guiada">
+                <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+                  <span className="font-medium">{p.estudiante.nombre}</span>
+                  <span className="text-muted-foreground">· {p.enunciado}</span>
+                  <Badge variant="contorno">{p.modo.replace("_", " ").toLowerCase()}</Badge>
+                  <Badge variant={p.resuelta ? "exito" : "aviso"}>{p.resuelta ? "Resuelta" : "En curso"}</Badge>
+                  {p.solucionMostrada && <Badge variant="aviso">Se le mostró la solución</Badge>}
+                  <span className="text-xs text-muted-foreground">{p.decisiones.length} decisión(es)</span>
+                </summary>
+                <ol className="list-decimal space-y-1 pl-6 pt-2 text-muted-foreground">
+                  {p.decisiones.map((d, i) => (
+                    <li key={i}>
+                      <span className="font-medium text-foreground">{d.accion}</span> (paso {d.pasoIndice + 1}) — {d.motivo}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ))}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

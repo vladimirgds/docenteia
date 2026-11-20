@@ -193,6 +193,15 @@ enum EstadoContenido {
   ARCHIVADO
 }
 
+/// MODO DE APRENDIZAJE (PMV 3 · HITO 2): decide cuánta ayuda recibe el alumno.
+/// Ver `lib/tutoria/orquestador.ts`.
+enum ModoAprendizaje {
+  EXPLICACION
+  PRACTICA_GUIADA
+  PRACTICA_LIBRE
+  EVALUACION
+}
+
 /// Estado de un intento de tarea (PMV 3 · HITO 1): en curso mientras el alumno
 /// responde, entregado cuando el servidor ya calculó su nota.
 enum EstadoIntento {
@@ -261,11 +270,13 @@ model Usuario {
   institucionId String?
   institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
 
-  intentosTarea    IntentoTarea[] @relation("IntentosDelEstudiante")
-  aulasComoDocente Aula[]         @relation("DocenteDeAula")
-  matriculas       Matricula[]    @relation("AlumnoDeLaMatricula")
-  tareasAsignadas  Tarea[]        @relation("DocenteDeTarea")
-  entregas         EntregaTarea[]
+  intentosTarea         IntentoTarea[]       @relation("IntentosDelEstudiante")
+  practicasGuiadas      PracticaGuiada[]
+  decisionesPedagogicas DecisionPedagogica[]
+  aulasComoDocente      Aula[]               @relation("DocenteDeAula")
+  matriculas            Matricula[]          @relation("AlumnoDeLaMatricula")
+  tareasAsignadas       Tarea[]              @relation("DocenteDeTarea")
+  entregas              EntregaTarea[]
 
   // Auditoría (observación del cliente, cierre HITO 4). Ambas son el lado
   // "quién lo hizo" de una acción ajena —nunca de la propia cuenta del
@@ -1377,4 +1388,60 @@ model EventoTutoria {
 
   @@index([sesionId, creadoEn])
   @@map("eventos_tutoria")
+}
+
+/// UNA PRÁCTICA GUIADA (PMV 3 · HITO 2): el alumno resuelve una ecuación paso a
+/// paso y el servidor valida cada paso. Guarda el estado que lee el orquestador
+/// pedagógico: el paso activo y los intentos.
+model PracticaGuiada {
+  id               String          @id @default(cuid())
+  estudianteId     String
+  estudiante       Usuario         @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  enunciado        String
+  modo             ModoAprendizaje @default(PRACTICA_GUIADA)
+  /// Los pasos del alumno ya aceptados, en orden.
+  pasos            Json            @default("[]")
+  /// El último paso válido (al empezar, el enunciado): contra él se compara el siguiente.
+  pasoActual       String
+  /// Fallos seguidos en el paso activo.
+  fallosEnPaso     Int             @default(0)
+  pistasEnPaso     Int             @default(0)
+  pistasTotales    Int             @default(0)
+  solucionMostrada Boolean         @default(false)
+  resuelta         Boolean         @default(false)
+  creadoEn         DateTime        @default(now())
+  actualizadoEn    DateTime        @updatedAt
+
+  decisiones DecisionPedagogica[]
+
+  @@index([estudianteId, actualizadoEn])
+  @@map("practicas_guiadas")
+}
+
+/// CADA DECISIÓN DEL ORQUESTADOR, con su motivo y la entrada que la provocó.
+model DecisionPedagogica {
+  id           String          @id @default(cuid())
+  practicaId   String
+  practica     PracticaGuiada  @relation(fields: [practicaId], references: [id], onDelete: Cascade)
+  estudianteId String
+  estudiante   Usuario         @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  modo         ModoAprendizaje
+  evento       String
+  accion       String
+  /// Código estable de la razón (ver `Razon` en el orquestador).
+  razon        String
+  /// La razón en palabras.
+  motivo       String
+  nivelAyuda   Int             @default(0)
+  revelaHasta  String
+  pasoIndice   Int
+  /// La entrada completa (modo, paso, intentos) y, si la hubo, la causa del error.
+  entrada      Json            @default("{}")
+  /// Cuántas piezas retuvo la política de revelación.
+  retenidas    Int             @default(0)
+  creadoEn     DateTime        @default(now())
+
+  @@index([practicaId, creadoEn])
+  @@index([estudianteId])
+  @@map("decisiones_pedagogicas")
 }

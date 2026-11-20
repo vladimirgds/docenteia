@@ -237,6 +237,20 @@ export default async function PanelEstudiante() {
 
         <Card className="flex flex-col">
           <CardHeader>
+            <CardTitle>Práctica guiada</CardTitle>
+            <CardDescription>
+              Resuelve una ecuación paso a paso: el tutor comprueba cada paso, te explica el error y te da pistas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/practica-guiada">Practicar paso a paso</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
             <CardTitle>Tareas asignadas</CardTitle>
             <CardDescription>
               Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.
