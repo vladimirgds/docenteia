@@ -341,5 +341,10 @@ export async function cargarContexto(tareaId: string, ejercicioId: string) {
       select: { id: true, nodoId: true, nivel: true, motor: true, pistas: true, enunciado: true, nodo: { select: { titulo: true } } },
     }),
   ]);
-  return { tarea, ejercicio };
+  // El enunciado y las pistas que ve el alumno son los CONGELADOS al asignar la
+  // tarea (PMV 3 · HITO 1); el resto (tema, nivel, motor) sigue siendo el del banco.
+  const congelado = ejercicio
+    ? await prisma.tareaEjercicio.findFirst({ where: { tareaId, ejercicioId }, select: { enunciado: true, pistas: true } })
+    : null;
+  return { tarea, ejercicio: ejercicio && congelado ? { ...ejercicio, ...congelado } : ejercicio };
 }

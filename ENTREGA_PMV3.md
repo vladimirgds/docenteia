@@ -7,6 +7,7 @@ Cada hito tiene su documento de entrega con la demostración, la evidencia y los
 | Hito | Qué entrega | Documento | Batería de aceptación |
 | --- | --- | --- | --- |
 | **1** — Contenido y bancos | Catálogo maestro (alimenta el diagnóstico) y bancos **privados por docente** (nacen vacíos); borradores generados por IA; migración **sin pérdida de datos** (probada sobre una copia de los 420 ejercicios reales: checksum idéntico) | [`ENTREGA_PMV3_HITO1.md`](ENTREGA_PMV3_HITO1.md) | `pmv3-hito1` · 76 |
+| **1 (cierre)** — Evaluación segura | **Versión** del ejercicio; ejercicios y **rúbricas congelados al asignar**; **nota calculada en el servidor** (igual peso, sin crédito parcial, último intento); reenvíos y reintentos **en transacción**; tareas históricas rellenadas por la migración | [`ENTREGA_PMV3_HITO1_EVALUACION.md`](ENTREGA_PMV3_HITO1_EVALUACION.md) | `pmv3-hito1-evaluacion` · 61 |
 | **2** — Editor del docente | Reglas, métodos y procedimientos definidos, **probados y publicados desde el panel**; agente **Gemini** que redacta borradores editables (pasos, ejercicios, preguntas, pistas); el servidor **verifica los pasos** que el motor soporta; probado con **suma de fracciones** y **regla de la cadena** (5/5 verificados con Gemini real) | [`ENTREGA_PMV3_HITO2.md`](ENTREGA_PMV3_HITO2.md) | `pmv3-hito2` · 60 |
 | **3** — Pizarra interactiva | KaTeX, **profesor 3D**, **tocar un término** para oírlo, pistas, respuesta por **texto o voz**, y **puntero láser** que señala el término exacto y se mantiene **sincronizado** al pausar, repetir y reanudar | [`ENTREGA_PMV3_HITO3.md`](ENTREGA_PMV3_HITO3.md) | `pmv3-pizarra-sincronia` · 49 y `pmv3-hito3` · 67 (Chrome real) |
 | **4** — Tutoría adaptativa y reportes | Pistas ante el error; **repaso breve** tras un bloqueo; **regreso al paso original**; **ejercicio equivalente**; el docente revisa el progreso y **exporta a PDF y Excel** | [`ENTREGA_PMV3_HITO4.md`](ENTREGA_PMV3_HITO4.md) | `pmv3-tutor-motor` · 22 |
@@ -33,6 +34,7 @@ Con `GEMINI_API_KEY` configurada, el agente de IA usa Gemini real (`GEMINI_MODEL
 | `20261117120000_pmv3_hito1_bancos_docentes` | `ambito`/revisión en `ejercicios` (todo lo existente queda **MAESTRO**); sustituye el índice único global por dos **parciales** |
 | `20261118100000_pmv3_hito2_procedimientos` | Tabla `procedimientos` |
 | `20261119100000_pmv3_hito4_tutoria` | Tablas `sesiones_tutoria` y `eventos_tutoria` |
+| `20261120100000_pmv3_hito1_evaluacion_segura` | `ejercicios.version`, `tareas.reglaCalificacion`, tablas `tarea_ejercicios`, `intentos_tarea`, `respuestas_intento`, `ejercicio_versiones`; rellena la copia congelada de las tareas históricas |
 
 > ⚠ **Antes de desplegar sobre la base real**: copia de seguridad, y ten en cuenta que `vercel-build` ejecuta `prisma migrate deploy` y la semilla en cada compilación: si el entorno *Preview* de Vercel usa la base de producción, la primera vista previa de esta rama la migrará. Marcha atrás y detalles: `ENTREGA_PMV3_HITO1.md` §5.
 

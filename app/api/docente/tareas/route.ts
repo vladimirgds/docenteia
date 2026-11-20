@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { tareaSchema } from "@/lib/docente/aulas";
 import { dondeEjerciciosAsignables } from "@/lib/docente/bancos";
+import { OPCIONES_TX, REGLA_NUEVA, congelarEjercicios } from "@/lib/docente/evaluacion-servidor";
 
 /**
  * ¿Es este tema (o este ejercicio, por el tema del que cuelga) legible desde
@@ -154,21 +155,28 @@ export async function POST(req: Request) {
       }
     }
 
-    const tarea = await prisma.tarea.create({
-      data: {
-        titulo: datos.titulo,
-        descripcion: datos.descripcion ?? null,
-        fechaInicio: datos.fechaInicio,
-        fechaVencimiento: datos.fechaVencimiento,
-        cantidadEjercicios: ejercicioIds.length > 0 ? ejercicioIds.length : (datos.cantidadEjercicios ?? 5),
-        limiteReintentos: datos.limiteReintentos ?? 3,
-        nodoId: datos.nodoId ?? null,
-        dificultad: datos.origenEjercicios === "banco" ? (datos.dificultad ?? null) : null,
-        ejercicioIds,
-        aulaId: aula.id,
-        docenteId: permiso.quien.usuarioId,
-      },
-    });
+    // La tarea y la COPIA CONGELADA de sus ejercicios y rúbricas nacen juntas, o
+    // no nace ninguna: nunca queda una tarea del banco sin su congelado.
+    const tarea = await prisma.$transaction(async (tx) => {
+      const creada = await tx.tarea.create({
+        data: {
+          titulo: datos.titulo,
+          descripcion: datos.descripcion ?? null,
+          fechaInicio: datos.fechaInicio,
+          fechaVencimiento: datos.fechaVencimiento,
+          cantidadEjercicios: ejercicioIds.length > 0 ? ejercicioIds.length : (datos.cantidadEjercicios ?? 5),
+          limiteReintentos: datos.limiteReintentos ?? 3,
+          nodoId: datos.nodoId ?? null,
+          dificultad: datos.origenEjercicios === "banco" ? (datos.dificultad ?? null) : null,
+          ejercicioIds,
+          reglaCalificacion: REGLA_NUEVA,
+          aulaId: aula.id,
+          docenteId: permiso.quien.usuarioId,
+        },
+      });
+      await congelarEjercicios(tx, creada.id, ejercicioIds);
+      return creada;
+    }, OPCIONES_TX);
 
     return NextResponse.json({ tarea }, { status: 201 });
   } catch (e) {

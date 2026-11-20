@@ -12,6 +12,8 @@ import {
   puedeLeerDeInstitucion,
 } from "@/lib/docente/api";
 import { puedeEscribirEjercicio } from "@/lib/docente/bancos";
+import { cambioDeContenido } from "@/lib/docente/calificacion";
+import { OPCIONES_TX } from "@/lib/docente/evaluacion-servidor";
 import { ejercicioActualizacionSchema, type Motor } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
@@ -162,9 +164,32 @@ export async function PATCH(req: Request, { params }: Contexto) {
       );
     }
 
-    const ejercicio = await prisma.ejercicio.update({
+    const ejercicio = await prisma.$transaction(async (tx) => {
+    // VERSIONES (PMV 3 · HITO 1): si cambia el CONTENIDO (enunciado, respuesta o
+    // pistas) la versión sube y la que se reemplaza queda en el historial. Las
+    // tareas ya asignadas no se enteran: llevan su copia congelada.
+    const subeVersion = cambioDeContenido(actual, {
+      enunciado: fusionado.enunciado,
+      respuestaCorrecta: campos.respuestaCorrecta,
+      pistas: fusionado.pistas,
+    });
+    if (subeVersion) {
+      await tx.ejercicioVersion.create({
+        data: {
+          ejercicioId: id,
+          version: actual.version,
+          enunciado: actual.enunciado,
+          respuestaCorrecta: actual.respuestaCorrecta,
+          pasos: actual.pasos as Prisma.InputJsonValue,
+          pistas: actual.pistas,
+          creadoPorId: permiso.quien.usuarioId,
+        },
+      });
+    }
+    return tx.ejercicio.update({
       where: { id },
       data: {
+        ...(subeVersion ? { version: { increment: 1 } } : {}),
         ...(datos.nodoId !== undefined ? { nodoId: datos.nodoId } : {}),
         motor,
         institucionId,
@@ -193,6 +218,7 @@ export async function PATCH(req: Request, { params }: Contexto) {
       },
       select: SELECCION_EJERCICIO,
     });
+    }, OPCIONES_TX);
 
     return NextResponse.json({ ejercicio, informe });
   } catch (e) {

@@ -13,6 +13,8 @@ export const SELECCION_EJERCICIO = {
   parametros: true,
   pistas: true,
   pasos: true,
+  /** Versión del contenido (PMV 3 · HITO 1). */
+  version: true,
   nivel: true,
   motor: true,
   etapa: true,

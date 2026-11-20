@@ -136,17 +136,24 @@ export default async function PaginaLeccion({
     // FIJO y ya conocido de `Ejercicio`, así que se resuelve con su propia
     // pantalla, mucho más simple: sin avatar, sin voz, sin teoría.
     if (tarea.ejercicioIds.length > 0) {
-      const ejercicios = await prisma.ejercicio.findMany({
+      // Del CONGELADO al asignar (PMV 3 · HITO 1): lo que el alumno resuelve es lo
+      // que valía al asignar la tarea, no lo que tenga hoy el banco. El orden es
+      // el que se guardó al asignar.
+      const congelados = await prisma.tareaEjercicio.findMany({
+        where: { tareaId: tarea.id },
+        orderBy: { orden: "asc" },
+        select: { ejercicioId: true, enunciado: true },
+      });
+      const niveles = await prisma.ejercicio.findMany({
         where: { id: { in: tarea.ejercicioIds } },
-        select: { id: true, enunciado: true, nivel: true },
+        select: { id: true, nivel: true },
       });
-      // El orden es el de `ejercicioIds` —el que se guardó al asignar—, no el
-      // que devuelva la consulta.
-      const porId = new Map(ejercicios.map((e) => [e.id, e]));
-      const ordenados = tarea.ejercicioIds.flatMap((id) => {
-        const e = porId.get(id);
-        return e ? [e] : [];
-      });
+      const nivelPorId = new Map(niveles.map((e) => [e.id, e.nivel]));
+      const ordenados = congelados.flatMap((c) =>
+        c.ejercicioId
+          ? [{ id: c.ejercicioId, enunciado: c.enunciado, nivel: nivelPorId.get(c.ejercicioId) ?? tarea.dificultad ?? "BASICO" }]
+          : [],
+      );
 
       return (
         <TareaDeBanco

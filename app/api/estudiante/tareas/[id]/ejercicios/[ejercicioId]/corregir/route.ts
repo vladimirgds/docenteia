@@ -6,6 +6,11 @@ import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { puedeEntregar } from "@/lib/docente/aulas";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
 import { cargarContexto, procesarRespuesta } from "@/lib/tutoria/servidor";
+import {
+  OPCIONES_TX,
+  bloquearAlumnoTarea,
+  intentoEnCurso,
+} from "@/lib/docente/evaluacion-servidor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,15 +83,47 @@ export async function POST(
       return NextResponse.json({ error: bloqueo }, { status: 409 });
     }
 
-    const ejercicio = await prisma.ejercicio.findUnique({
-      where: { id: ejercicioId },
-      select: { respuestaCorrecta: true },
+    // LA COPIA CONGELADA al asignar, no el ejercicio vivo del banco: si el docente
+    // lo editó después, esta tarea se sigue corrigiendo con lo que valía al asignar.
+    const ejercicio = await prisma.tareaEjercicio.findFirst({
+      where: { tareaId, ejercicioId },
+      select: { id: true, respuestaCorrecta: true },
     });
     if (!ejercicio) {
       return NextResponse.json({ error: "Ese ejercicio ya no existe." }, { status: 404 });
     }
 
     const resultado = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
+
+    // El veredicto lo deja el SERVIDOR en el intento en curso (la última
+    // respuesta a cada ejercicio es la que cuenta). Con el cerrojo del alumno y la
+    // tarea, y comprobando otra vez el tope de intentos DENTRO de la transacción.
+    const rechazo = await prisma.$transaction(async (tx) => {
+      await bloquearAlumnoTarea(tx, tareaId, sesion.user.id);
+      const actual = await tx.entregaTarea.findUnique({
+        where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
+      });
+      const motivo = puedeEntregar(tarea, actual);
+      if (motivo) return motivo;
+      const intento = await intentoEnCurso(tx, tareaId, sesion.user.id);
+      await tx.respuestaIntento.upsert({
+        where: { intentoId_tareaEjercicioId: { intentoId: intento.id, tareaEjercicioId: ejercicio.id } },
+        create: {
+          intentoId: intento.id,
+          tareaEjercicioId: ejercicio.id,
+          respuesta: respuesta.trim(),
+          correcto: resultado.conocido === false ? null : resultado.correcto,
+        },
+        update: {
+          respuesta: respuesta.trim(),
+          correcto: resultado.conocido === false ? null : resultado.correcto,
+        },
+      });
+      return null;
+    }, OPCIONES_TX);
+    if (rechazo) {
+      return NextResponse.json({ error: rechazo }, { status: 409 });
+    }
 
     // TUTORÍA ADAPTATIVA (PMV 3 · HITO 4): el servidor registra la respuesta y
     // decide qué hace el tutor —una pista, abrir un repaso, un equivalente—. Sólo

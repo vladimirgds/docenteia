@@ -5,6 +5,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { entregaSchema, puedeEntregar } from "@/lib/docente/aulas";
+import { calcularNota, REGLA_DEL_PILOTO } from "@/lib/docente/calificacion";
+import { OPCIONES_TX, bloquearAlumnoTarea } from "@/lib/docente/evaluacion-servidor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,65 +63,128 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    const existente = await prisma.entregaTarea.findUnique({
-      where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
-    });
+    // TODO LO QUE DECIDE LA NOTA OCURRE DENTRO DE UNA TRANSACCIÓN, con el cerrojo del
+    // alumno y la tarea: dos entregas simultáneas se ponen en fila, y la segunda
+    // ve ya el intento cerrado por la primera (no cuenta dos veces ni pisa la nota).
+    const resultado = await prisma.$transaction(async (tx) => {
+      await bloquearAlumnoTarea(tx, tareaId, sesion.user.id);
 
-    const bloqueo = puedeEntregar(tarea, existente);
-    if (bloqueo) {
-      return NextResponse.json({ error: bloqueo }, { status: 409 });
-    }
+      const existente = await tx.entregaTarea.findUnique({
+        where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
+      });
+      const bloqueo = puedeEntregar(tarea, existente);
+      if (bloqueo) return { error: bloqueo, status: 409 as const };
 
-    // El desglose es del intento que se acaba de entregar: reemplaza al
-    // anterior entero, no se acumula ("Ver resultado" muestra el ÚLTIMO
-    // intento, igual que `puntaje" ya hacía).
-    let detalle = parsed.data.detalle ?? (existente?.detalle as Prisma.InputJsonValue | undefined) ?? [];
+      const congelados = await tx.tareaEjercicio.findMany({
+        where: { tareaId },
+        orderBy: { orden: "asc" },
+      });
 
-    // RESPUESTA CORRECTA, SÓLO DEL SERVIDOR. Un ejercicio del banco trae su
-    // `ejercicioId`; el navegador nunca manda su `respuestaCorrecta` —la
-    // tarea ya está entregada a esta altura, así que revelarla aquí ya no
-    // es un atajo para adivinar—. Se pisa lo que haya llegado, no se confía
-    // en lo que mande el cliente para este campo en concreto.
-    if (Array.isArray(detalle) && tarea.ejercicioIds.length > 0) {
-      const idsDelDetalle = detalle
-        .map((d) => (d && typeof d === "object" && "ejercicioId" in d ? (d as { ejercicioId?: string }).ejercicioId : null))
-        .filter((id): id is string => Boolean(id));
-      if (idsDelDetalle.length > 0) {
-        const ejercicios = await prisma.ejercicio.findMany({
-          where: { id: { in: idsDelDetalle } },
-          select: { id: true, respuestaCorrecta: true },
-        });
-        const respuestaPorId = new Map(ejercicios.map((e) => [e.id, e.respuestaCorrecta]));
-        detalle = detalle.map((d) => {
-          if (!d || typeof d !== "object" || !("ejercicioId" in d)) return d;
-          const entrada = d as { ejercicioId?: string; respuestaCorrecta?: string | null };
-          const real = entrada.ejercicioId ? respuestaPorId.get(entrada.ejercicioId) : undefined;
-          return real !== undefined ? { ...entrada, respuestaCorrecta: real } : d;
-        });
+      // Una tarea del banco sin su copia congelada no se califica con lo que diga
+      // el navegador: se rechaza (no debería ocurrir; la migración rellena las históricas).
+      if (tarea.ejercicioIds.length > 0 && congelados.length === 0) {
+        return { error: "Esta tarea no tiene sus ejercicios congelados.", status: 409 as const };
       }
+
+      // ── TAREA DEL BANCO: la nota la calcula el servidor ───────────────────
+      // Con los ejercicios y rúbricas CONGELADOS al asignar y las respuestas que
+      // el propio servidor corrigió. Lo que mande el navegador (`puntaje`,
+      // `detalle`, `completada`) se IGNORA: no hay nota que se pueda falsear.
+      if (congelados.length > 0) {
+        const intento = await tx.intentoTarea.findFirst({
+          where: { tareaId, estudianteId: sesion.user.id, estado: "EN_CURSO" },
+          include: { respuestas: true },
+        });
+        if (!intento || intento.respuestas.length === 0) {
+          return {
+            error: "No hay un intento en curso con respuestas que entregar (¿ya se entregó?).",
+            status: 409 as const,
+          };
+        }
+        const nota = calcularNota(
+          congelados,
+          intento.respuestas,
+          REGLA_DEL_PILOTO.escala,
+        );
+        const respuestaPorId = new Map(intento.respuestas.map((r) => [r.tareaEjercicioId, r]));
+        const detalle = congelados.map((c) => {
+          const r = respuestaPorId.get(c.id);
+          return {
+            ejercicioId: c.ejercicioId,
+            version: c.version,
+            enunciado: c.enunciado,
+            respuestaDada: r?.respuesta ?? null,
+            respuestaCorrecta: c.respuestaCorrecta,
+            correcto: r?.correcto === true,
+          };
+        });
+        const completada = intento.respuestas.length >= congelados.length;
+        const ahora = new Date();
+        await tx.intentoTarea.update({
+          where: { id: intento.id },
+          data: { estado: "ENTREGADO", puntaje: nota.puntaje, entregadoEn: ahora },
+        });
+        const entrega = await tx.entregaTarea.upsert({
+          where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
+          create: {
+            tareaId,
+            estudianteId: sesion.user.id,
+            intentosUsados: 1,
+            puntaje: nota.puntaje,
+            completada,
+            fechaEntrega: completada ? ahora : null,
+            detalle,
+            modoNota: "SERVIDOR",
+          },
+          update: {
+            intentosUsados: { increment: 1 },
+            // La nota de la tarea es la del ÚLTIMO intento (regla acordada).
+            puntaje: nota.puntaje,
+            completada,
+            fechaEntrega: completada ? ahora : (existente?.fechaEntrega ?? null),
+            detalle,
+            modoNota: "SERVIDOR",
+          },
+        });
+        return { entrega, nota, status: 200 as const };
+      }
+
+      // ── TAREA DEL MOTOR CONVERSACIONAL (sin ejercicios en la BD) ──────────
+      // Sus ejercicios se generan en el navegador y no existe nada que congelar,
+      // así que la nota sigue viniendo del cliente (se marca `modoNota: CLIENTE`).
+      // Lo que sí queda blindado es el reintento: dentro del cerrojo.
+      const detalle =
+        parsed.data.detalle ?? (existente?.detalle as Prisma.InputJsonValue | undefined) ?? [];
+      const entrega = await tx.entregaTarea.upsert({
+        where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
+        create: {
+          tareaId,
+          estudianteId: sesion.user.id,
+          intentosUsados: 1,
+          puntaje: parsed.data.puntaje ?? null,
+          completada: parsed.data.completada ?? false,
+          fechaEntrega: parsed.data.completada ? new Date() : null,
+          detalle,
+          modoNota: "CLIENTE",
+        },
+        update: {
+          intentosUsados: { increment: 1 },
+          puntaje: parsed.data.puntaje ?? existente?.puntaje ?? null,
+          completada: parsed.data.completada ?? existente?.completada ?? false,
+          fechaEntrega: parsed.data.completada ? new Date() : (existente?.fechaEntrega ?? null),
+          detalle,
+          modoNota: "CLIENTE",
+        },
+      });
+      return { entrega, nota: null, status: 200 as const };
+    }, OPCIONES_TX);
+
+    if ("error" in resultado) {
+      return NextResponse.json({ error: resultado.error }, { status: resultado.status });
     }
+    const { entrega, nota } = resultado;
+    return NextResponse.json({ entrega, nota });
 
-    const entrega = await prisma.entregaTarea.upsert({
-      where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
-      create: {
-        tareaId,
-        estudianteId: sesion.user.id,
-        intentosUsados: 1,
-        puntaje: parsed.data.puntaje ?? null,
-        completada: parsed.data.completada ?? false,
-        fechaEntrega: parsed.data.completada ? new Date() : null,
-        detalle,
-      },
-      update: {
-        intentosUsados: { increment: 1 },
-        puntaje: parsed.data.puntaje ?? existente?.puntaje ?? null,
-        completada: parsed.data.completada ?? existente?.completada ?? false,
-        fechaEntrega: parsed.data.completada ? new Date() : (existente?.fechaEntrega ?? null),
-        detalle,
-      },
-    });
-
-    return NextResponse.json({ entrega });
   } catch (e) {
     const infra = explicarFalloDeBaseDeDatos(e);
     if (infra) {

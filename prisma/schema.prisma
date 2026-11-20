@@ -193,6 +193,13 @@ enum EstadoContenido {
   ARCHIVADO
 }
 
+/// Estado de un intento de tarea (PMV 3 · HITO 1): en curso mientras el alumno
+/// responde, entregado cuando el servidor ya calculó su nota.
+enum EstadoIntento {
+  EN_CURSO
+  ENTREGADO
+}
+
 /// Qué clase de regla pedagógica se está registrando.
 ///
 /// No todo lo que un docente quiere fijar de un tema es una regla formal: hay
@@ -254,6 +261,7 @@ model Usuario {
   institucionId String?
   institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
 
+  intentosTarea    IntentoTarea[] @relation("IntentosDelEstudiante")
   aulasComoDocente Aula[]         @relation("DocenteDeAula")
   matriculas       Matricula[]    @relation("AlumnoDeLaMatricula")
   tareasAsignadas  Tarea[]        @relation("DocenteDeTarea")
@@ -470,7 +478,15 @@ model Tarea {
   /// resolverla —la miga de pan es de navegación libre—, pero si importa para
   /// que "Ver ejercicios de la tarea" liste siempre lo mismo.
   ejercicioIds       String[]          @default([])
+  /// REGLA DE CALIFICACIÓN (PMV 3 · HITO 1), fijada al asignar y no editable
+  /// después: `{ pesos: "IGUALES", creditoParcial: false, nota: "ULTIMO_INTENTO",
+  /// escala: 100 }`. La nota la calcula SIEMPRE el servidor con esta regla.
+  reglaCalificacion  Json              @default("{\"pesos\":\"IGUALES\",\"creditoParcial\":false,\"nota\":\"ULTIMO_INTENTO\",\"escala\":100}")
   creadoEn           DateTime          @default(now())
+
+  /// Los ejercicios y rúbricas CONGELADOS al asignar (ver `TareaEjercicio`).
+  ejerciciosCongelados TareaEjercicio[]
+  intentos             IntentoTarea[]
 
   aulaId String
   aula   Aula   @relation(fields: [aulaId], references: [id], onDelete: Cascade)
@@ -512,6 +528,10 @@ model EntregaTarea {
   /// de sólo ids es deliberado: a una tarea del motor conversacional no hay
   /// `Ejercicio` al que volver a consultar después.
   detalle        Json      @default("[]")
+  /// Quién calculó `puntaje`: "SERVIDOR" (con los ejercicios congelados y las
+  /// respuestas que el propio servidor corrigió) o "CLIENTE" (tareas del motor
+  /// conversacional anteriores al HITO 1, cuyos ejercicios no existen en la BD).
+  modoNota       String    @default("CLIENTE")
   creadoEn       DateTime  @default(now())
   actualizadoEn  DateTime  @updatedAt
 
@@ -524,6 +544,96 @@ model EntregaTarea {
   @@unique([tareaId, estudianteId])
   @@index([estudianteId])
   @@map("entregas_tarea")
+}
+
+/// EL EJERCICIO TAL COMO ESTABA AL ASIGNAR LA TAREA (PMV 3 · HITO 1).
+///
+/// Copia INMUTABLE del enunciado, la respuesta, las pistas y la RÚBRICA que
+/// valían cuando el docente asignó: editar o archivar después el ejercicio del
+/// banco no cambia lo que los alumnos resuelven ni cómo se les califica, y la
+/// nota de una tarea anterior sigue siendo la que fue. La rúbrica es
+/// `{ puntos, creditoParcial, criterio }`: con la regla del piloto, `puntos: 1`,
+/// sin crédito parcial y criterio de equivalencia con la respuesta.
+model TareaEjercicio {
+  id                String   @id @default(cuid())
+  tareaId           String
+  tarea             Tarea    @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  /// Del que se copió. Si el ejercicio del banco se borra, la copia sigue.
+  ejercicioId       String?
+  /// La versión del ejercicio del banco en el momento de congelarlo.
+  version           Int      @default(1)
+  orden             Int
+  enunciado         String
+  respuestaCorrecta String
+  pasos             Json     @default("[]")
+  pistas            String[] @default([])
+  rubrica           Json     @default("{\"puntos\":1,\"creditoParcial\":false,\"criterio\":\"EQUIVALENCIA\"}")
+  creadoEn          DateTime @default(now())
+
+  respuestas RespuestaIntento[]
+
+  @@unique([tareaId, orden])
+  @@index([ejercicioId])
+  @@map("tarea_ejercicios")
+}
+
+/// UN INTENTO DE UN ALUMNO SOBRE UNA TAREA (PMV 3 · HITO 1). `EntregaTarea`
+/// sigue siendo el resumen —el último intento—; aquí queda cada intento, con sus
+/// respuestas corregidas por el servidor.
+model IntentoTarea {
+  id           String        @id @default(cuid())
+  tareaId      String
+  tarea        Tarea         @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  estudianteId String
+  estudiante   Usuario       @relation("IntentosDelEstudiante", fields: [estudianteId], references: [id], onDelete: Cascade)
+  /// 1, 2, 3… dentro de (tarea, alumno).
+  numero       Int
+  estado       EstadoIntento @default(EN_CURSO)
+  puntaje      Float?
+  creadoEn     DateTime      @default(now())
+  entregadoEn  DateTime?
+
+  respuestas RespuestaIntento[]
+
+  @@unique([tareaId, estudianteId, numero])
+  @@index([estudianteId])
+  @@map("intentos_tarea")
+}
+
+/// La ÚLTIMA respuesta del alumno a un ejercicio congelado dentro de un intento,
+/// con el veredicto que dio el servidor. El navegador nunca manda el veredicto.
+model RespuestaIntento {
+  id               String         @id @default(cuid())
+  intentoId        String
+  intento          IntentoTarea   @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+  tareaEjercicioId String
+  tareaEjercicio   TareaEjercicio @relation(fields: [tareaEjercicioId], references: [id], onDelete: Cascade)
+  respuesta        String
+  /// `null` cuando el motor no sabe corregirla (no cuenta como acierto ni como error).
+  correcto         Boolean?
+  actualizadoEn    DateTime       @default(now()) @updatedAt
+
+  @@unique([intentoId, tareaEjercicioId])
+  @@map("respuestas_intento")
+}
+
+/// HISTORIAL DE VERSIONES DE UN EJERCICIO (PMV 3 · HITO 1): cada edición de
+/// contenido sube `Ejercicio.version` y deja aquí la versión que se acaba de
+/// reemplazar, para poder reconstruir qué se enseñó y cuándo.
+model EjercicioVersion {
+  id                String    @id @default(cuid())
+  ejercicioId       String
+  ejercicio         Ejercicio @relation(fields: [ejercicioId], references: [id], onDelete: Cascade)
+  version           Int
+  enunciado         String
+  respuestaCorrecta String
+  pasos             Json      @default("[]")
+  pistas            String[]  @default([])
+  creadoPorId       String?
+  creadoEn          DateTime  @default(now())
+
+  @@unique([ejercicioId, version])
+  @@map("ejercicio_versiones")
 }
 
 // ── b) Perfil académico del estudiante ───────────────────────────────────────
@@ -834,10 +944,16 @@ model Ejercicio {
   revisadoPor   Usuario?  @relation("RevisorDelEjercicio", fields: [revisadoPorId], references: [id], onDelete: SetNull)
   revisadoEn    DateTime?
 
+  /// VERSIÓN DEL CONTENIDO (PMV 3 · HITO 1): empieza en 1 y sube cada vez que se
+  /// edita el enunciado, la respuesta, las pistas o los pasos. Las tareas ya
+  /// asignadas no se enteran: llevan su copia congelada (`TareaEjercicio`).
+  version Int @default(1)
+
   metadatos     Json     @default("{}")
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @default(now()) @updatedAt
 
+  versiones             EjercicioVersion[]
   progreso              RegistroProgreso[]
   respuestasDiagnostico RespuestaDiagnostico[]
 
