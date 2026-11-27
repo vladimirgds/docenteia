@@ -251,6 +251,20 @@ export default async function PanelEstudiante() {
 
         <Card className="flex flex-col">
           <CardHeader>
+            <CardTitle>Métodos de tu profesor</CardTitle>
+            <CardDescription>
+              Practica los métodos que ha publicado tu profesor: resuelve un problema y recibe pistas si te olvidas de algún paso.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/metodos">Practicar métodos</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
             <CardTitle>Tareas asignadas</CardTitle>
             <CardDescription>
               Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.

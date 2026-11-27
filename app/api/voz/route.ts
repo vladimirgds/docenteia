@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { AYUDA_DE_VOZ, CLAVES_DE_VOZ, configuracionDeVoz, type Config } from "@/lib/voz/config";
 import { ipDeLaPeticion, permiteIntento, segundosParaReintentar } from "@/lib/seguridad/limite-tasa";
+import { notificarConsumo } from "@/lib/consumo-eventos";
 
 /**
  * LA VOZ DEL TUTOR, SINTETIZADA FUERA DEL NAVEGADOR.
@@ -61,7 +62,7 @@ const LIMITE = 600;
  */
 async function exigirSesionYLimite(
   peticion: Request,
-): Promise<{ ok: true } | { ok: false; respuesta: NextResponse }> {
+): Promise<{ ok: true; usuarioId: string } | { ok: false; respuesta: NextResponse }> {
   const sesion = await auth();
   if (!sesion?.user) {
     return {
@@ -91,7 +92,7 @@ async function exigirSesionYLimite(
       ),
     };
   }
-  return { ok: true };
+  return { ok: true, usuarioId: sesion.user.id };
 }
 
 /** Caché en memoria: una lección repite muchas frases, y cada una se paga. */
@@ -222,7 +223,10 @@ export async function POST(peticion: Request) {
   // sirva el audio del anterior; no se guarda en ningún sitio ni se devuelve.
   const huella = createHash("sha1").update(`${cfg.proveedor}|${cfg.voz}|${cfg.velocidad}|${texto}`).digest("hex");
   const guardado = CACHE.get(huella);
+  const consumo = { servicio: "VOZ" as const, origen: "voz", proveedor: cfg.proveedor, modelo: cfg.voz, caracteres: texto.length, usuarioId: permiso.usuarioId };
   if (guardado) {
+    // PMV 3 · H5B: un acierto de caché no se paga, pero se cuenta.
+    notificarConsumo({ ...consumo, cacheado: true });
     return new NextResponse(new Uint8Array(guardado), {
       headers: {
         "content-type": "audio/mpeg",
@@ -236,7 +240,9 @@ export async function POST(peticion: Request) {
   let audio: Buffer;
   try {
     audio = await sintetizar(texto, cfg);
+    notificarConsumo(consumo);
   } catch (e) {
+    notificarConsumo({ ...consumo, ok: false });
     // El proveedor caído no puede dejar muda la clase: 502 y el reproductor
     // termina la frase con la voz del navegador.
     return NextResponse.json(

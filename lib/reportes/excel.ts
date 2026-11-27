@@ -1,6 +1,16 @@
 import ExcelJS from "exceljs";
 
-import type { AulaDelReporte } from "@/lib/docente/exportar";
+import {
+  COLUMNAS_ALUMNO,
+  COLUMNAS_HABILIDADES,
+  COLUMNAS_TUTORIA,
+  filaAlumno,
+  filaHabilidad,
+  filaTutoria,
+  type AulaDelReporte,
+} from "@/lib/docente/exportar";
+
+const nombreAula = (a: AulaDelReporte) => `${a.grado}.º ${a.seccion} — ${a.nombre}`;
 import type { ResumenInstitucional } from "@/lib/director/resumen";
 
 /**
@@ -43,21 +53,7 @@ export async function excelDocente(docenteNombre: string, aulas: readonly AulaDe
   wb.created = new Date();
 
   const estudiantes = wb.addWorksheet("Estudiantes");
-  aplicarFilas(estudiantes, [
-    ["Aula", "Estudiante", "Correo", "Sesiones completadas", "Pistas usadas", "Repasos abiertos", "Ejercicios equivalentes", "Bloqueos"],
-    ...aulas.flatMap((a) =>
-      a.estudiantes.map((e) => [
-        `${a.grado}.º ${a.seccion} — ${a.nombre}`,
-        e.nombre,
-        e.email,
-        e.sesionesCompletadas,
-        e.tutoria.pistas,
-        e.tutoria.repasos,
-        e.tutoria.equivalentes,
-        e.tutoria.bloqueos,
-      ]),
-    ),
-  ]);
+  aplicarFilas(estudiantes, [["Aula", ...COLUMNAS_ALUMNO], ...aulas.flatMap((a) => a.estudiantes.map((e) => [nombreAula(a), ...filaAlumno(a, e)]))]);
 
   const tareas = wb.addWorksheet("Tareas");
   aplicarFilas(tareas, [
@@ -97,25 +93,14 @@ export async function excelDocente(docenteNombre: string, aulas: readonly AulaDe
     ...aulas.flatMap((a) => a.estudiantes.map((e) => [`${a.grado}.º ${a.seccion} — ${a.nombre}`, e.nombre, e.sesionesCompletadas])),
   ]);
 
-  // PMV 3 · HITO 4: el detalle de la tutoría adaptativa, ejercicio por ejercicio.
+  // PMV 3 · HITO 4: el detalle de la tutoría adaptativa, ejercicio por ejercicio
+  // (mismas columnas que el panel y el PDF: COLUMNAS_TUTORIA).
   const tutoria = wb.addWorksheet("Tutoría adaptativa");
-  aplicarFilas(tutoria, [
-    ["Aula", "Estudiante", "Tarea", "Tema", "Ejercicio", "Errores", "Pistas", "Repasos", "Equivalentes", "Resuelto"],
-    ...aulas.flatMap((a) =>
-      a.tutoria.map((t) => [
-        `${a.grado}.º ${a.seccion} — ${a.nombre}`,
-        t.estudiante,
-        t.tarea,
-        t.tema,
-        t.ejercicio,
-        t.errores,
-        t.pistas,
-        t.repasos,
-        t.equivalentes,
-        t.resuelta ? "Sí" : "No",
-      ]),
-    ),
-  ]);
+  aplicarFilas(tutoria, [["Aula", ...COLUMNAS_TUTORIA], ...aulas.flatMap((a) => a.tutoria.map((t) => [nombreAula(a), ...filaTutoria(t)]))]);
+
+  // PMV 3 · H4: errores, pistas e intentos POR HABILIDAD.
+  const habilidades = wb.addWorksheet("Habilidades");
+  aplicarFilas(habilidades, [["Aula", ...COLUMNAS_HABILIDADES], ...aulas.flatMap((a) => a.habilidades.map((h) => [nombreAula(a), ...filaHabilidad(h)]))]);
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);

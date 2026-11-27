@@ -83,7 +83,7 @@ function construirPrompt(p: PeticionProcedimiento): string {
     "",
     `FORMATO: ${guia}`,
     `Entre 3 y ${Math.min(MAX_PASOS, 6)} pasos. Cada paso: "explica" (lo que dice el profesor, 1–2 frases), "escribe" (lo que aparece en la pizarra, notación plana, SIN LaTeX), "tipo" (transformacion | definicion | resultado; el último es resultado).`,
-    'Opcional por paso: "regla" (nombre de la regla que se aplica) y "terminos": hasta 3 fragmentos que el alumno puede tocar, cada uno con su "explica". El "texto" de un término tiene que ser un fragmento EXACTO de "escribe".',
+    'Opcional por paso: "regla" (nombre de la regla que se aplica) y "terminos": hasta 3 fragmentos que el alumno puede tocar, cada uno con su "explica" y, si ayuda, una "analogia" breve de la vida cotidiana. El "texto" de un término tiene que ser un fragmento EXACTO de "escribe".',
     "Además: 2 preguntas de comprensión (con respuesta corta), 3 pistas generales de la más suave a la más concreta (sin dar el resultado)" +
       (p.ejercicios > 0
         ? `, y ${p.ejercicios} ejercicios de práctica del mismo tipo con distintos números (enunciado en el mismo formato que "ejemplo" y su respuesta).`
@@ -114,7 +114,7 @@ const ESQUEMA = {
             type: "ARRAY",
             items: {
               type: "OBJECT",
-              properties: { texto: { type: "STRING" }, explica: { type: "STRING" } },
+              properties: { texto: { type: "STRING" }, explica: { type: "STRING" }, analogia: { type: "STRING" } },
               required: ["texto", "explica"],
             },
           },
@@ -241,7 +241,7 @@ export async function generarProcedimiento(
   let ultimo: unknown = null;
   for (const modelo of candidatos) {
     try {
-      const texto = await llamada(modelo, clave, prompt, ESQUEMA, PENSAMIENTO);
+      const texto = await llamada(modelo, clave, prompt, ESQUEMA, PENSAMIENTO, "procedimientos");
       let json: unknown;
       try {
         json = JSON.parse(texto);
@@ -268,7 +268,7 @@ export async function generarProcedimiento(
           "Devuelve el JSON COMPLETO corregido, con el mismo formato. Corrige sólo lo necesario.",
         ].join("\n");
         try {
-          const t2 = await llamada(modelo, clave, aviso, ESQUEMA, PENSAMIENTO);
+          const t2 = await llamada(modelo, clave, aviso, ESQUEMA, PENSAMIENTO, "procedimientos");
           const j2 = JSON.parse(t2) as { ejercicios?: unknown };
           const n2 = normalizarProcedimiento(j2, peticion);
           if (n2) {

@@ -83,6 +83,26 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
   const [disponibles, setDisponibles] = useState<EjercicioOpcion[] | "cargando" | null>(null);
   const [elegidos, setElegidos] = useState<Set<string>>(new Set());
 
+  // PMV 3 · Hito 5A (ampliación): ficha de método PUBLICADA que guía la corrección (pistas
+  // de error concretas). Sólo con el banco: es donde el servidor corrige
+  // ejercicio a ejercicio.
+  const [fichas, setFichas] = useState<{ id: string; titulo: string }[]>([]);
+  const [fichaId, setFichaId] = useState("");
+  useEffect(() => {
+    if (!usaBanco) {
+      setFichas([]);
+      setFichaId("");
+      return;
+    }
+    const params = new URLSearchParams({ estado: "PUBLICADO" });
+    if (datos.nodoId) params.set("nodoId", datos.nodoId);
+    void pedir<{ fichas: { id: string; titulo: string }[] }>(`/api/docente/fichas-metodo?${params}`).then((r) => {
+      const lista = r.ok ? r.datos.fichas : [];
+      setFichas(lista);
+      setFichaId((actual) => (lista.some((f) => f.id === actual) ? actual : ""));
+    });
+  }, [usaBanco, datos.nodoId]);
+
   useEffect(() => {
     if (!manual || !usaBanco || !datos.nodoId) {
       setDisponibles(null);
@@ -154,6 +174,7 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
                 origenEjercicios: "banco" as const,
                 dificultad: datos.dificultad === "todos" ? null : datos.dificultad,
                 ...(manual ? { ejercicioIds: [...elegidos] } : {}),
+                ...(fichaId ? { fichaId } : {}),
               }
             : {}),
         },
@@ -268,6 +289,21 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
                   />
                   Elegir ejercicios manualmente
                 </label>
+                <div className="space-y-1.5 pt-2">
+                  <Label htmlFor="tarea-ficha">Ficha de método (opcional)</Label>
+                  <Select id="tarea-ficha" value={fichaId} onChange={(e) => setFichaId(e.target.value)}>
+                    <option value="">Sin ficha de método</option>
+                    {fichas.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.titulo}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Si el alumno se equivoca en un ejercicio que encaja con el método, recibe la pista de error de la
+                    ficha. Se usa la versión publicada hoy: editarla después no cambia esta tarea.
+                  </p>
+                </div>
               </>
             )}
           </div>

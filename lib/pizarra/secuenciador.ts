@@ -67,7 +67,14 @@ export interface Instantanea {
   paso: number;
   /** ¿Está sonando la explicación de un término tocado por el alumno? */
   explicandoTermino: boolean;
+  /**
+   * Instante (reloj `performance.now()`) en que EMPEZÓ el audio del objetivo
+   * actual. Sirve para medir el DESFASE audio → láser (PMV 3 · H3A).
+   */
+  audioEmpezoEn: number | null;
 }
+
+const ahora = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 export interface PasoNarrable {
   explica: string;
@@ -95,6 +102,7 @@ export class Secuenciador {
   private estado: EstadoReproduccion = "detenido";
   private objetivo: string | null = null;
   private explicandoTermino = false;
+  private audioEmpezoEn: number | null = null;
   /** Generación de la locución vigente: la que no coincide, se ignora. */
   private generacion = 0;
   private cancelarLocucion: (() => void) | null = null;
@@ -117,6 +125,7 @@ export class Secuenciador {
       objetivo: this.objetivo,
       paso: seg ? seg.paso : 0,
       explicandoTermino: this.explicandoTermino,
+      audioEmpezoEn: this.audioEmpezoEn,
     };
   }
 
@@ -208,6 +217,7 @@ export class Secuenciador {
       alEmpezar: () => {
         if (mia !== this.generacion) return;
         this.objetivo = `termino:${paso}:${termino}`;
+        this.audioEmpezoEn = ahora();
         this.emitir();
       },
       alTerminar: () => {
@@ -260,6 +270,7 @@ export class Secuenciador {
       alEmpezar: () => {
         if (mia !== this.generacion) return;
         this.objetivo = seg.objetivo;
+        this.audioEmpezoEn = ahora();
         this.emitir();
       },
       alTerminar: () => {

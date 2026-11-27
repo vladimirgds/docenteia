@@ -21,6 +21,9 @@ const SECCIONES = [
   { href: "/docente/ejercicios", titulo: "Ejercicios" },
   // PMV 3 · HITO 2: editor de reglas, métodos y procedimientos.
   { href: "/docente/procedimientos", titulo: "Procedimientos" },
+  // PMV 3 · HITO 5A: fichas de método versionadas, con agente de IA.
+  { href: "/docente/metodos", titulo: "Métodos" },
+  { href: "/docente/habilidades", titulo: "Habilidades" },
   // HITO 3: arquitectura multi-tenant — aulas y tareas programadas.
   { href: "/docente/aulas", titulo: "Aulas" },
   { href: "/docente/asignar-tarea", titulo: "Asignar tarea" },

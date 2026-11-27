@@ -18,6 +18,9 @@ import { crearLocutorTemporizado, type Locutor } from "./secuenciador.ts";
  * pero el puntero y los pasos avanzan igual.
  */
 
+/** Evento de ventana con cada marca (límite de palabra) de la voz que suena. */
+export const EVENTO_MARCA_VOZ = "pz-marca-voz";
+
 export interface AjustesVoz {
   velocidad: number;
   conVoz: boolean;
@@ -59,6 +62,13 @@ export function crearLocutorNavegador(obtener: () => AjustesVoz): Locutor {
       if (voz) u.voice = voz;
       u.onstart = empezar;
       u.onend = terminar;
+      // PMV 3 · H3B: MARCAS DE VOZ. Cada límite de palabra que da el
+      // sintetizador se avisa a la página; el profesor (3D o 2D) mueve la boca
+      // con ellas, así que los labios van con la voz que de verdad suena.
+      u.onboundary = (e) => {
+        if (termino) return;
+        window.dispatchEvent(new CustomEvent(EVENTO_MARCA_VOZ, { detail: { indice: e.charIndex ?? 0 } }));
+      };
       u.onerror = (e) => {
         // «canceled»/«interrupted» son el efecto de cancelar a propósito: no avanzan.
         if (e.error === "canceled" || e.error === "interrupted") return;

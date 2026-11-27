@@ -72,7 +72,7 @@ Cada término se compone para KaTeX con `\htmlClass{pzt-N}{…}`, de modo que el
 
 ## 5. Límites honestos
 
-- El profesor 3D está modelado con **primitivas** (no hay un archivo de modelo): cumple —gesticula, señala, habla—, pero es estilizado. Sustituir `construirProfesor` por un GLB propio no cambia nada más.
+- ~~El profesor 3D está modelado con primitivas.~~ **Sustituido en el cierre (H3B):** personaje GLB con esqueleto y expresiones en React Three Fiber, carga bajo demanda y respaldo 2D completo; ver [`ENTREGA_PMV3_CIERRE.md`](ENTREGA_PMV3_CIERRE.md) §H3B.
 - La **voz** es la del navegador (`speechSynthesis`); la plataforma ya tenía `/api/voz` para voz neuronal (Google/ElevenLabs), pero un audio de red no entrega el instante exacto de cada sílaba, y la sincronía del láser se apoya en `onstart`/`onend` del sintetizador del navegador. Queda como mejora si se quiere voz neuronal con este mismo láser.
 - El **dictado** traduce con prudencia lo que se puede (números en palabras, «más», «entre», «al cuadrado»…); lo que no reconoce lo deja tal cual y decide el corrector del servidor.
 - El reconocimiento de voz depende del navegador (Chrome/Edge sí; Firefox no): si no existe, el botón no aparece y el texto sigue funcionando.

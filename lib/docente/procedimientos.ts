@@ -41,6 +41,13 @@ export const terminoSchema = z.object({
   /** Fragmento EXACTO de `escribe` que el alumno puede tocar. */
   texto: z.string().trim().min(1, "El término no puede estar vacío").max(60),
   explica: z.string().trim().min(1, "Explica el término").max(300),
+  /**
+   * PMV 3 · H3A: si el fragmento se REPITE en el paso (el «2» de «2(x+4) = 2x+8»),
+   * cuál de sus apariciones es (1 = la primera). Sin él, la primera.
+   */
+  aparicion: z.number().int().min(1).max(12).optional(),
+  /** PMV 3 · H3A: una analogía que el alumno puede abrir tras oír la explicación. */
+  analogia: z.string().trim().min(1).max(400).optional().nullable(),
 });
 
 export const pasoSchema = z.object({

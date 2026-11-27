@@ -242,6 +242,7 @@ const asentar = () => pag.waitForTimeout(700); // la transición del láser dura
 
 await pag.goto(`${BASE}/estudiante/pizarra/${pubA.id}`, { waitUntil: "networkidle" });
 check("la pizarra abre para el alumno de A", (await pag.locator("text=Suma de fracciones (publicada de A)").count()) > 0);
+await pag.waitForSelector('[data-profesor="2d"], [data-profesor="3d"]', { timeout: 20000 }).catch(() => {});
 check("hay un profesor virtual en pantalla", (await pag.locator('[data-profesor]').count()) === 1);
 const tipoProfe = await pag.getAttribute("[data-profesor]", "data-profesor");
 check("…en 3D (WebGL) o, sin WebGL, con el profesor 2D de respaldo", tipoProfe === "3d" || tipoProfe === "2d", tipoProfe ?? "");
@@ -375,13 +376,20 @@ await pag.evaluate(() => (window.__dictado = "cinco sextos"));
 // «cinco sextos» no es una respuesta numérica reconocible: se traduce lo seguro y el servidor decide.
 await pag.evaluate(() => (window.__dictado = "diez entre doce"));
 await pag.click('[data-testid="hablar"]');
+await pag.waitForSelector('[data-testid="transcripcion"]');
+check(
+  "responder HABLANDO deja la TRANSCRIPCIÓN EDITABLE: no se corrige sola",
+  (await pag.inputValue('input[aria-label="Tu respuesta"]')) === "10/12" && (await pag.locator('[data-testid="veredicto"][data-tipo="ok"]').count()) === 0,
+);
+await pag.fill('input[aria-label="Tu respuesta"]', "10/12");
+await pag.getByRole("button", { name: "Responder", exact: true }).click();
 const llegoVeredicto = await pag
   .waitForSelector('[data-testid="veredicto"][data-tipo="ok"]', { timeout: 8000 })
   .then(() => true)
   .catch(() => false);
 const textoVeredicto = await pag.locator('[data-testid="veredicto"]').first().textContent().catch(() => "(sin veredicto)");
 check(
-  "responder HABLANDO: «diez entre doce» → 10/12 → el servidor lo da por correcto",
+  "…el alumno la revisa, pulsa Responder: «diez entre doce» → 10/12 → correcto",
   llegoVeredicto && (await pag.inputValue('input[aria-label="Tu respuesta"]')) === "10/12",
   `veredicto: ${textoVeredicto} · campo: ${await pag.inputValue('input[aria-label="Tu respuesta"]')}`,
 );
