@@ -8,6 +8,12 @@ Este repositorio contiene la migración del prototipo Node.js/Express a la
 arquitectura del PMV 1 —**Next.js (App Router) + TypeScript + PostgreSQL**— y,
 sobre ella, el **MVP 2**.
 
+> **PMV 3 (rama `feat/pmv3-staging`)**: catálogo maestro y bancos privados por
+> docente, editor de procedimientos con Gemini y verificación de pasos, pizarra
+> interactiva con profesor 3D y láser, y tutoría adaptativa con reportes PDF/Excel.
+> Índice y cómo ejecutarlo: [`ENTREGA_PMV3.md`](ENTREGA_PMV3.md) · piloto manual:
+> [`GUIA_PILOTO_PMV3.md`](GUIA_PILOTO_PMV3.md).
+>
 > **Estado: PMV 1 completo · MVP 2 HITO 1 completo.**
 >
 > El PMV 1 entregó la fundación, la persistencia, el control de roles, el

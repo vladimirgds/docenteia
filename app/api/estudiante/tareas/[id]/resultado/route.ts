@@ -54,10 +54,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    const ejercicios = await prisma.ejercicio.findMany({
-      where: { id: { in: tarea.ejercicioIds } },
-      select: { id: true, respuestaCorrecta: true },
+    // De la copia CONGELADA al asignar: la respuesta que se enseña es la contra la
+    // que se corrigió, aunque el docente haya editado el ejercicio después.
+    const congelados = await prisma.tareaEjercicio.findMany({
+      where: { tareaId },
+      orderBy: { orden: "asc" },
+      select: { ejercicioId: true, respuestaCorrecta: true },
     });
+    const ejercicios = congelados.flatMap((c) =>
+      c.ejercicioId ? [{ id: c.ejercicioId, respuestaCorrecta: c.respuestaCorrecta }] : [],
+    );
     return NextResponse.json({ ejercicios });
   } catch (e) {
     const infra = explicarFalloDeBaseDeDatos(e);

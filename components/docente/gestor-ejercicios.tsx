@@ -86,6 +86,11 @@ export interface EjercicioVista {
     cursoMin: number | null;
   } | null;
   autor: { nombre: string } | null;
+  /** PMV 3 · HITO 1: catálogo maestro o banco privado del docente. */
+  ambito: "MAESTRO" | "DOCENTE";
+  /** Cuándo lo revisó una persona (borradores de IA). */
+  revisadoEn: string | null;
+  institucionId?: string | null;
 }
 
 export interface ParametroFormulario {
@@ -100,6 +105,23 @@ interface Props {
   temas: TemaOpcion[];
   ejercicios: EjercicioVista[];
   puedeEditar: boolean;
+  /** Rol de quien mira: decide qué ve como suyo y qué como catálogo. */
+  rol?: string;
+}
+
+/** Los cortes del banco que ofrece el filtro (mismos nombres que `?banco=` en la API). */
+const BANCOS_FILTRO = [
+  { valor: "", texto: "Catálogo y mi banco" },
+  { valor: "propio", texto: "Sólo mi banco" },
+  { valor: "borradores-ia", texto: "Borradores IA" },
+  { valor: "maestro", texto: "Sólo catálogo" },
+] as const;
+
+interface ResultadoIA {
+  borradores: unknown[];
+  descartados: { enunciado: string; motivo: string }[];
+  modo: "gemini" | "demo";
+  aviso: string | null;
 }
 
 interface Formulario {
@@ -131,7 +153,7 @@ const VACIO: Formulario = {
   estado: "BORRADOR",
 };
 
-export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
+export function GestorEjercicios({ temas, ejercicios, puedeEditar, rol }: Props) {
   const router = useRouter();
   const [ocupado, iniciar] = useTransition();
 
@@ -144,6 +166,20 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroValidado, setFiltroValidado] = useState("");
   const [filtroNivel, setFiltroNivel] = useState("");
+  const [filtroBanco, setFiltroBanco] = useState("");
+
+  // Generación de borradores con IA (PMV 3 · HITO 1).
+  const [iaTema, setIaTema] = useState(temas[0]?.id ?? "");
+  const [iaNivel, setIaNivel] = useState<Nivel>("BASICO");
+  const [iaCantidad, setIaCantidad] = useState(3);
+  const [iaIndicaciones, setIaIndicaciones] = useState("");
+  const [iaResultado, setIaResultado] = useState<ResultadoIA | null>(null);
+
+  // Un docente no toca el catálogo: lo copia. Un SUPERADMIN sí lo edita.
+  const puedeTocar = (e: EjercicioVista) =>
+    puedeEditar && (e.ambito === "DOCENTE" || rol === "SUPERADMIN" || Boolean(e.institucionId));
+  const puedeCopiar = (e: EjercicioVista) =>
+    puedeEditar && rol === "DOCENTE" && e.ambito === "MAESTRO" && e.estado === "PUBLICADO";
 
   const temaActual = temas.find((t) => t.id === form.nodoId) ?? null;
   // El alcance que regirá para este ejercicio: el suyo si lo ha afinado, el de
@@ -161,9 +197,16 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
         if (filtroNivel && e.nivel !== filtroNivel) return false;
         if (filtroValidado === "si" && !e.validado) return false;
         if (filtroValidado === "no" && e.validado) return false;
+        if (filtroBanco === "maestro" && e.ambito !== "MAESTRO") return false;
+        if (filtroBanco === "propio" && e.ambito !== "DOCENTE") return false;
+        if (
+          filtroBanco === "borradores-ia" &&
+          !(e.ambito === "DOCENTE" && e.origen === "IA" && e.estado === "BORRADOR")
+        )
+          return false;
         return true;
       }),
-    [ejercicios, filtroTema, filtroEstado, filtroNivel, filtroValidado],
+    [ejercicios, filtroTema, filtroEstado, filtroNivel, filtroValidado, filtroBanco],
   );
 
   const cambiar = (cambio: Partial<Formulario>) => {
@@ -276,6 +319,45 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
       }),
       e.estado === "PUBLICADO" ? "Ejercicio archivado." : "Ejercicio publicado.",
     );
+
+  const copiar = (e: EjercicioVista) =>
+    accion(
+      pedir(`/api/docente/ejercicios/${e.id}/copiar`, { metodo: "POST" }),
+      "Copiado a tu banco como borrador. Revísalo y publícalo cuando quieras.",
+    );
+
+  const generarConIA = () => {
+    setError(null);
+    setExito(null);
+    setIaResultado(null);
+    if (!iaTema) {
+      setError("Elige el tema sobre el que generar borradores.");
+      return;
+    }
+    iniciar(async () => {
+      const r = await pedir<ResultadoIA>("/api/docente/ejercicios/borradores-ia", {
+        metodo: "POST",
+        cuerpo: {
+          nodoId: iaTema,
+          nivel: iaNivel,
+          cantidad: iaCantidad,
+          indicaciones: iaIndicaciones.trim() || undefined,
+        },
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setIaResultado(r.datos);
+      setExito(
+        r.datos.borradores.length > 0
+          ? `${r.datos.borradores.length} borrador(es) guardado(s) en tu banco. Revísalos antes de publicarlos.`
+          : "La IA no ha generado ningún borrador válido esta vez.",
+      );
+      setFiltroBanco("borradores-ia");
+      router.refresh();
+    });
+  };
 
   const borrar = (e: EjercicioVista) => {
     if (!window.confirm("¿Borrar este ejercicio del banco?")) return;
@@ -712,6 +794,94 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
 
       {informe && <PanelInforme informe={informe} />}
 
+      {/* ── Borradores con IA (PMV 3 · HITO 1) ───────────────────────────── */}
+      {puedeEditar && temas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Generar borradores con IA</CardTitle>
+            <CardDescription>
+              Gemini propone ejercicios y el servidor comprueba cada respuesta con el motor
+              determinista. Sólo se da por verificado lo que ambos confirman; lo que el motor no
+              puede comprobar queda marcado «Sin verificar» y no se puede publicar. Todo queda como{" "}
+              <strong>borrador</strong> en tu banco privado: nada llega a un alumno hasta que lo
+              revises y lo publiques.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <Label htmlFor="ia-tema">Tema</Label>
+                <Select id="ia-tema" value={iaTema} onChange={(e) => setIaTema(e.target.value)}>
+                  {temas.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.titulo}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="ia-nivel">Dificultad</Label>
+                <Select
+                  id="ia-nivel"
+                  value={iaNivel}
+                  onChange={(e) => setIaNivel(e.target.value as Nivel)}
+                >
+                  {NIVELES.map((n) => (
+                    <option key={n} value={n}>
+                      {ETIQUETA_NIVEL_CURRICULO[n as Nivel]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="ia-cantidad">Cuántos (1–5)</Label>
+                <Input
+                  id="ia-cantidad"
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={iaCantidad}
+                  onChange={(e) =>
+                    setIaCantidad(globalThis.Math.min(5, globalThis.Math.max(1, Number(e.target.value) || 1)))
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="ia-indicaciones">Indicaciones (opcional)</Label>
+                <Input
+                  id="ia-indicaciones"
+                  maxLength={300}
+                  placeholder="p. ej. con números negativos"
+                  value={iaIndicaciones}
+                  onChange={(e) => setIaIndicaciones(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button onClick={generarConIA} disabled={ocupado}>
+              {ocupado ? "Generando…" : "Generar borradores"}
+            </Button>
+
+            {iaResultado?.aviso && (
+              <p className="text-sm text-muted-foreground">{iaResultado.aviso}</p>
+            )}
+            {iaResultado && iaResultado.descartados.length > 0 && (
+              <div className="rounded-md border px-4 py-3 text-sm">
+                <p className="font-medium">
+                  {iaResultado.descartados.length} propuesta(s) descartada(s) por el servidor:
+                </p>
+                <ul className="list-disc space-y-1 pl-5 pt-1 text-muted-foreground">
+                  {iaResultado.descartados.map((d, i) => (
+                    <li key={i}>
+                      <span className="font-mono text-xs">{d.enunciado}</span> — {d.motivo}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Banco ────────────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
@@ -723,7 +893,18 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Select
+              aria-label="Banco"
+              value={filtroBanco}
+              onChange={(e) => setFiltroBanco(e.target.value)}
+            >
+              {BANCOS_FILTRO.map((b) => (
+                <option key={b.valor} value={b.valor}>
+                  {b.texto}
+                </option>
+              ))}
+            </Select>
             <Select value={filtroTema} onChange={(e) => setFiltroTema(e.target.value)}>
               <option value="">Todos los temas</option>
               {temas.map((t) => (
@@ -803,7 +984,32 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                               </Badge>
                             );
                           })()}
-                          {e.estado === "PUBLICADO" && e.validado && !e.plantilla && (
+                          <Badge
+                            variant={e.ambito === "DOCENTE" ? "neutro" : "contorno"}
+                            title={
+                              e.ambito === "DOCENTE"
+                                ? "Banco privado: sólo tú lo ves y sólo le llega a un alumno por una tarea tuya"
+                                : "Catálogo maestro: alimenta el diagnóstico general"
+                            }
+                          >
+                            {e.ambito === "DOCENTE" ? "Mi banco" : "Catálogo maestro"}
+                          </Badge>
+                          {e.origen === "IA" && (
+                            <Badge
+                              variant={e.revisadoEn ? "exito" : "aviso"}
+                              title={
+                                e.revisadoEn
+                                  ? "Generado con IA y revisado por una persona"
+                                  : "Generado con IA: pendiente de revisión humana"
+                              }
+                            >
+                              {e.revisadoEn ? "IA · revisado" : "Borrador IA"}
+                            </Badge>
+                          )}
+                          {e.ambito === "MAESTRO" &&
+                            e.estado === "PUBLICADO" &&
+                            e.validado &&
+                            !e.plantilla && (
                             <Badge
                               variant="exito"
                               title="Publicado, verificado y sin huecos: puede aparecer en la evaluación inicial de un alumno de este nivel"
@@ -812,7 +1018,9 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                             </Badge>
                           )}
                           {e.plantilla && <Badge variant="contorno">Plantilla</Badge>}
-                          {e.origen === "DOCENTE" && <Badge variant="contorno">Autoría docente</Badge>}
+                          {e.origen === "DOCENTE" && e.ambito === "MAESTRO" && (
+                            <Badge variant="contorno">Autoría docente</Badge>
+                          )}
                           {e.autor && (
                             <span className="text-xs text-muted-foreground">{e.autor.nombre}</span>
                           )}
@@ -838,29 +1046,54 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                         </Badge>
                       </td>
                       <td className="py-3">
-                        {puedeEditar && (
-                          <div className="flex flex-wrap justify-end gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => editar(e)}>
-                              Editar
-                            </Button>
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {puedeCopiar(e) && (
                             <Button
                               variant="ghost"
                               size="sm"
                               disabled={ocupado}
-                              onClick={() => publicar(e)}
+                              onClick={() => copiar(e)}
+                              title="Copia este ejercicio a tu banco para adaptarlo"
                             >
-                              {e.estado === "PUBLICADO" ? "Archivar" : "Publicar"}
+                              Copiar a mi banco
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={ocupado}
-                              onClick={() => borrar(e)}
-                            >
-                              Borrar
-                            </Button>
-                          </div>
-                        )}
+                          )}
+                          {puedeTocar(e) && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => editar(e)}>
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={
+                                  ocupado ||
+                                  (e.origen === "IA" && e.estado !== "PUBLICADO" && !e.validado)
+                                }
+                                title={
+                                  e.origen === "IA" && e.estado !== "PUBLICADO" && !e.validado
+                                    ? "El servidor no ha podido verificar este borrador de IA: corrígelo para poder publicarlo"
+                                    : undefined
+                                }
+                                onClick={() => publicar(e)}
+                              >
+                                {e.estado === "PUBLICADO"
+                                  ? "Archivar"
+                                  : e.origen === "IA" && !e.revisadoEn
+                                    ? "Revisar y publicar"
+                                    : "Publicar"}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={ocupado}
+                                onClick={() => borrar(e)}
+                              >
+                                Borrar
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

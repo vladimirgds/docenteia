@@ -10,6 +10,8 @@ import {
   type TemaOpcion,
 } from "@/components/docente/gestor-ejercicios";
 import { prisma } from "@/lib/prisma";
+import { clausulaInstitucional } from "@/lib/docente/api";
+import { autorizacionDeSesion, dondeEjerciciosVisibles } from "@/lib/docente/bancos";
 import { puedeEditarCurriculo } from "@/lib/rbac";
 import { SELECCION_EJERCICIO } from "@/lib/docente/ejercicios";
 import type { Estado } from "@/lib/docente/curriculo";
@@ -28,10 +30,14 @@ export const dynamic = "force-dynamic";
 export default async function PaginaEjercicios() {
   const sesion = await auth();
   const puedeEditar = puedeEditarCurriculo(sesion?.user?.rol);
+  const quien = autorizacionDeSesion(sesion?.user);
+  // Aislamiento (HITO 4) también en la página: el propio colegio más el
+  // catálogo base. SUPERADMIN sin límite.
+  const clausulaTemas = clausulaInstitucional(quien);
 
   const [temas, ejercicios] = await Promise.all([
     prisma.nodoConocimiento.findMany({
-      where: { estado: { not: "ARCHIVADO" } },
+      where: { estado: { not: "ARCHIVADO" }, ...(clausulaTemas ? { OR: clausulaTemas } : {}) },
       orderBy: [{ orden: "asc" }, { titulo: "asc" }],
       select: {
         id: true,
@@ -45,6 +51,8 @@ export default async function PaginaEjercicios() {
       take: 500,
     }),
     prisma.ejercicio.findMany({
+      // PMV 3 · HITO 1: el catálogo y SU banco privado; nunca el de otro docente.
+      where: dondeEjerciciosVisibles(quien),
       orderBy: [{ actualizadoEn: "desc" }],
       select: SELECCION_EJERCICIO,
       take: 200,
@@ -81,6 +89,9 @@ export default async function PaginaEjercicios() {
     nodoId: e.nodoId,
     nodo: e.nodo,
     autor: e.autor,
+    institucionId: e.institucionId,
+    ambito: e.ambito,
+    revisadoEn: e.revisadoEn ? e.revisadoEn.toISOString() : null,
   }));
 
   return (
@@ -107,6 +118,7 @@ export default async function PaginaEjercicios() {
           temas={temasVista}
           ejercicios={ejerciciosVista}
           puedeEditar={puedeEditar}
+          rol={sesion?.user?.rol}
         />
       </main>
     </div>

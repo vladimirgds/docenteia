@@ -222,6 +222,49 @@ export default async function PanelEstudiante() {
 
         <Card className="flex flex-col">
           <CardHeader>
+            <CardTitle>Explicaciones en la pizarra</CardTitle>
+            <CardDescription>
+              Un profesor virtual te explica ejemplos paso a paso: toca un término para oír qué significa, pide pistas y
+              responde escribiendo o hablando.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/pizarra">Abrir la pizarra</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle>Práctica guiada</CardTitle>
+            <CardDescription>
+              Resuelve una ecuación paso a paso: el tutor comprueba cada paso, te explica el error y te da pistas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/practica-guiada">Practicar paso a paso</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle>Métodos de tu profesor</CardTitle>
+            <CardDescription>
+              Practica los métodos que ha publicado tu profesor: resuelve un problema y recibe pistas si te olvidas de algún paso.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="mt-auto">
+            <Button asChild size="lg">
+              <Link href="/estudiante/metodos">Practicar métodos</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
             <CardTitle>Tareas asignadas</CardTitle>
             <CardDescription>
               Lo que tu profesor te dejó, con su plazo y cuántos ejercicios tiene.

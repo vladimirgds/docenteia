@@ -1,0 +1,22 @@
+{
+  "fecha": "2026-11-27T02:14:44.678Z",
+  "ia": {
+    "leccion": {
+      "llamadas": 2,
+      "modelo": "gemini-2.5-flash-lite",
+      "tokensEntradaMedia": 4353,
+      "tokensSalidaMedia": 1488,
+      "tokensTotalesMedia": 5841,
+      "latenciaMediaMs": 3050
+    },
+    "fichaMetodo": {
+      "llamadas": 3,
+      "modelo": "gemini-2.5-flash",
+      "tokensTotalesPorBorrador": 15264
+    }
+  },
+  "voz": {
+    "nota": "La voz de la lección es la del navegador (speechSynthesis): no pasa por el servidor ni tiene coste por carácter. Si se configura un proveedor (VOZ_PROVEEDOR + clave), /api/voz registra los caracteres sintetizados por llamada.",
+    "proveedorConfigurado": false
+  }
+}

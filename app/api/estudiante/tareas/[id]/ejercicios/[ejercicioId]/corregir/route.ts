@@ -5,6 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { puedeEntregar } from "@/lib/docente/aulas";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
+import { fichaCongelada, revisarConFichaDeTarea } from "@/lib/docente/fichas-tarea";
+import { cargarContexto, procesarRespuesta } from "@/lib/tutoria/servidor";
+import {
+  OPCIONES_TX,
+  bloquearAlumnoTarea,
+  intentoEnCurso,
+} from "@/lib/docente/evaluacion-servidor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,16 +84,75 @@ export async function POST(
       return NextResponse.json({ error: bloqueo }, { status: 409 });
     }
 
-    const ejercicio = await prisma.ejercicio.findUnique({
-      where: { id: ejercicioId },
-      select: { respuestaCorrecta: true },
+    // LA COPIA CONGELADA al asignar, no el ejercicio vivo del banco: si el docente
+    // lo editó después, esta tarea se sigue corrigiendo con lo que valía al asignar.
+    const ejercicio = await prisma.tareaEjercicio.findFirst({
+      where: { tareaId, ejercicioId },
+      select: { id: true, respuestaCorrecta: true, enunciado: true },
     });
     if (!ejercicio) {
       return NextResponse.json({ error: "Ese ejercicio ya no existe." }, { status: 404 });
     }
 
-    const resultado = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
-    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido });
+    const general = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
+
+    // PMV 3 · HITO 5A (ampliación): la FICHA DE MÉTODO congelada en la tarea. Aporta la pista
+    // de error concreta y, SÓLO si el corrector general no sabe decidir, su
+    // veredicto (el motor ya verificó el método antes de publicarse). Nunca
+    // contradice un veredicto que el corrector general sí sabe dar.
+    const ficha = fichaCongelada(tarea.fichaContenido);
+    const porFicha = ficha ? revisarConFichaDeTarea(ficha, ejercicio.enunciado, respuesta.trim()) : null;
+    const resultado =
+      general.conocido === false && porFicha?.aplica && porFicha.correcta !== null
+        ? { ...general, conocido: true, correcto: porFicha.correcta }
+        : general;
+    const metodo =
+      ficha && porFicha?.aplica
+        ? { titulo: tarea.fichaTitulo, pista: resultado.correcto ? null : porFicha.pista }
+        : null;
+
+    // El veredicto lo deja el SERVIDOR en el intento en curso (la última
+    // respuesta a cada ejercicio es la que cuenta). Con el cerrojo del alumno y la
+    // tarea, y comprobando otra vez el tope de intentos DENTRO de la transacción.
+    const rechazo = await prisma.$transaction(async (tx) => {
+      await bloquearAlumnoTarea(tx, tareaId, sesion.user.id);
+      const actual = await tx.entregaTarea.findUnique({
+        where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
+      });
+      const motivo = puedeEntregar(tarea, actual);
+      if (motivo) return motivo;
+      const intento = await intentoEnCurso(tx, tareaId, sesion.user.id);
+      await tx.respuestaIntento.upsert({
+        where: { intentoId_tareaEjercicioId: { intentoId: intento.id, tareaEjercicioId: ejercicio.id } },
+        create: {
+          intentoId: intento.id,
+          tareaEjercicioId: ejercicio.id,
+          respuesta: respuesta.trim(),
+          correcto: resultado.conocido === false ? null : resultado.correcto,
+        },
+        update: {
+          respuesta: respuesta.trim(),
+          correcto: resultado.conocido === false ? null : resultado.correcto,
+        },
+      });
+      return null;
+    }, OPCIONES_TX);
+    if (rechazo) {
+      return NextResponse.json({ error: rechazo }, { status: 409 });
+    }
+
+    // TUTORÍA ADAPTATIVA (PMV 3 · HITO 4): el servidor registra la respuesta y
+    // decide qué hace el tutor —una pista, abrir un repaso, un equivalente—. Sólo
+    // si el ejercicio se puede CORREGIR: un veredicto que el motor no sabe dar no
+    // cuenta como error del alumno.
+    let tutor = null;
+    if (resultado.conocido !== false) {
+      const ctx = await cargarContexto(tareaId, ejercicioId);
+      if (ctx.tarea && ctx.ejercicio) {
+        tutor = await procesarRespuesta(sesion.user.id, ctx.tarea, ctx.ejercicio, resultado.correcto);
+      }
+    }
+    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido, tutor, metodo });
   } catch (e) {
     const infra = explicarFalloDeBaseDeDatos(e);
     if (infra) {

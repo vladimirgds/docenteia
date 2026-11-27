@@ -1,0 +1,23 @@
+{
+  "fecha": "2026-11-27T02:56:10.259Z",
+  "navegador": "Chrome headless (Playwright)",
+  "muestras": 12,
+  "medianaMs": 6,
+  "p95Ms": 7,
+  "maximoMs": 7,
+  "transicionVisualMs": 450,
+  "muestrasMs": [
+    5,
+    5,
+    5,
+    5,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    7
+  ]
+}

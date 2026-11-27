@@ -321,35 +321,43 @@ async function main() {
       sinVerificar.push(`${e.tema}: ${e.enunciado}`);
       continue;
     }
-    await prisma.ejercicio.upsert({
+    // PMV 3 · HITO 1: ya no hay una clave única global (motor, nivel,
+    // enunciado) que Prisma pueda usar en un `upsert` —sólo hay un índice
+    // PARCIAL para el catálogo maestro, que Prisma no expresa—. Se busca el
+    // ejercicio MAESTRO y se actualiza o se crea. Ojo con el filtro: sin
+    // `ambito: "MAESTRO"`, la semilla podría "adoptar" el ejercicio privado de
+    // un docente que casualmente tenga el mismo enunciado, y moverlo al catálogo.
+    const datosSemilla = {
+      respuestaCorrecta: respuesta,
+      validado: true,
+      estado: "PUBLICADO" as const,
+      nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
+      ...ALCANCE_POR_MOTOR[e.tema as TemaEnum],
+      metadatos: { nivelMotor: e.nivelMotor },
+    };
+    const existente = await prisma.ejercicio.findFirst({
       where: {
-        motor_nivel_enunciado: {
-          motor: e.tema as Tema,
-          nivel: e.nivel as NivelAcademico,
-          enunciado: e.enunciado,
-        },
-      },
-      update: {
-        respuestaCorrecta: respuesta,
-        validado: true,
-        estado: "PUBLICADO",
-        nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
-        ...ALCANCE_POR_MOTOR[e.tema as TemaEnum],
-        metadatos: { nivelMotor: e.nivelMotor },
-      },
-      create: {
         motor: e.tema as Tema,
         nivel: e.nivel as NivelAcademico,
         enunciado: e.enunciado,
-        respuestaCorrecta: respuesta,
-        origen: "DETERMINISTA",
-        validado: true,
-        estado: "PUBLICADO",
-        nodoId: raicesPorMotor.get(e.tema as TemaEnum) ?? null,
-        ...ALCANCE_POR_MOTOR[e.tema as TemaEnum],
-        metadatos: { nivelMotor: e.nivelMotor },
+        ambito: "MAESTRO",
       },
+      select: { id: true },
     });
+    if (existente) {
+      await prisma.ejercicio.update({ where: { id: existente.id }, data: datosSemilla });
+    } else {
+      await prisma.ejercicio.create({
+        data: {
+          motor: e.tema as Tema,
+          nivel: e.nivel as NivelAcademico,
+          enunciado: e.enunciado,
+          origen: "DETERMINISTA",
+          ambito: "MAESTRO",
+          ...datosSemilla,
+        },
+      });
+    }
     sembrados++;
   }
   console.log(`  ✓ Banco de ejercicios: ${sembrados} verificados por el motor`);

@@ -127,6 +127,16 @@ console.log("\n · C. Zero-Trust: el reporte del docente es SÓLO de SUS aulas")
   // mismo"), y que cada reporte tenga un tamaño distinto en consecuencia.
   // El filtro es `docenteId`, no "cualquiera con acceso a /docente".
   if (sesionDocente && sesionDirector) {
+    // La premisa no depende de cómo haya quedado la base: si el director no tiene
+    // aulas propias, se le crea una (si no, la comprobación no probaría nada).
+    const previas = await fetch(`${BASE}/api/docente/aulas`, { headers: { cookie: sesionDirector } }).then((r) => r.json());
+    if ((previas.aulas ?? []).length === 0) {
+      await fetch(`${BASE}/api/docente/aulas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: sesionDirector },
+        body: JSON.stringify({ nombre: `Aula del director ${Date.now().toString(36)}`, grado: 4, seccion: "D" }),
+      });
+    }
     const pdfDocente = await descargar("/api/docente/exportar/pdf", sesionDocente);
     const pdfDirectorComoDocente = await descargar("/api/docente/exportar/pdf", sesionDirector);
     const aulasDocente = await fetch(`${BASE}/api/docente/aulas`, { headers: { cookie: sesionDocente } }).then((r) => r.json());

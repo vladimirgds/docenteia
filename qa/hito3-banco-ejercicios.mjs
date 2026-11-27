@@ -358,8 +358,10 @@ check("la tarea del banco se entrega con el mismo endpoint de siempre", rEntrega
 const rTareasAlumno = await apiAlumno("/api/estudiante/tareas");
 const laSuya = (await rTareasAlumno.json().catch(() => ({})))?.tareas?.find((t) => t.id === tareaAuto.tarea.id);
 check(
-  "la entrega de la tarea del banco queda registrada: entregada, nota 100",
-  laSuya?.estado === "entregada" && laSuya?.puntaje === 100,
+  // PMV 3 · HITO 1: la nota ya NO es la que manda el navegador (aquí mandaba 100):
+  // la calcula el servidor con lo que él mismo corrigió — 2 aciertos de 3.
+  "la entrega de la tarea del banco queda registrada: entregada, nota calculada por el servidor (67, no el 100 del navegador)",
+  laSuya?.estado === "entregada" && laSuya?.puntaje === 67,
   JSON.stringify(laSuya),
 );
 

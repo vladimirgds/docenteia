@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
 import { tareaSchema } from "@/lib/docente/aulas";
+import { dondeEjerciciosAsignables } from "@/lib/docente/bancos";
+import { OPCIONES_TX, REGLA_NUEVA, congelarEjercicios } from "@/lib/docente/evaluacion-servidor";
+import { dondeFichasVisibles } from "@/lib/docente/fichas-servidor";
+import { fichaCongelada } from "@/lib/docente/fichas-tarea";
+import type { Prisma } from "@prisma/client";
 
 /**
  * ¿Es este tema (o este ejercicio, por el tema del que cuelga) legible desde
@@ -104,9 +109,10 @@ export async function POST(req: Request) {
             // podría armar una tarea a mano citando ids de OTRA institución
             // —no se ven en /api/docente/ejercicios, pero nada impedía
             // escribirlos directamente en la petición—.
-            ...(permiso.quien.rol === "SUPERADMIN"
-              ? {}
-              : { OR: [{ institucionId: null }, { institucionId: aula.institucionId }] }),
+            // PMV 3 · HITO 1: el catálogo del colegio del aula MÁS el banco
+            // PRIVADO de quien asigna. El de otro docente no entra, aunque se
+            // cite su id a mano.
+            AND: [dondeEjerciciosAsignables(permiso.quien, aula.institucionId)],
           },
           select: { id: true },
         });
@@ -133,6 +139,7 @@ export async function POST(req: Request) {
             validado: true,
             plantilla: false,
             ...(datos.dificultad ? { nivel: datos.dificultad } : {}),
+            AND: [dondeEjerciciosAsignables(permiso.quien, aula.institucionId)],
           },
           select: { id: true },
         });
@@ -151,21 +158,53 @@ export async function POST(req: Request) {
       }
     }
 
-    const tarea = await prisma.tarea.create({
-      data: {
-        titulo: datos.titulo,
-        descripcion: datos.descripcion ?? null,
-        fechaInicio: datos.fechaInicio,
-        fechaVencimiento: datos.fechaVencimiento,
-        cantidadEjercicios: ejercicioIds.length > 0 ? ejercicioIds.length : (datos.cantidadEjercicios ?? 5),
-        limiteReintentos: datos.limiteReintentos ?? 3,
-        nodoId: datos.nodoId ?? null,
-        dificultad: datos.origenEjercicios === "banco" ? (datos.dificultad ?? null) : null,
-        ejercicioIds,
-        aulaId: aula.id,
-        docenteId: permiso.quien.usuarioId,
-      },
-    });
+    // PMV 3 · HITO 5A (ampliación): la ficha de método que guía la corrección. Tiene que
+    // estar PUBLICADA y ser visible para quien asigna (la privada de otro
+    // docente responde 404, como en el resto de la API de fichas). Se congela
+    // la versión PUBLICADA, no la de trabajo.
+    let ficha: { fichaId: string; fichaVersion: number; fichaTitulo: string; fichaContenido: Prisma.InputJsonValue } | null = null;
+    if (datos.fichaId) {
+      const f = await prisma.fichaMetodo.findFirst({
+        where: { id: datos.fichaId, AND: [dondeFichasVisibles(permiso.quien)] },
+        select: { id: true, titulo: true, estado: true, publicadaVersion: true },
+      });
+      if (!f) return noEncontrado("La ficha de método");
+      if (f.estado !== "PUBLICADO" || f.publicadaVersion === null) {
+        return NextResponse.json({ error: "Sólo se puede aplicar una ficha de método publicada." }, { status: 409 });
+      }
+      const v = await prisma.fichaMetodoVersion.findUnique({
+        where: { fichaId_version: { fichaId: f.id, version: f.publicadaVersion } },
+        select: { contenido: true },
+      });
+      if (!v || !fichaCongelada(v.contenido)) {
+        return NextResponse.json({ error: "La versión publicada de la ficha no es válida." }, { status: 409 });
+      }
+      ficha = { fichaId: f.id, fichaVersion: f.publicadaVersion, fichaTitulo: f.titulo, fichaContenido: v.contenido as Prisma.InputJsonValue };
+    }
+
+    // La tarea y la COPIA CONGELADA de sus ejercicios y rúbricas nacen juntas, o
+    // no nace ninguna: nunca queda una tarea del banco sin su congelado.
+    const tarea = await prisma.$transaction(async (tx) => {
+      const creada = await tx.tarea.create({
+        data: {
+          titulo: datos.titulo,
+          descripcion: datos.descripcion ?? null,
+          fechaInicio: datos.fechaInicio,
+          fechaVencimiento: datos.fechaVencimiento,
+          cantidadEjercicios: ejercicioIds.length > 0 ? ejercicioIds.length : (datos.cantidadEjercicios ?? 5),
+          limiteReintentos: datos.limiteReintentos ?? 3,
+          nodoId: datos.nodoId ?? null,
+          dificultad: datos.origenEjercicios === "banco" ? (datos.dificultad ?? null) : null,
+          ejercicioIds,
+          reglaCalificacion: REGLA_NUEVA,
+          aulaId: aula.id,
+          docenteId: permiso.quien.usuarioId,
+          ...(ficha ?? {}),
+        },
+      });
+      await congelarEjercicios(tx, creada.id, ejercicioIds);
+      return creada;
+    }, OPCIONES_TX);
 
     return NextResponse.json({ tarea }, { status: 201 });
   } catch (e) {

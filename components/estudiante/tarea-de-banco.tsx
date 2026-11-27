@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TextoMatematico } from "@/components/math";
+import { PizarraAlumno } from "@/components/pizarra/pizarra-alumno";
+import type { VistaPizarra } from "@/components/pizarra/pizarra-interactiva";
 import { pedir } from "@/lib/docente/cliente";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,23 @@ interface Props {
 interface Resultado {
   correcto: boolean;
   respuestaDada: string;
+}
+
+/** Lo que el servidor dice que hace el tutor (ver `lib/tutoria/servidor.ts`). */
+interface TutorVista {
+  accion: "CONTINUAR" | "PISTA" | "ABRIR_REPASO" | "VOLVER_AL_PASO" | "PROPONER_EQUIVALENTE";
+  pista?: string | null;
+  quedanPistas?: number;
+  repaso?: { id: string; titulo: string } | null;
+  equivalente?: { id: string; enunciado: string } | null;
+  mensaje: string;
+}
+
+interface EquivalenteVista {
+  /** El ejercicio de la tarea al que acompaña (la sesión de tutoría es suya). */
+  paraEjercicio: string;
+  id: string;
+  enunciado: string;
 }
 
 /**
@@ -55,6 +74,24 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
   /** Respuesta correcta por ejercicio: sólo llega una vez entregada la tarea. */
   const [respuestasCorrectas, setRespuestasCorrectas] = useState<Record<string, string>>({});
 
+  // ── Tutoría adaptativa (PMV 3 · HITO 4) ──────────────────────────────────
+  const [pistas, setPistas] = useState<string[]>([]);
+  const [mensajeTutor, setMensajeTutor] = useState<string | null>(null);
+  /** PMV 3 · Hito 5A (ampliación): pista de error concreta de la ficha de método de la tarea. */
+  const [pistaMetodo, setPistaMetodo] = useState<{ titulo: string | null; pista: string } | null>(null);
+  const [repaso, setRepaso] = useState<{ ejercicioId: string; titulo: string; vista: VistaPizarra } | null>(null);
+  const [equivalente, setEquivalente] = useState<EquivalenteVista | null>(null);
+  const [respEq, setRespEq] = useState("");
+  const [veredictoEq, setVeredictoEq] = useState<"ok" | "mal" | null>(null);
+  const [ocupadoTutor, setOcupadoTutor] = useState(false);
+
+  const limpiarTutor = () => {
+    setPistas([]);
+    setMensajeTutor(null);
+    setPistaMetodo(null);
+    setRepaso(null);
+  };
+
   const total = ejercicios.length;
   const hechos = Object.keys(resultados).length;
   const aciertos = Object.values(resultados).filter((r) => r.correcto).length;
@@ -66,12 +103,42 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
 
   const activo = ejercicios[slotActivo];
 
+  /** Da el ejercicio por resuelto (bien o mal) y pasa al siguiente sin resolver. */
+  const registrar = useCallback(
+    (slot: number, correcto: boolean, respuesta: string) => {
+      setRevisando(null);
+      setResultados((prev) => {
+        if (prev[slot]) return prev;
+        const siguiente = { ...prev, [slot]: { correcto, respuestaDada: respuesta } };
+        for (let i = 0; i < total; i++) {
+          if (!siguiente[i]) {
+            setSlotActivo(i);
+            break;
+          }
+        }
+        return siguiente;
+      });
+      limpiarTutor();
+    },
+    [total],
+  );
+
+  const abrirRepaso = async (ejercicioId: string, repasoId: string, titulo: string) => {
+    const r = await pedir<{ procedimiento: VistaPizarra }>(`/api/estudiante/procedimientos/${repasoId}`);
+    if (r.ok) setRepaso({ ejercicioId, titulo, vista: r.datos.procedimiento });
+  };
+
   const responder = useCallback(async () => {
     const respuesta = borrador.trim();
     if (!respuesta || !activo || corrigiendo) return;
     setCorrigiendo(true);
     setAviso(null);
-    const r = await pedir<{ correcto: boolean }>(
+    const r = await pedir<{
+      correcto: boolean;
+      verificable: boolean | null;
+      tutor: TutorVista | null;
+      metodo: { titulo: string | null; pista: string | null } | null;
+    }>(
       `/api/estudiante/tareas/${tareaId}/ejercicios/${activo.id}/corregir`,
       { metodo: "POST", cuerpo: { respuesta } },
     );
@@ -81,24 +148,81 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
       return;
     }
     setBorrador("");
-    // "La tarjeta del ejercicio previo no se desmonta" (corrección QA): no
-    // era un problema de reconciliación de React —era que, al avanzar SOLO
-    // tras responder, nada cerraba una revisión que hubiera quedado abierta
-    // de un ejercicio anterior, así que su tarjeta seguía viéndose junto a
-    // la del nuevo ejercicio activo.
-    setRevisando(null);
-    setResultados((prev) => {
-      if (prev[slotActivo]) return prev;
-      const siguiente = { ...prev, [slotActivo]: { correcto: r.datos.correcto, respuestaDada: respuesta } };
-      for (let i = 0; i < total; i++) {
-        if (!siguiente[i]) {
-          setSlotActivo(i);
-          break;
-        }
+    const tutor = r.datos.tutor;
+    const metodo = r.datos.metodo;
+    setPistaMetodo(!r.datos.correcto && metodo?.pista ? { titulo: metodo.titulo, pista: metodo.pista } : null);
+
+    // Acierto (o un ejercicio que el motor no sabe corregir): se registra y se
+    // pasa al siguiente. Si el tutor propone un equivalente, queda a la vista.
+    if (r.datos.correcto || !tutor) {
+      registrar(slotActivo, r.datos.correcto, respuesta);
+      if (tutor?.accion === "PROPONER_EQUIVALENTE" && tutor.equivalente) {
+        setEquivalente({ paraEjercicio: activo.id, ...tutor.equivalente });
+        setRespEq("");
+        setVeredictoEq(null);
       }
-      return siguiente;
+      return;
+    }
+
+    // Error: el alumno SE QUEDA en el ejercicio y el tutor le ayuda.
+    setMensajeTutor(tutor.mensaje);
+    if (tutor.accion === "PISTA" && tutor.pista) setPistas((p) => [...p, tutor.pista!]);
+    if (tutor.accion === "ABRIR_REPASO" && tutor.repaso) {
+      await abrirRepaso(activo.id, tutor.repaso.id, tutor.repaso.titulo);
+    }
+    if (tutor.accion === "PROPONER_EQUIVALENTE") {
+      // Sigue atascado tras el repaso: este ejercicio se da por no resuelto y se
+      // le propone uno parecido en lugar de insistir con el mismo.
+      registrar(slotActivo, false, respuesta);
+      if (tutor.equivalente) {
+        setEquivalente({ paraEjercicio: activo.id, ...tutor.equivalente });
+        setRespEq("");
+        setVeredictoEq(null);
+      }
+    }
+  }, [borrador, activo, corrigiendo, slotActivo, tareaId, registrar]);
+
+  const pedirPistaTutor = async () => {
+    if (!activo || ocupadoTutor) return;
+    setOcupadoTutor(true);
+    const r = await pedir<{ tutor: TutorVista }>(`/api/estudiante/tareas/${tareaId}/ejercicios/${activo.id}/pista`, {
+      metodo: "POST",
     });
-  }, [borrador, activo, corrigiendo, slotActivo, tareaId, total]);
+    setOcupadoTutor(false);
+    if (!r.ok) {
+      setAviso(r.error);
+      return;
+    }
+    setMensajeTutor(r.datos.tutor.mensaje);
+    if (r.datos.tutor.pista) setPistas((p) => [...p, r.datos.tutor.pista!]);
+  };
+
+  const terminarRepaso = async () => {
+    if (!repaso || ocupadoTutor) return;
+    setOcupadoTutor(true);
+    const r = await pedir<{ tutor: TutorVista }>(`/api/estudiante/tareas/${tareaId}/ejercicios/${repaso.ejercicioId}/repaso`, {
+      metodo: "POST",
+    });
+    setOcupadoTutor(false);
+    if (!r.ok) {
+      setAviso(r.error);
+      return;
+    }
+    setRepaso(null);
+    setMensajeTutor(r.datos.tutor.mensaje || "Vuelve al ejercicio y vuelve a intentarlo.");
+  };
+
+  const comprobarEquivalente = async () => {
+    if (!equivalente || !respEq.trim() || ocupadoTutor) return;
+    setOcupadoTutor(true);
+    const r = await pedir<{ correcto: boolean }>(
+      `/api/estudiante/tareas/${tareaId}/ejercicios/${equivalente.paraEjercicio}/equivalente`,
+      { metodo: "POST", cuerpo: { equivalenteId: equivalente.id, respuesta: respEq.trim() } },
+    );
+    setOcupadoTutor(false);
+    if (r.ok) setVeredictoEq(r.datos.correcto ? "ok" : "mal");
+    else setAviso(r.error);
+  };
 
   const irAlEjercicio = (i: number) => {
     if (resultados[i]) {
@@ -109,6 +233,7 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     setSlotActivo(i);
     setBorrador("");
     setAviso(null);
+    limpiarTutor();
   };
 
   const reintentar = () => {
@@ -337,9 +462,100 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                 </Button>
               </form>
               {aviso && <p className="text-sm text-destructive">{aviso}</p>}
+
+              {/* ── El tutor ───────────────────────────────────────────── */}
+              {pistaMetodo && (
+                <p role="status" data-testid="pista-metodo" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                  {pistaMetodo.titulo ? <span className="font-medium">{pistaMetodo.titulo}: </span> : null}
+                  {pistaMetodo.pista}
+                </p>
+              )}
+              {mensajeTutor && (
+                <p role="status" data-testid="mensaje-tutor" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  {mensajeTutor}
+                </p>
+              )}
+              {pistas.length > 0 && (
+                <ol data-testid="pistas-tutor" className="list-decimal space-y-1 pl-5 text-sm">
+                  {pistas.map((p, i) => (
+                    <li key={i}>
+                      <TextoMatematico texto={p} />
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={pedirPistaTutor} disabled={ocupadoTutor} data-testid="pedir-pista">
+                  💡 Pedir una pista
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => registrar(slotActivo, false, "(sin resolver)")}
+                  data-testid="no-se"
+                >
+                  No sé: pasar al siguiente
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )
+      )}
+
+      {/* Repaso breve: la pizarra con el procedimiento del tema, dentro de la tarea. */}
+      {repaso && (
+        <Card data-testid="repaso" className="border-2 border-amber-500/60">
+          <CardHeader>
+            <CardTitle>Repaso breve: {repaso.titulo}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <PizarraAlumno procedimiento={repaso.vista} />
+            <Button onClick={terminarRepaso} disabled={ocupadoTutor} data-testid="terminar-repaso">
+              He terminado el repaso: volver al ejercicio
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ejercicio equivalente propuesto por el tutor. */}
+      {equivalente && (
+        <Card data-testid="equivalente" className="border-2 border-primary/50">
+          <CardHeader>
+            <CardTitle>Para afianzarlo: un ejercicio parecido</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="text-base">
+              <TextoMatematico texto={equivalente.enunciado} />
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void comprobarEquivalente();
+              }}
+            >
+              <Input
+                value={respEq}
+                onChange={(e) => setRespEq(e.target.value)}
+                placeholder="Tu respuesta"
+                aria-label="Respuesta al ejercicio parecido"
+                disabled={ocupadoTutor}
+              />
+              <Button type="submit" disabled={!respEq.trim() || ocupadoTutor}>
+                Comprobar
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setEquivalente(null)}>
+                Cerrar
+              </Button>
+            </form>
+            {veredictoEq && (
+              <p data-testid="veredicto-equivalente" data-tipo={veredictoEq} className="text-sm">
+                {veredictoEq === "ok" ? "¡Muy bien! Lo has resuelto." : "Todavía no. Inténtalo otra vez o ciérralo y sigue."}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

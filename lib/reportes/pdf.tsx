@@ -1,6 +1,14 @@
 import { Document, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 
-import type { AulaDelReporte } from "@/lib/docente/exportar";
+import {
+  COLUMNAS_ALUMNO,
+  COLUMNAS_HABILIDADES,
+  COLUMNAS_TUTORIA,
+  filaAlumno,
+  filaHabilidad,
+  filaTutoria,
+  type AulaDelReporte,
+} from "@/lib/docente/exportar";
 import type { ResumenInstitucional } from "@/lib/director/resumen";
 
 /**
@@ -50,7 +58,9 @@ function Membrete({ subtitulo }: { subtitulo: string }) {
 }
 
 export async function pdfDocente(docenteNombre: string, aulas: readonly AulaDelReporte[]): Promise<Buffer> {
-  const anchos = [40, 40, 10, 10];
+  const anchos = [22, 22, 8, 8, 10, 10, 10, 10];
+  const anchosTutoria = [12, 12, 10, 11, 13, 6, 6, 6, 7, 9, 8];
+  const anchosHabilidades = [26, 26, 10, 10, 10, 9, 9];
   const doc = (
     <Document title={`Libreta de calificaciones — ${docenteNombre}`}>
       <Page size="A4" style={estilos.pagina}>
@@ -62,12 +72,30 @@ export async function pdfDocente(docenteNombre: string, aulas: readonly AulaDelR
               {a.grado}.º {a.seccion} — {a.nombre}
             </Text>
             <View style={estilos.tabla}>
-              <Fila cabecera anchos={anchos} celdas={["Estudiante", "Correo", "Sesiones", "Tareas"]} />
+              <Fila cabecera anchos={anchos} celdas={[...COLUMNAS_ALUMNO]} />
               {a.estudiantes.map((e) => (
-                <Fila key={e.id} anchos={anchos} celdas={[e.nombre, e.email, e.sesionesCompletadas, a.tareas.length]} />
+                <Fila key={e.id} anchos={anchos} celdas={filaAlumno(a, e)} />
               ))}
               {a.estudiantes.length === 0 && <Text style={estilos.celda}>Sin alumnos matriculados todavía.</Text>}
             </View>
+            {a.tutoria.length > 0 && (
+              <View style={estilos.tabla}>
+                <Text style={estilos.seccion}>Tutoría adaptativa</Text>
+                <Fila cabecera anchos={anchosTutoria} celdas={[...COLUMNAS_TUTORIA]} />
+                {a.tutoria.map((t, i) => (
+                  <Fila key={i} anchos={anchosTutoria} celdas={filaTutoria(t)} />
+                ))}
+              </View>
+            )}
+            {a.habilidades.length > 0 && (
+              <View style={estilos.tabla}>
+                <Text style={estilos.seccion}>Habilidades</Text>
+                <Fila cabecera anchos={anchosHabilidades} celdas={[...COLUMNAS_HABILIDADES]} />
+                {a.habilidades.map((h, i) => (
+                  <Fila key={i} anchos={anchosHabilidades} celdas={filaHabilidad(h)} />
+                ))}
+              </View>
+            )}
           </View>
         ))}
         <View style={estilos.firma}>
