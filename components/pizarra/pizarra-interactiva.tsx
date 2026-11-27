@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Profesor3D, type ObjetivoLaser } from "@/components/pizarra/profesor-3d";
+import { Profesor3D, type Gesto, type ObjetivoLaser } from "@/components/pizarra/profesor-3d";
 import { planoALatex } from "@/lib/matematicas";
 import { dictadoAMatematica } from "@/lib/pizarra/dictado";
 import { OPCIONES_KATEX, PREFIJO_TERMINO, latexConTerminos } from "@/lib/pizarra/latex-terminos";
@@ -89,7 +89,7 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
 
   // ── La narración ──────────────────────────────────────────────────────────
   const segmentos = useMemo(() => construirSegmentos(pasos), [pasos]);
-  const [inst, setInst] = useState<Instantanea>({ indice: 0, estado: "detenido", objetivo: null, paso: 0, explicandoTermino: false });
+  const [inst, setInst] = useState<Instantanea>({ indice: 0, estado: "detenido", objetivo: null, paso: 0, explicandoTermino: false, audioEmpezoEn: null });
   const [conVoz, setConVoz] = useState(true);
   const [velocidad, setVelocidad] = useState(1);
   const ajustes = useRef({ conVoz, velocidad });
@@ -141,6 +141,10 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
   // del objetivo les haría borrar el resaltado del término actual.
   const objetivoActual = useRef<string | null>(inst.objetivo);
   objetivoActual.current = inst.objetivo;
+  const audioEmpezoEn = useRef<number | null>(inst.audioEmpezoEn);
+  audioEmpezoEn.current = inst.audioEmpezoEn;
+  /** Último inicio de audio ya medido: el desfase se mide una vez por locución. */
+  const medido = useRef<number | null>(null);
 
   const colocarLaser = useCallback(() => {
     const t = tablero.current;
@@ -167,6 +171,16 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
     const left = r.left - rt.left + r.width / 2;
     const top = r.top - rt.top + r.height / 2;
     setLaser({ left, top, visible: true, objetivo: o });
+    // DESFASE audio → láser (PMV 3 · H3A): del instante en que empieza el audio
+    // al instante en que el láser queda colocado, una vez por locución.
+    const inicio = audioEmpezoEn.current;
+    if (inicio !== null && medido.current !== inicio) {
+      medido.current = inicio;
+      const ms = Math.max(0, performance.now() - inicio);
+      t.setAttribute("data-desfase-ms", ms.toFixed(1));
+      const w = window as unknown as { __pzDesfases?: number[] };
+      (w.__pzDesfases ??= []).push(ms);
+    }
     setObjetivoProfe({
       x: Math.min(1, Math.max(0, left / Math.max(1, rt.width))),
       y: Math.min(1, Math.max(0, top / Math.max(1, rt.height))),
@@ -175,7 +189,7 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
 
   useLayoutEffect(() => {
     colocarLaser();
-  }, [colocarLaser, inst.objetivo, pasoVisible, html]);
+  }, [colocarLaser, inst.objetivo, inst.audioEmpezoEn, pasoVisible, html]);
 
   // El láser se vuelve a medir cuando CAMBIA EL TAMAÑO de lo que señala, no sólo
   // cuando cambia el objetivo: las tipografías de KaTeX se cargan después del
@@ -185,29 +199,53 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
     const t = tablero.current;
     if (!t) return;
     const ro = new ResizeObserver(colocarLaser);
+    // Zoom del navegador y giro del móvil cambian la ventana sin cambiar,
+    // a veces, el tamaño del tablero: se vuelve a medir también entonces.
+    window.addEventListener("resize", colocarLaser);
+    window.visualViewport?.addEventListener("resize", colocarLaser);
     ro.observe(t);
     t.querySelectorAll("[data-paso-expr], .katex-html").forEach((e) => ro.observe(e));
     const reintento = window.setTimeout(colocarLaser, 350);
     void document.fonts?.ready.then(colocarLaser);
     return () => {
       ro.disconnect();
+      window.removeEventListener("resize", colocarLaser);
+      window.visualViewport?.removeEventListener("resize", colocarLaser);
       window.clearTimeout(reintento);
     };
   }, [colocarLaser, pasoVisible]);
 
   // ── Tocar un término ──────────────────────────────────────────────────────
+  /** El término que el alumno tocó por última vez (para abrir su analogía). */
+  const [terminoTocado, setTerminoTocado] = useState<{ paso: number; k: number; analogiaAbierta: boolean } | null>(null);
   const tocarTermino = useCallback(
     (paso: number, k: number) => {
       const t = pasos[paso]?.terminos?.[k];
       if (!t) return;
       setLeyendaTermino(t.explica);
+      setTerminoTocado({ paso, k, analogiaAbierta: false });
       secuenciador.current?.explicarTermino(paso, k, t.explica);
     },
     [pasos],
   );
+  // PMV 3 · H3A: «Ver una analogía» y «Volver al paso».
+  const analogiaTocada = terminoTocado ? (pasos[terminoTocado.paso]?.terminos?.[terminoTocado.k]?.analogia ?? null) : null;
+  const abrirAnalogia = () => {
+    if (!terminoTocado || !analogiaTocada) return;
+    setTerminoTocado({ ...terminoTocado, analogiaAbierta: true });
+    setLeyendaTermino(analogiaTocada);
+    secuenciador.current?.explicarTermino(terminoTocado.paso, terminoTocado.k, analogiaTocada);
+  };
+  const volverAlPaso = () => {
+    setTerminoTocado(null);
+    setLeyendaTermino(null);
+    secuenciador.current?.reanudar();
+  };
   useEffect(() => {
-    if (!inst.explicandoTermino) setLeyendaTermino(null);
-  }, [inst.explicandoTermino]);
+    // Al terminar de decirse, la leyenda del término se retira, salvo la
+    // analogía abierta: se queda a la vista hasta «Volver al paso».
+    if (!inst.explicandoTermino && !terminoTocado?.analogiaAbierta) setLeyendaTermino(null);
+  }, [inst.explicandoTermino, terminoTocado?.analogiaAbierta]);
 
   const alClicTablero = (ev: React.MouseEvent) => {
     const el = (ev.target as HTMLElement).closest(`[class*="${PREFIJO_TERMINO}"]`);
@@ -288,6 +326,9 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
     }
   };
 
+  /** Lo que entendió el reconocimiento de voz, pendiente de que el alumno lo revise. */
+  const [transcripcion, setTranscripcion] = useState<string | null>(null);
+
   const escuchar = () => {
     const SR = RECONOCIMIENTO();
     if (!SR || escuchando) return;
@@ -299,8 +340,11 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
     rec.onresult = (e) => {
       const dicho = e.results[0]?.[0]?.transcript ?? "";
       const notacion = dictadoAMatematica(dicho);
+      // PMV 3 · H4: TRANSCRIPCIÓN EDITABLE. Lo dictado queda en el campo para
+      // que el alumno lo revise y lo corrija; no se corrige hasta que pulsa
+      // «Responder».
       setRespuesta(notacion);
-      void enviar(notacion);
+      setTranscripcion(dicho);
     };
     rec.onerror = () => setEscuchando(false);
     rec.onend = () => setEscuchando(false);
@@ -310,6 +354,87 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
 
   const s = secuenciador.current;
   const sonando = inst.estado === "hablando" || hablandoExtra;
+
+  // ── PMV 3 · H3B: lo que HACE el profesor y el rayo ───────────────────────────
+  // `null` hasta leer la preferencia guardada: así quien eligió 2D no ve (ni
+  // descarga) el 3D un instante al abrir la pizarra.
+  const [modoProfesor, setModoProfesor] = useState<"3d" | "2d" | null>(null);
+  useEffect(() => {
+    let guardado: string | null = null;
+    try {
+      guardado = localStorage.getItem("pz-profesor");
+    } catch {
+      // Sin almacenamiento: 3D.
+    }
+    setModoProfesor(guardado === "2d" ? "2d" : "3d");
+  }, []);
+  const cambiarModoProfesor = () =>
+    setModoProfesor((m) => {
+      const otro = m === "2d" ? "3d" : "2d";
+      try {
+        localStorage.setItem("pz-profesor", otro);
+      } catch {
+        // Sin almacenamiento: vale para esta visita.
+      }
+      return otro;
+    });
+  const [pistaReciente, setPistaReciente] = useState(false);
+  const nPistas = Object.values(pistasDadas).reduce((n, l) => n + l.length, 0);
+  useEffect(() => {
+    if (nPistas === 0) return;
+    setPistaReciente(true);
+    const t = window.setTimeout(() => setPistaReciente(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [nPistas]);
+  const [preguntaReciente, setPreguntaReciente] = useState(false);
+  const leccionTerminada = inst.estado === "fin";
+  useEffect(() => {
+    if (!leccionTerminada || preguntas.length === 0) return;
+    setPreguntaReciente(true);
+    const t = window.setTimeout(() => setPreguntaReciente(false), 2500);
+    return () => window.clearTimeout(t);
+  }, [leccionTerminada, pregunta, preguntas.length]);
+  const gesto: Gesto = pistaReciente
+    ? "pista"
+    : sonando
+      ? inst.objetivo?.startsWith("termino:") && laser.visible
+        ? "senala"
+        : "explica"
+      : preguntaReciente
+        ? "pregunta"
+        : "espera";
+
+  const mano = useRef<{ x: number; y: number } | null>(null);
+  const alMoverMano = useCallback((p: { x: number; y: number } | null) => {
+    mano.current = p;
+  }, []);
+  const rayo = useRef<SVGLineElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const dibujar = () => {
+      const l = rayo.current;
+      const m = mano.current;
+      const punto = tablero.current?.parentElement?.querySelector('[data-testid="laser"]');
+      const visible = m && punto && getComputedStyle(punto).opacity !== "0";
+      if (l) {
+        if (visible) {
+          const r = punto.getBoundingClientRect();
+          l.setAttribute("x1", m.x.toFixed(1));
+          l.setAttribute("y1", m.y.toFixed(1));
+          l.setAttribute("x2", (r.left + r.width / 2).toFixed(1));
+          l.setAttribute("y2", (r.top + r.height / 2).toFixed(1));
+          l.setAttribute("opacity", "0.85");
+          l.setAttribute("data-rayo", "on");
+        } else if (l.getAttribute("data-rayo") !== "off") {
+          l.setAttribute("opacity", "0");
+          l.setAttribute("data-rayo", "off");
+        }
+      }
+      raf = requestAnimationFrame(dibujar);
+    };
+    raf = requestAnimationFrame(dibujar);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   const leyenda = leyendaTermino ?? (inst.estado === "hablando" || inst.estado === "pausado" ? segmentos[inst.indice]?.texto : null);
   const pasosMostrados = pasoVisible >= 0 ? pasos.slice(0, pasoVisible + 1) : [];
 
@@ -317,7 +442,21 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
     <div className="pizarra-interactiva space-y-4" data-modo={modo}>
       <div className="grid gap-4 lg:grid-cols-[17rem_1fr]">
         <aside className="space-y-3">
-          <Profesor3D hablando={sonando} objetivo={laser.visible ? objetivoProfe : null} className="h-72 overflow-hidden rounded-lg border bg-gradient-to-b from-sky-50 to-white dark:from-slate-800 dark:to-slate-900" />
+          <Profesor3D
+            modo={modoProfesor}
+            hablando={sonando}
+            gesto={gesto}
+            objetivo={laser.visible ? objetivoProfe : null}
+            alMoverMano={alMoverMano}
+            className="h-72 overflow-hidden rounded-lg border bg-gradient-to-b from-sky-50 to-white dark:from-slate-800 dark:to-slate-900"
+          />
+          <Button variant="ghost" size="sm" onClick={cambiarModoProfesor} data-testid="modo-profesor" aria-pressed={modoProfesor === "2d"}>
+            {modoProfesor === "2d" ? "Ver profesor en 3D" : "Ver profesor en 2D"}
+          </Button>
+          {/* PMV 3 · H3B: el RAYO va de la mano del profesor al término activo. */}
+          <svg className="pointer-events-none fixed inset-0 z-40 h-full w-full" aria-hidden>
+            <line ref={rayo} data-testid="rayo" data-rayo="off" x1="0" y1="0" x2="0" y2="0" stroke="rgb(239 68 68)" strokeWidth="2.5" strokeLinecap="round" opacity="0" />
+          </svg>
           <p
             className="min-h-16 rounded-md border bg-muted/40 px-3 py-2 text-sm"
             aria-live="polite"
@@ -325,6 +464,18 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
           >
             {leyenda ?? "Pulsa «Empezar» para que el profesor te explique el ejemplo."}
           </p>
+          {terminoTocado && (
+            <div className="flex flex-wrap gap-2">
+              {analogiaTocada && !terminoTocado.analogiaAbierta && (
+                <Button variant="outline" size="sm" onClick={abrirAnalogia} data-testid="analogia">
+                  💭 Ver una analogía
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={volverAlPaso} data-testid="volver-paso">
+                ↩ Volver al paso
+              </Button>
+            </div>
+          )}
         </aside>
 
         <section className="space-y-3">
@@ -448,10 +599,20 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
                   aria-label="Tu respuesta"
                   value={respuesta}
                   onChange={(e) => setRespuesta(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && void enviar(respuesta)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    setTranscripcion(null);
+                    void enviar(respuesta);
+                  }}
                   placeholder="Tu respuesta"
                 />
-                <Button onClick={() => void enviar(respuesta)} disabled={ocupado || !respuesta.trim()}>
+                <Button
+                  onClick={() => {
+                    setTranscripcion(null);
+                    void enviar(respuesta);
+                  }}
+                  disabled={ocupado || !respuesta.trim()}
+                >
                   Responder
                 </Button>
                 {hayMicro && (
@@ -460,6 +621,11 @@ export function PizarraInteractiva({ procedimiento, modo, onResponder, onPista }
                   </Button>
                 )}
               </div>
+              {transcripcion !== null && (
+                <p className="text-xs text-muted-foreground" role="status" data-testid="transcripcion">
+                  Entendí «{transcripcion}». Revisa o corrige tu respuesta en el campo y pulsa «Responder».
+                </p>
+              )}
             </>
           )}
           <div className="flex flex-wrap gap-2">

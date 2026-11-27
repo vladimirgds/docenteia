@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { puedeEntregar } from "@/lib/docente/aulas";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
+import { fichaCongelada, revisarConFichaDeTarea } from "@/lib/docente/fichas-tarea";
 import { cargarContexto, procesarRespuesta } from "@/lib/tutoria/servidor";
 import {
   OPCIONES_TX,
@@ -87,13 +88,28 @@ export async function POST(
     // lo editó después, esta tarea se sigue corrigiendo con lo que valía al asignar.
     const ejercicio = await prisma.tareaEjercicio.findFirst({
       where: { tareaId, ejercicioId },
-      select: { id: true, respuestaCorrecta: true },
+      select: { id: true, respuestaCorrecta: true, enunciado: true },
     });
     if (!ejercicio) {
       return NextResponse.json({ error: "Ese ejercicio ya no existe." }, { status: 404 });
     }
 
-    const resultado = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
+    const general = compararRespuesta(respuesta.trim(), ejercicio.respuestaCorrecta);
+
+    // PMV 3 · HITO 5A (ampliación): la FICHA DE MÉTODO congelada en la tarea. Aporta la pista
+    // de error concreta y, SÓLO si el corrector general no sabe decidir, su
+    // veredicto (el motor ya verificó el método antes de publicarse). Nunca
+    // contradice un veredicto que el corrector general sí sabe dar.
+    const ficha = fichaCongelada(tarea.fichaContenido);
+    const porFicha = ficha ? revisarConFichaDeTarea(ficha, ejercicio.enunciado, respuesta.trim()) : null;
+    const resultado =
+      general.conocido === false && porFicha?.aplica && porFicha.correcta !== null
+        ? { ...general, conocido: true, correcto: porFicha.correcta }
+        : general;
+    const metodo =
+      ficha && porFicha?.aplica
+        ? { titulo: tarea.fichaTitulo, pista: resultado.correcto ? null : porFicha.pista }
+        : null;
 
     // El veredicto lo deja el SERVIDOR en el intento en curso (la última
     // respuesta a cada ejercicio es la que cuenta). Con el cerrojo del alumno y la
@@ -136,7 +152,7 @@ export async function POST(
         tutor = await procesarRespuesta(sesion.user.id, ctx.tarea, ctx.ejercicio, resultado.correcto);
       }
     }
-    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido, tutor });
+    return NextResponse.json({ correcto: resultado.correcto, verificable: resultado.conocido, tutor, metodo });
   } catch (e) {
     const infra = explicarFalloDeBaseDeDatos(e);
     if (infra) {

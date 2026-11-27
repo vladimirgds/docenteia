@@ -20,6 +20,27 @@ export const PREFIJO_TERMINO = "pzt-";
 
 export interface TerminoEntrada {
   texto: string;
+  /** Cuál de las apariciones del fragmento (1 = la primera). */
+  aparicion?: number;
+}
+
+/**
+ * IDENTIFICADOR ESTABLE de un término (PMV 3 · H3A): paso, MIEMBRO de la
+ * igualdad (0 = izquierdo, 1 = derecho; 0 si no hay «=») y APARICIÓN del
+ * fragmento. En el DOM va como clases `pzm-M pza-A` junto a `pzt-K`.
+ */
+export function idTermino(paso: number, miembro: number, aparicion: number): string {
+  return `p${paso}-m${miembro}-a${aparicion}`;
+}
+
+/** Posición de la aparición `n` (1 = la primera) de `t` en `texto`, o -1. */
+export function buscarAparicion(texto: string, t: string, n = 1): number {
+  let desde = 0;
+  for (let i = 1; ; i++) {
+    const ini = texto.indexOf(t, desde);
+    if (ini < 0 || i === n) return ini;
+    desde = ini + Math.max(1, t.length);
+  }
 }
 
 export interface LatexDePaso {
@@ -41,20 +62,27 @@ export const OPCIONES_KATEX = {
   // —o la IA— podría ponerle a un fragmento cualquier clase de la hoja de
   // estilos y reestructurar la pizarra a su antojo.
   trust: (ctx: { command: string; class?: string }) =>
-    ctx.command === "\\htmlClass" && /^pzt-\d+$/.test(String(ctx.class ?? "")),
+    ctx.command === "\\htmlClass" && /^pzt-\d+( pzm-\d+ pza-\d+)?$/.test(String(ctx.class ?? "")),
 };
 
 export function latexConTerminos(escribe: string, terminos: readonly TerminoEntrada[] = []): LatexDePaso {
   if (terminos.length === 0) return { latex: planoALatex(escribe), error: null };
 
-  const posiciones: { k: number; ini: number; fin: number }[] = [];
+  const posiciones: { k: number; ini: number; fin: number; aparicion: number }[] = [];
   for (let k = 0; k < terminos.length; k++) {
     const t = terminos[k].texto;
-    const ini = t ? escribe.indexOf(t) : -1;
+    const n = terminos[k].aparicion ?? 1;
+    const ini = t ? buscarAparicion(escribe, t, n) : -1;
     if (ini < 0) {
-      return { latex: planoALatex(escribe), error: `El término «${t}» no aparece en lo que se escribe en el paso.` };
+      return {
+        latex: planoALatex(escribe),
+        error:
+          n > 1
+            ? `El término «${t}» no aparece ${n} veces en lo que se escribe en el paso.`
+            : `El término «${t}» no aparece en lo que se escribe en el paso.`,
+      };
     }
-    posiciones.push({ k, ini, fin: ini + t.length });
+    posiciones.push({ k, ini, fin: ini + t.length, aparicion: n });
   }
   // Un término no puede CORTAR una fracción ni una potencia: «/24» dentro de
   // «6/24» compilaría, pero la pizarra mostraría un «6» suelto y una barra rota.
@@ -84,7 +112,9 @@ export function latexConTerminos(escribe: string, terminos: readonly TerminoEntr
   for (const p of posiciones) {
     const antes = escribe.slice(cursor, p.ini);
     if (antes.trim()) latex += planoALatex(antes) + " ";
-    latex += `\\htmlClass{${PREFIJO_TERMINO}${p.k}}{${planoALatex(escribe.slice(p.ini, p.fin))}} `;
+    const igual = escribe.indexOf("=");
+    const miembro = igual >= 0 && p.ini > igual ? 1 : 0;
+    latex += `\\htmlClass{${PREFIJO_TERMINO}${p.k} pzm-${miembro} pza-${p.aparicion}}{${planoALatex(escribe.slice(p.ini, p.fin))}} `;
     cursor = p.fin;
   }
   const resto = escribe.slice(cursor);

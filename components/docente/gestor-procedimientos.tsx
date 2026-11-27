@@ -38,7 +38,7 @@ export interface PasoVista {
   escribe: string;
   tipo: (typeof TIPOS_PASO)[number];
   regla?: string | null;
-  terminos?: { texto: string; explica: string }[];
+  terminos?: { texto: string; explica: string; aparicion?: number; analogia?: string | null }[];
 }
 
 export interface PreguntaVista {
@@ -157,7 +157,14 @@ export function GestorProcedimientos({ temas, procedimientos, soporte, puedeEdit
       escribe: p.escribe.trim(),
       tipo: p.tipo,
       regla: p.regla?.trim() || null,
-      terminos: (p.terminos ?? []).filter((t) => t.texto.trim() && t.explica.trim()),
+      terminos: (p.terminos ?? [])
+        .filter((t) => t.texto.trim() && t.explica.trim())
+        .map((t) => ({
+          texto: t.texto,
+          explica: t.explica,
+          ...(t.aparicion && t.aparicion > 1 ? { aparicion: t.aparicion } : {}),
+          ...(t.analogia?.trim() ? { analogia: t.analogia.trim() } : {}),
+        })),
     })),
     preguntas: form.preguntas.filter((q) => q.enunciado.trim()),
     pistas: form.pistas.map((p) => p.trim()).filter(Boolean),
@@ -442,6 +449,23 @@ export function GestorProcedimientos({ temas, procedimientos, soporte, puedeEdit
                               <Button variant="ghost" size="sm" onClick={() => cambiarPaso(i, { terminos: (p.terminos ?? []).filter((_, m) => m !== k) })}>
                                 Quitar
                               </Button>
+                              <div className="grid gap-2 sm:col-span-3 sm:grid-cols-[12rem_1fr]">
+                                <Input
+                                  aria-label="Aparición del término"
+                                  type="number"
+                                  min={1}
+                                  max={12}
+                                  value={t.aparicion ?? 1}
+                                  onChange={(e) => cambiarPaso(i, { terminos: (p.terminos ?? []).map((x, m) => (m === k ? { ...x, aparicion: Number(e.target.value) >= 1 ? Number.parseInt(e.target.value, 10) : 1 } : x)) })}
+                                  title="Si el fragmento se repite en el paso, cuál de sus apariciones es (1 = la primera)"
+                                />
+                                <Input
+                                  aria-label="Analogía del término"
+                                  value={t.analogia ?? ""}
+                                  onChange={(e) => cambiarPaso(i, { terminos: (p.terminos ?? []).map((x, m) => (m === k ? { ...x, analogia: e.target.value } : x)) })}
+                                  placeholder="Opcional · una analogía que el alumno puede abrir"
+                                />
+                              </div>
                             </div>
                           ))}
                           {(p.terminos ?? []).length < 8 && (

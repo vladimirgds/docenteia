@@ -77,6 +77,8 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
   // ── Tutoría adaptativa (PMV 3 · HITO 4) ──────────────────────────────────
   const [pistas, setPistas] = useState<string[]>([]);
   const [mensajeTutor, setMensajeTutor] = useState<string | null>(null);
+  /** PMV 3 · Hito 5A (ampliación): pista de error concreta de la ficha de método de la tarea. */
+  const [pistaMetodo, setPistaMetodo] = useState<{ titulo: string | null; pista: string } | null>(null);
   const [repaso, setRepaso] = useState<{ ejercicioId: string; titulo: string; vista: VistaPizarra } | null>(null);
   const [equivalente, setEquivalente] = useState<EquivalenteVista | null>(null);
   const [respEq, setRespEq] = useState("");
@@ -86,6 +88,7 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
   const limpiarTutor = () => {
     setPistas([]);
     setMensajeTutor(null);
+    setPistaMetodo(null);
     setRepaso(null);
   };
 
@@ -130,7 +133,12 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     if (!respuesta || !activo || corrigiendo) return;
     setCorrigiendo(true);
     setAviso(null);
-    const r = await pedir<{ correcto: boolean; verificable: boolean | null; tutor: TutorVista | null }>(
+    const r = await pedir<{
+      correcto: boolean;
+      verificable: boolean | null;
+      tutor: TutorVista | null;
+      metodo: { titulo: string | null; pista: string | null } | null;
+    }>(
       `/api/estudiante/tareas/${tareaId}/ejercicios/${activo.id}/corregir`,
       { metodo: "POST", cuerpo: { respuesta } },
     );
@@ -141,6 +149,8 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     }
     setBorrador("");
     const tutor = r.datos.tutor;
+    const metodo = r.datos.metodo;
+    setPistaMetodo(!r.datos.correcto && metodo?.pista ? { titulo: metodo.titulo, pista: metodo.pista } : null);
 
     // Acierto (o un ejercicio que el motor no sabe corregir): se registra y se
     // pasa al siguiente. Si el tutor propone un equivalente, queda a la vista.
@@ -454,6 +464,12 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
               {aviso && <p className="text-sm text-destructive">{aviso}</p>}
 
               {/* ── El tutor ───────────────────────────────────────────── */}
+              {pistaMetodo && (
+                <p role="status" data-testid="pista-metodo" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                  {pistaMetodo.titulo ? <span className="font-medium">{pistaMetodo.titulo}: </span> : null}
+                  {pistaMetodo.pista}
+                </p>
+              )}
               {mensajeTutor && (
                 <p role="status" data-testid="mensaje-tutor" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
                   {mensajeTutor}

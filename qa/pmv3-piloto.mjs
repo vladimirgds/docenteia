@@ -245,10 +245,10 @@ const filas = (nombre) => {
 };
 const hojaTut = filas("Tutoría adaptativa");
 const filaS1 = hojaTut.find((f) => f[1] === "Alumno Piloto uno");
-check("la hoja de tutoría tiene la fila del alumno con 3 errores, 2 pistas, 1 repaso, 1 equivalente", filaS1 && filaS1[5] === 3 && filaS1[6] === 2 && filaS1[7] === 1 && filaS1[8] === 1 && filaS1[9] === "Sí", JSON.stringify(filaS1));
+check("la hoja de tutoría tiene la fila del alumno con 3 errores, 2 pistas, 1 repaso, 1 equivalente", filaS1 && filaS1[6] === 3 && filaS1[7] === 2 && filaS1[8] === 1 && filaS1[9] === 1 && filaS1[11] === "Sí", JSON.stringify(filaS1));
 const hojaEst = filas("Estudiantes");
 const estUno = hojaEst.find((f) => f[1] === "Alumno Piloto uno");
-check("la hoja «Estudiantes» suma sus pistas, repasos y equivalentes", estUno && estUno[4] === 2 && estUno[5] === 1 && estUno[6] === 1, JSON.stringify(estUno));
+check("la hoja «Estudiantes» suma sus pistas, repasos y equivalentes", estUno && estUno[5] === 2 && estUno[6] === 1 && estUno[7] === 1, JSON.stringify(estUno));
 check("el Excel del docente B no trae a los alumnos de A", !JSON.stringify(await (async () => {
   const w = new ExcelJS.Workbook();
   await w.xlsx.load(Buffer.from(await (await fetch(`${BASE}/api/docente/exportar/excel`, { headers: { cookie: B.sesion } })).arrayBuffer()));

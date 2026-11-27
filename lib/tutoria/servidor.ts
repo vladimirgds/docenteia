@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
 import { dondeEjerciciosAsignables } from "@/lib/docente/bancos";
 import { dondeProcedimientosDelAlumno } from "@/lib/docente/procedimientos-servidor";
+import { prerrequisitosEnOrden } from "@/lib/docente/habilidades";
 import {
   ESTADO_INICIAL,
   decidir,
@@ -29,7 +30,7 @@ export interface Tutor {
   pista?: string | null;
   quedanPistas?: number;
   /** El repaso breve que se abre (sólo con `ABRIR_REPASO`); `null` si no hay ninguno publicado. */
-  repaso?: { id: string; titulo: string } | null;
+  repaso?: { id: string; titulo: string; habilidad?: string | null } | null;
   /** El ejercicio equivalente propuesto; `null` si no hay ninguno disponible. */
   equivalente?: { id: string; enunciado: string } | null;
   /** Mensaje para el alumno, ya redactado. */
@@ -51,6 +52,8 @@ interface EjercicioParaTutor {
   pistas: string[];
   enunciado: string;
   nodo: { titulo: string } | null;
+  /** PMV 3 · H4: la habilidad que ejercita, si el docente la enlazó. */
+  habilidadId?: string | null;
 }
 
 type Sesion = Awaited<ReturnType<typeof obtenerSesion>>;
@@ -73,6 +76,7 @@ async function obtenerSesion(estudianteId: string, tarea: TareaParaTutor, ejerci
       ejercicioId: ejercicio.id,
       nodoId: ejercicio.nodoId,
       tema: ejercicio.nodo?.titulo ?? null,
+      habilidadId: ejercicio.habilidadId ?? null,
       ...ESTADO_INICIAL,
     },
   });
@@ -107,9 +111,32 @@ async function elegirPista(estudianteId: string, ejercicio: EjercicioParaTutor, 
  * tema; si no hay, el procedimiento publicado MÁS CORTO del tema. Siempre uno al
  * que el alumno tiene acceso (publicado y del catálogo o de un aula suya).
  */
-async function elegirRepaso(estudianteId: string, nodoId: string | null) {
-  if (!nodoId) return null;
+async function elegirRepaso(estudianteId: string, nodoId: string | null, habilidadId?: string | null) {
   const accesible = dondeProcedimientosDelAlumno(estudianteId);
+  // PMV 3 · H4: si el ejercicio ejercita una HABILIDAD, se repasa primero lo que
+  // falla JUSTO DEBAJO: el repaso del prerrequisito más cercano que tenga uno
+  // publicado y accesible (y, si ninguno lo tiene, el de la propia habilidad).
+  if (habilidadId) {
+    const aristas = (await prisma.prerrequisitoHabilidad.findMany({ select: { habilidadId: true, requiereId: true } })).map((x) => ({
+      de: x.habilidadId,
+      a: x.requiereId,
+    }));
+    const candidatas = [...prerrequisitosEnOrden(aristas, habilidadId), habilidadId];
+    const habilidades = await prisma.habilidad.findMany({
+      where: { id: { in: candidatas }, repasoId: { not: null } },
+      select: { id: true, nombre: true, repasoId: true },
+    });
+    for (const id of candidatas) {
+      const h = habilidades.find((x) => x.id === id);
+      if (!h?.repasoId) continue;
+      const repaso = await prisma.procedimiento.findFirst({
+        where: { AND: [{ id: h.repasoId }, accesible] },
+        select: { id: true, titulo: true },
+      });
+      if (repaso) return { ...repaso, habilidad: h.nombre };
+    }
+  }
+  if (!nodoId) return null;
   const delTema = await prisma.procedimiento.findMany({
     where: { AND: [{ nodoId }, accesible] },
     select: { id: true, titulo: true, pasos: true, repasoId: true },
@@ -157,11 +184,16 @@ async function elegirEquivalente(tarea: TareaParaTutor, ejercicio: EjercicioPara
         ),
       ],
     },
-    select: { id: true, enunciado: true },
+    select: { id: true, enunciado: true, habilidadId: true },
     take: 50,
   });
   if (candidatos.length === 0) return null;
-  return candidatos[Math.floor(Math.random() * candidatos.length)];
+  // PMV 3 · H4: un equivalente de LA MISMA HABILIDAD, si lo hay: es lo que
+  // demuestra que la recuperación funcionó.
+  const mismaHabilidad = ejercicio.habilidadId ? candidatos.filter((c) => c.habilidadId === ejercicio.habilidadId) : [];
+  const pool = mismaHabilidad.length > 0 ? mismaHabilidad : candidatos;
+  const elegido = pool[Math.floor(Math.random() * pool.length)];
+  return { id: elegido.id, enunciado: elegido.enunciado };
 }
 
 // ── Las tres operaciones ─────────────────────────────────────────────────────
@@ -242,8 +274,11 @@ async function aplicar(
       break;
     }
     case "ABRIR_REPASO": {
-      const repaso = await elegirRepaso(estudianteId, ejercicio.nodoId);
-      eventos.push({ tipo: "REPASO_ABIERTO", detalle: { procedimientoId: repaso?.id ?? null } });
+      const repaso = await elegirRepaso(estudianteId, ejercicio.nodoId, ejercicio.habilidadId);
+      eventos.push({
+        tipo: "REPASO_ABIERTO",
+        detalle: { procedimientoId: repaso?.id ?? null, habilidad: (repaso && "habilidad" in repaso ? repaso.habilidad : null) ?? null },
+      });
       if (!repaso) {
         // Sin repaso publicado no hay nada que cerrar: si la sesión se quedara en
         // REPASO, nunca saldría de ahí. Se da por saltado y se pasa a REGRESO, de
@@ -255,7 +290,7 @@ async function aplicar(
         accion: "ABRIR_REPASO",
         repaso,
         mensaje: repaso
-          ? `Parece que este punto se te resiste. Vamos a repasarlo un momento: «${repaso.titulo}».`
+          ? `Parece que este punto se te resiste. Vamos a repasarlo un momento: «${repaso.titulo}»${"habilidad" in repaso && repaso.habilidad ? ` (${repaso.habilidad})` : ""}.`
           : "Parece que este punto se te resiste. Todavía no hay un repaso publicado para este tema: pídele ayuda a tu profesor y vuelve a intentarlo.",
       };
       break;
@@ -283,7 +318,33 @@ async function aplicar(
   await persistir(sesion, estado, eventos, {
     errorTotal: evento.tipo === "RESPUESTA" && !evento.correcta,
   });
+  await registrarHabilidad(estudianteId, ejercicio.habilidadId ?? null, evento, tutor);
   return tutor;
+}
+
+/**
+ * PMV 3 · H4: errores, pistas, intentos, aciertos y repasos POR HABILIDAD.
+ * Un fallo aquí no debe tumbar la tutoría: se registra en el log y se sigue.
+ */
+async function registrarHabilidad(estudianteId: string, habilidadId: string | null, evento: EventoTutor, tutor: Tutor) {
+  if (!habilidadId) return;
+  const inc = {
+    intentos: evento.tipo === "RESPUESTA" ? 1 : 0,
+    errores: evento.tipo === "RESPUESTA" && !evento.correcta ? 1 : 0,
+    aciertos: evento.tipo === "RESPUESTA" && evento.correcta ? 1 : 0,
+    pistas: tutor.accion === "PISTA" && tutor.pista ? 1 : 0,
+    repasos: tutor.accion === "ABRIR_REPASO" && tutor.repaso ? 1 : 0,
+  };
+  if (Object.values(inc).every((v) => v === 0)) return;
+  try {
+    await prisma.registroHabilidad.upsert({
+      where: { estudianteId_habilidadId: { estudianteId, habilidadId } },
+      create: { estudianteId, habilidadId, ...inc },
+      update: Object.fromEntries(Object.entries(inc).map(([k, v]) => [k, { increment: v }])),
+    });
+  } catch (e) {
+    console.error("[tutoria] no se pudo registrar la habilidad:", e);
+  }
 }
 
 /** El alumno responde un ejercicio de una tarea: se registra y el tutor decide. */
@@ -338,7 +399,7 @@ export async function cargarContexto(tareaId: string, ejercicioId: string) {
     }),
     prisma.ejercicio.findUnique({
       where: { id: ejercicioId },
-      select: { id: true, nodoId: true, nivel: true, motor: true, pistas: true, enunciado: true, nodo: { select: { titulo: true } } },
+      select: { id: true, nodoId: true, nivel: true, motor: true, pistas: true, enunciado: true, habilidadId: true, nodo: { select: { titulo: true } } },
     }),
   ]);
   // El enunciado y las pistas que ve el alumno son los CONGELADOS al asignar la

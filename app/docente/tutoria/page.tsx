@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
-import { obtenerReporteDocente } from "@/lib/docente/exportar";
+import { COLUMNAS_ALUMNO, COLUMNAS_HABILIDADES, filaAlumno, filaHabilidad, obtenerReporteDocente } from "@/lib/docente/exportar";
 
 export const metadata: Metadata = { title: "Tutoría · Panel docente" };
 export const dynamic = "force-dynamic";
@@ -29,10 +29,19 @@ const ETIQUETA_EVENTO: Record<string, string> = {
  * repasos, ejercicios equivalentes, bloqueos) y, ejercicio por ejercicio, dónde
  * se atascó y qué hizo el tutor. Exportable a PDF y Excel con los mismos datos.
  */
-export default async function PaginaTutoria() {
+export default async function PaginaTutoria({ searchParams }: { searchParams: Promise<{ aulaId?: string }> }) {
   const sesion = await auth();
   const docenteId = sesion?.user?.id ?? "";
-  const aulas = await obtenerReporteDocente(docenteId);
+  // PMV 3 · H4: el MISMO filtro (`?aulaId=`) en el panel y en las exportaciones.
+  const { aulaId: aulaPedida } = await searchParams;
+  const todasLasAulas = await prisma.aula.findMany({
+    where: { docenteId },
+    orderBy: [{ grado: "asc" }, { seccion: "asc" }],
+    select: { id: true, nombre: true, grado: true, seccion: true },
+  });
+  const aulaId = todasLasAulas.some((a) => a.id === aulaPedida) ? aulaPedida! : null;
+  const aulas = await obtenerReporteDocente(docenteId, { aulaId });
+  const consulta = aulaId ? `?aulaId=${encodeURIComponent(aulaId)}` : "";
 
   // Los últimos eventos de cada sesión, para el detalle desplegable.
   const eventos = await prisma.eventoTutoria.findMany({
@@ -85,13 +94,29 @@ export default async function PaginaTutoria() {
           </div>
           <div className="flex gap-2">
             <Button asChild variant="outline">
-              <a href="/api/docente/exportar/pdf" data-testid="exportar-pdf">Exportar PDF</a>
+              <a href={`/api/docente/exportar/pdf${consulta}`} data-testid="exportar-pdf">Exportar PDF</a>
             </Button>
             <Button asChild variant="outline">
-              <a href="/api/docente/exportar/excel" data-testid="exportar-excel">Exportar Excel</a>
+              <a href={`/api/docente/exportar/excel${consulta}`} data-testid="exportar-excel">Exportar Excel</a>
             </Button>
           </div>
         </div>
+
+        <form method="get" className="flex flex-wrap items-center gap-2 text-sm" data-testid="filtro-aula">
+          <label htmlFor="filtro-aula">Aula</label>
+          <select id="filtro-aula" name="aulaId" defaultValue={aulaId ?? ""} className="h-9 rounded-md border bg-background px-2">
+            <option value="">Todas mis aulas</option>
+            {todasLasAulas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.grado}.º {a.seccion} — {a.nombre}
+              </option>
+            ))}
+          </select>
+          <Button type="submit" size="sm" variant="outline">
+            Filtrar
+          </Button>
+          <span className="text-xs text-muted-foreground">Las exportaciones usan este mismo filtro.</span>
+        </form>
 
         {!hayDatos && (
           <Card>
@@ -117,28 +142,54 @@ export default async function PaginaTutoria() {
                 <table className="w-full text-sm" data-testid="resumen-alumnos">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
-                      <th className="pb-2 font-medium">Alumno</th>
-                      <th className="pb-2 font-medium">Pistas</th>
-                      <th className="pb-2 font-medium">Repasos</th>
-                      <th className="pb-2 font-medium">Equivalentes</th>
-                      <th className="pb-2 font-medium">Bloqueos</th>
+                      {COLUMNAS_ALUMNO.map((c) => (
+                        <th key={c} className="pb-2 pr-3 font-medium">
+                          {c}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {a.estudiantes.map((e) => (
                       <tr key={e.id} className="border-b last:border-0">
-                        <td className="py-2">{e.nombre}</td>
-                        <td className="py-2">{e.tutoria.pistas}</td>
-                        <td className="py-2">{e.tutoria.repasos}</td>
-                        <td className="py-2">{e.tutoria.equivalentes}</td>
-                        <td className="py-2">
-                          {e.tutoria.bloqueos > 0 ? <Badge variant="aviso">{e.tutoria.bloqueos}</Badge> : 0}
-                        </td>
+                        {filaAlumno(a, e).map((v, k, fila) => (
+                          <td key={k} className="py-2 pr-3">
+                            {k === fila.length - 1 && Number(v) > 0 ? <Badge variant="aviso">{v}</Badge> : v}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {a.habilidades.length > 0 && (
+                <div className="overflow-x-auto">
+                  <h3 className="pb-2 font-medium">Por habilidad</h3>
+                  <table className="w-full text-sm" data-testid="resumen-habilidades">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        {COLUMNAS_HABILIDADES.map((c) => (
+                          <th key={c} className="pb-2 pr-3 font-medium">
+                            {c}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {a.habilidades.map((h, i) => (
+                        <tr key={i} className="border-b last:border-0">
+                          {filaHabilidad(h).map((v, k) => (
+                            <td key={k} className="py-2 pr-3">
+                              {v}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {a.tutoria.length > 0 && (
                 <div className="space-y-2">
@@ -151,8 +202,10 @@ export default async function PaginaTutoria() {
                           · {t.tema} · «{t.ejercicio}»
                         </span>
                         <Badge variant={t.resuelta ? "exito" : "aviso"}>{t.resuelta ? "Resuelto" : "Sin resolver"}</Badge>
+                        {t.habilidad && <Badge variant="contorno">{t.habilidad}</Badge>}
                         <span className="text-xs text-muted-foreground">
                           {t.errores} error(es) · {t.pistas} pista(s) · {t.repasos} repaso(s) · {t.equivalentes} equivalente(s)
+                          {t.equivalenteResuelto !== null ? ` · equivalente ${t.equivalenteResuelto ? "resuelto" : "no resuelto"}` : ""}
                         </span>
                       </summary>
                       <ol className="list-decimal space-y-1 pl-6 pt-2 text-muted-foreground">
@@ -161,6 +214,14 @@ export default async function PaginaTutoria() {
                             {ETIQUETA_EVENTO[ev.tipo] ?? ev.tipo}
                             {ev.tipo === "PISTA" && (ev.detalle as { pista?: string }).pista
                               ? `: ${(ev.detalle as { pista?: string }).pista}`
+                              : ""}
+                            {ev.tipo === "REPASO_ABIERTO" && (ev.detalle as { habilidad?: string }).habilidad
+                              ? ` (habilidad: ${(ev.detalle as { habilidad?: string }).habilidad})`
+                              : ""}
+                            {ev.tipo === "EQUIVALENTE_RESPONDIDO"
+                              ? (ev.detalle as { correcto?: boolean }).correcto
+                                ? ": correcto"
+                                : ": incorrecto"
                               : ""}
                           </li>
                         ))}

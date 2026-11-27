@@ -5,6 +5,9 @@ import { exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/ap
 import { tareaSchema } from "@/lib/docente/aulas";
 import { dondeEjerciciosAsignables } from "@/lib/docente/bancos";
 import { OPCIONES_TX, REGLA_NUEVA, congelarEjercicios } from "@/lib/docente/evaluacion-servidor";
+import { dondeFichasVisibles } from "@/lib/docente/fichas-servidor";
+import { fichaCongelada } from "@/lib/docente/fichas-tarea";
+import type { Prisma } from "@prisma/client";
 
 /**
  * ¿Es este tema (o este ejercicio, por el tema del que cuelga) legible desde
@@ -155,6 +158,30 @@ export async function POST(req: Request) {
       }
     }
 
+    // PMV 3 · HITO 5A (ampliación): la ficha de método que guía la corrección. Tiene que
+    // estar PUBLICADA y ser visible para quien asigna (la privada de otro
+    // docente responde 404, como en el resto de la API de fichas). Se congela
+    // la versión PUBLICADA, no la de trabajo.
+    let ficha: { fichaId: string; fichaVersion: number; fichaTitulo: string; fichaContenido: Prisma.InputJsonValue } | null = null;
+    if (datos.fichaId) {
+      const f = await prisma.fichaMetodo.findFirst({
+        where: { id: datos.fichaId, AND: [dondeFichasVisibles(permiso.quien)] },
+        select: { id: true, titulo: true, estado: true, publicadaVersion: true },
+      });
+      if (!f) return noEncontrado("La ficha de método");
+      if (f.estado !== "PUBLICADO" || f.publicadaVersion === null) {
+        return NextResponse.json({ error: "Sólo se puede aplicar una ficha de método publicada." }, { status: 409 });
+      }
+      const v = await prisma.fichaMetodoVersion.findUnique({
+        where: { fichaId_version: { fichaId: f.id, version: f.publicadaVersion } },
+        select: { contenido: true },
+      });
+      if (!v || !fichaCongelada(v.contenido)) {
+        return NextResponse.json({ error: "La versión publicada de la ficha no es válida." }, { status: 409 });
+      }
+      ficha = { fichaId: f.id, fichaVersion: f.publicadaVersion, fichaTitulo: f.titulo, fichaContenido: v.contenido as Prisma.InputJsonValue };
+    }
+
     // La tarea y la COPIA CONGELADA de sus ejercicios y rúbricas nacen juntas, o
     // no nace ninguna: nunca queda una tarea del banco sin su congelado.
     const tarea = await prisma.$transaction(async (tx) => {
@@ -172,6 +199,7 @@ export async function POST(req: Request) {
           reglaCalificacion: REGLA_NUEVA,
           aulaId: aula.id,
           docenteId: permiso.quien.usuarioId,
+          ...(ficha ?? {}),
         },
       });
       await congelarEjercicios(tx, creada.id, ejercicioIds);

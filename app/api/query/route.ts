@@ -6,6 +6,7 @@ import type { Session } from "next-auth";
 // significaría reescribir la pedagogía. Sus tipos se declaran en
 // src/queryCore.d.ts, así que desde aquí se consume con tipos estrictos.
 import { salud, limiteGeneral, manejarConsulta } from "@/src/queryCore.js";
+import { notificarConsumo, tokensDeGemini } from "@/lib/consumo-eventos";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -84,6 +85,19 @@ export async function POST(req: Request) {
       : body;
 
   const r = await manejarConsulta(cuerpo, ip);
+  // PMV 3 · H5B: consumo de IA. Sólo cuando la lección vino de una llamada REAL
+  // a Gemini (con sus contadores de tokens); la demo y la caché no gastan.
+  const j = r.json as { fuente_ia?: unknown; modelo?: unknown; tokens?: unknown; cacheado?: unknown } | null;
+  if (j?.fuente_ia === "gemini" && j.tokens && j.cacheado !== true) {
+    notificarConsumo({
+      servicio: "IA",
+      origen: "leccion",
+      proveedor: "gemini",
+      modelo: typeof j.modelo === "string" ? j.modelo : null,
+      usuarioId: sesion?.user?.id ?? null,
+      ...tokensDeGemini(j.tokens),
+    });
+  }
   return NextResponse.json(r.json, { status: r.status, headers: r.headers });
 }
 

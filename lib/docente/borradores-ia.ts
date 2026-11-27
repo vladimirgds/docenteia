@@ -1,5 +1,7 @@
 import type { NivelAcademico, Tema } from "@prisma/client";
 
+import { notificarConsumo, tokensDeGemini } from "../consumo-eventos.ts";
+
 /**
  * BORRADORES DE EJERCICIOS GENERADOS POR IA (PMV 3 · HITO 1).
  *
@@ -150,6 +152,8 @@ export async function llamarGemini(
   esquema: unknown = ESQUEMA_RESPUESTA,
   /** Tokens de "razonamiento" del modelo. 0 para ejercicios cortos; más para derivaciones. */
   presupuestoPensamiento = 0,
+  /** PMV 3 · H5B: qué parte de la app gasta (para el registro de consumo). */
+  origen = "borradores-ejercicios",
 ): Promise<string> {
   const controlador = new AbortController();
   const temporizador = setTimeout(() => controlador.abort(), TIMEOUT_MS);
@@ -183,6 +187,7 @@ export async function llamarGemini(
   }
 
   if (!res.ok) {
+    notificarConsumo({ servicio: "IA", origen, proveedor: "gemini", modelo, ok: false });
     const cuerpo = await res.text().catch(() => "");
     // El detalle sólo va al log del servidor: no se le enseña al docente.
     console.error(`[borradores-ia] Gemini ${modelo} respondió ${res.status}: ${cuerpo.slice(0, 300)}`);
@@ -195,7 +200,9 @@ export async function llamarGemini(
 
   const datos = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
+    usageMetadata?: unknown;
   };
+  notificarConsumo({ servicio: "IA", origen, proveedor: "gemini", modelo, ...tokensDeGemini(datos.usageMetadata) });
   const texto = datos.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
   if (!texto.trim()) throw new ErrorDeIA("Gemini no devolvió ningún contenido.", 502);
   return texto;

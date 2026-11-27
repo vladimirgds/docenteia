@@ -215,7 +215,10 @@ console.log("\n · I. Locutor de respaldo (sin voz en el navegador)");
 console.log("\n · J. Términos: composición para KaTeX");
 {
   const r = latexConTerminos("1/2 + 1/3", [{ texto: "1/2" }, { texto: "1/3" }]);
-  check("cada término queda envuelto en su propia clase", r.latex.includes("\\htmlClass{pzt-0}") && r.latex.includes("\\htmlClass{pzt-1}") && r.error === null);
+  check("cada término queda envuelto en su propia clase", r.latex.includes("\\htmlClass{pzt-0 pzm-0 pza-1}") && r.latex.includes("\\htmlClass{pzt-1 pzm-0 pza-1}") && r.error === null);
+  const rep = latexConTerminos("2(x + 4) = 3x - 1", [{ texto: "x" }, { texto: "x", aparicion: 2 }]);
+  check("H3A: un fragmento REPETIDO se distingue por aparición y miembro", rep.error === null && rep.latex.includes("pzt-0 pzm-0 pza-1") && rep.latex.includes("pzt-1 pzm-1 pza-2"));
+  check("H3A: una aparición que no existe se rechaza", /no aparece 3 veces/.test(latexConTerminos("2(x + 4) = 3x - 1", [{ texto: "x", aparicion: 3 }]).error ?? ""));
   check("un término ausente se rechaza", latexConTerminos("1/2 + 1/3", [{ texto: "9/9" }]).error !== null);
   check("un término que corta una fracción se rechaza", /corta/.test(latexConTerminos("6/24 + 4/24", [{ texto: "/24" }]).error ?? ""));
   check("dos términos solapados se rechazan", /solapan/.test(latexConTerminos("x² - 9", [{ texto: "x²" }, { texto: "x² - 9" }]).error ?? ""));

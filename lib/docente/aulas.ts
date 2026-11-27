@@ -119,6 +119,11 @@ export const tareaSchema = z
      * IA a una tarea que sí quería el banco, mixto.
      */
     origenEjercicios: z.enum(["ia", "banco"]).optional(),
+    /**
+     * PMV 3 · Hito 5A (ampliación): una ficha de método PUBLICADA que guía la corrección
+     * (pistas de error concretas). Se congela al asignar.
+     */
+    fichaId: z.string().trim().min(1).optional().nullable(),
   })
   .transform((t) => {
     const fechaInicio = new Date(t.fechaInicio);

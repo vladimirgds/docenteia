@@ -261,6 +261,11 @@ model Usuario {
   procedimientosCreados   Procedimiento[] @relation("AutorDelProcedimiento")
   procedimientosRevisados Procedimiento[] @relation("RevisorDelProcedimiento")
 
+  // PMV 3 · HITO 5A: fichas de método que escribe, revisa y aprueba el docente.
+  fichasCreadas   FichaMetodo[]        @relation("AutorDeLaFicha")
+  fichasRevisadas FichaMetodo[]        @relation("RevisorDeLaFicha")
+  fichasVersiones FichaMetodoVersion[] @relation("AutorDeLaVersion")
+
   // Multi-tenant (HITO 3). A qué colegio pertenece este DOCENTE o DIRECTOR —un
   // ESTUDIANTE no pertenece a ninguno por esta vía: entra en las aulas de sus
   // profesores por matrícula, no por institución directamente, porque un mismo
@@ -327,6 +332,7 @@ model Institucion {
   temas          NodoConocimiento[]
   ejercicios     Ejercicio[]
   procedimientos Procedimiento[]
+  fichasMetodo   FichaMetodo[]
 
   @@map("instituciones")
 }
@@ -494,6 +500,14 @@ model Tarea {
   /// escala: 100 }`. La nota la calcula SIEMPRE el servidor con esta regla.
   reglaCalificacion  Json              @default("{\"pesos\":\"IGUALES\",\"creditoParcial\":false,\"nota\":\"ULTIMO_INTENTO\",\"escala\":100}")
   creadoEn           DateTime          @default(now())
+
+  /// PMV 3 · Hito 5A (ampliación): ficha de método aplicada a la tarea. Se CONGELA al asignar
+  /// (la versión publicada en ese momento), igual que los ejercicios: editar o
+  /// archivar la ficha después no cambia cómo se corrige esta tarea.
+  fichaId        String?
+  fichaVersion   Int?
+  fichaTitulo    String?
+  fichaContenido Json?
 
   /// Los ejercicios y rúbricas CONGELADOS al asignar (ver `TareaEjercicio`).
   ejerciciosCongelados TareaEjercicio[]
@@ -853,6 +867,7 @@ model NodoConocimiento {
 
   ejercicios     Ejercicio[]
   procedimientos Procedimiento[]
+  fichasMetodo   FichaMetodo[]
   reglas         ReglaMatematica[]
   progreso       RegistroProgreso[]
   errores        RegistroError[]
@@ -883,6 +898,10 @@ model Ejercicio {
   id     String            @id @default(cuid())
   nodoId String?
   nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  /// PMV 3 · H4: la habilidad que ejercita (opcional).
+  habilidadId String?
+  habilidad   Habilidad? @relation(fields: [habilidadId], references: [id], onDelete: SetNull)
 
   /// Motor determinista con el que se corrige. Se hereda del tema al guardar.
   motor    Tema?
@@ -995,6 +1014,7 @@ model Ejercicio {
   @@index([nodoId, estado])
   @@index([etapa, cursoMin])
   @@index([institucionId])
+  @@index([habilidadId])
   @@map("ejercicios")
 }
 
@@ -1072,6 +1092,92 @@ model Procedimiento {
   @@index([ambito, autorId])
   @@index([institucionId])
   @@map("procedimientos")
+}
+
+/// FICHA DE MÉTODO (PMV 3 · HITO 5A): un método de resolución que el docente define
+/// SIN TOCAR CÓDIGO —cuándo se aplica (patrón de entrada), qué variables extrae,
+/// bajo qué condiciones, qué pasos sigue, qué operaciones usa, con qué ejemplos y
+/// qué pistas ofrece—. Ver `lib/docente/fichas-metodo.ts`.
+///
+/// VERSIONADA: `contenido` es la versión de trabajo; cada cambio de contenido
+/// sube `version` y guarda una copia en `FichaMetodoVersion`. A los alumnos sólo
+/// les llega `publicadaVersion`, así que editar una ficha publicada no cambia lo
+/// que ven hasta que el docente la vuelve a aprobar.
+///
+/// El ámbito sigue la regla de los ejercicios y procedimientos: privada de su
+/// autor (banco privado) o del catálogo maestro.
+model FichaMetodo {
+  id String @id @default(cuid())
+
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  titulo String
+  /// Motor determinista con el que se verifica; se hereda del tema.
+  motor  Tema?
+
+  /// La ficha tal como la define el docente (validada con Zod).
+  contenido        Json
+  version          Int  @default(1)
+  /// Versión que ven los alumnos; null = nunca publicada.
+  publicadaVersion Int?
+
+  origen OrigenContenido @default(DOCENTE)
+  ambito AmbitoContenido @default(DOCENTE)
+  estado EstadoContenido @default(BORRADOR)
+
+  /// Informe de la verificación de la versión de trabajo (ver `InformeFicha`).
+  validacion          Json    @default("{}")
+  /// ¿Todo lo comprobable está comprobado por el motor?
+  verificada          Boolean @default(false)
+  /// ¿Quedan casos que el motor no puede validar automáticamente?
+  pendienteValidacion Boolean @default(false)
+
+  autorId String?
+  autor   Usuario? @relation("AutorDeLaFicha", fields: [autorId], references: [id], onDelete: SetNull)
+
+  institucionId String?
+  institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
+
+  /// Quién aprobó la publicación (la aprobación docente) y cuándo.
+  aprobadaPorId String?
+  aprobadaPor   Usuario?  @relation("RevisorDeLaFicha", fields: [aprobadaPorId], references: [id], onDelete: SetNull)
+  aprobadaEn    DateTime?
+
+  metadatos     Json     @default("{}")
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  versiones FichaMetodoVersion[]
+
+  @@index([nodoId, estado])
+  @@index([ambito, autorId])
+  @@index([institucionId])
+  @@map("fichas_metodo")
+}
+
+/// Cada versión de una ficha. Inmutable: se añade, no se edita.
+model FichaMetodoVersion {
+  id      String      @id @default(cuid())
+  fichaId String
+  ficha   FichaMetodo @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+
+  version             Int
+  contenido           Json
+  validacion          Json    @default("{}")
+  verificada          Boolean @default(false)
+  pendienteValidacion Boolean @default(false)
+  /// Qué cambió o por qué: «creada», «editada», «restaurada de la v2», «borrador de IA».
+  nota                String?
+
+  autorId String?
+  autor   Usuario? @relation("AutorDeLaVersion", fields: [autorId], references: [id], onDelete: SetNull)
+
+  creadoEn DateTime @default(now())
+
+  @@unique([fichaId, version])
+  @@index([fichaId, creadoEn])
+  @@map("fichas_metodo_versiones")
 }
 
 /// Sesión de aprendizaje: una unidad de trabajo del estudiante.
@@ -1354,8 +1460,10 @@ model SesionTutoria {
 
   /// El tema del ejercicio, copiado: el informe sigue teniendo sentido aunque el
   /// ejercicio se archive o se borre.
-  nodoId String?
-  tema   String?
+  nodoId      String?
+  tema        String?
+  /// PMV 3 · H4: habilidad del ejercicio al abrirse la sesión (copia, para el informe).
+  habilidadId String?
 
   fase            FaseTutoria @default(INICIAL)
   erroresSeguidos Int         @default(0)
@@ -1444,4 +1552,87 @@ model DecisionPedagogica {
   @@index([practicaId, creadoEn])
   @@index([estudianteId])
   @@map("decisiones_pedagogicas")
+}
+
+/// PMV 3 · H4 — HABILIDADES Y PRERREQUISITOS. Un grafo dirigido SIN CICLOS
+/// (lo garantiza el servidor al guardar cada arista): «Reducir términos
+/// semejantes» requiere «Ley de los signos». Cada habilidad puede enlazar el
+/// procedimiento que sirve de REPASO; el tutor, ante errores repetidos en un
+/// ejercicio de una habilidad, abre el repaso de sus prerrequisitos.
+model Habilidad {
+  id            String   @id @default(cuid())
+  clave         String
+  nombre        String
+  descripcion   String?
+  nodoId        String?
+  /// Procedimiento publicado que sirve de repaso breve de esta habilidad.
+  repasoId      String?
+  autorId       String
+  institucionId String?
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  requiere     PrerrequisitoHabilidad[] @relation("HabilidadQueRequiere")
+  requeridaPor PrerrequisitoHabilidad[] @relation("HabilidadRequerida")
+  ejercicios   Ejercicio[]
+  registros    RegistroHabilidad[]
+
+  @@unique([autorId, clave])
+  @@index([nodoId])
+  @@map("habilidades")
+}
+
+model PrerrequisitoHabilidad {
+  habilidadId String
+  habilidad   Habilidad @relation("HabilidadQueRequiere", fields: [habilidadId], references: [id], onDelete: Cascade)
+  requiereId  String
+  requiere    Habilidad @relation("HabilidadRequerida", fields: [requiereId], references: [id], onDelete: Cascade)
+
+  @@id([habilidadId, requiereId])
+  @@index([requiereId])
+  @@map("prerrequisitos_habilidad")
+}
+
+/// Errores, pistas, intentos y aciertos de un alumno en una habilidad.
+model RegistroHabilidad {
+  id            String    @id @default(cuid())
+  estudianteId  String
+  habilidadId   String
+  habilidad     Habilidad @relation(fields: [habilidadId], references: [id], onDelete: Cascade)
+  intentos      Int       @default(0)
+  errores       Int       @default(0)
+  aciertos      Int       @default(0)
+  pistas        Int       @default(0)
+  repasos       Int       @default(0)
+  actualizadoEn DateTime  @default(now()) @updatedAt
+
+  @@unique([estudianteId, habilidadId])
+  @@index([habilidadId])
+  @@map("registros_habilidad")
+}
+
+/// PMV 3 · H5B — CONSUMO DE IA Y VOZ. Una fila por llamada REAL a un proveedor
+/// de pago (Gemini, síntesis de voz) o por acierto de caché de voz (coste 0).
+/// No guarda el texto de la consulta: sólo cuánto se gastó, dónde y con qué modelo.
+model ConsumoServicio {
+  id            String   @id @default(cuid())
+  /// IA | VOZ
+  servicio      String
+  /// Qué parte de la app lo pidió: leccion, borradores-ejercicios, fichas-metodo, procedimientos, voz…
+  origen        String
+  proveedor     String
+  modelo        String?
+  tokensEntrada Int      @default(0)
+  tokensSalida  Int      @default(0)
+  tokensTotales Int      @default(0)
+  /// Caracteres sintetizados (voz).
+  caracteres    Int      @default(0)
+  cacheado      Boolean  @default(false)
+  ok            Boolean  @default(true)
+  usuarioId     String?
+  creadoEn      DateTime @default(now())
+
+  @@index([servicio, creadoEn])
+  @@index([origen, creadoEn])
+  @@map("consumo_servicios")
 }
